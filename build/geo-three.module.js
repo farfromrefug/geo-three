@@ -840,7 +840,7 @@ class MapHeightNode extends MapNode
 	 */
 	 static GEOMETRY_SIZE = 16;
 	
-	/**
+	 /**
 	 * Map node plane geometry.
 	 *
 	 * @static
@@ -849,148 +849,148 @@ class MapHeightNode extends MapNode
 	 */
 	 static GEOMETRY = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
 	
-	/**
+	 /**
 	 * Load tile texture from the server.
 	 * 
 	 * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
 	 *
 	 * @method loadTexture
 	 */
-	loadTexture()
-	{
-		var self = this;
+	 loadTexture()
+	 {
+	 	var self = this;
 	
-		this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
-		{
-			var texture = new Texture(image);
-			texture.generateMipmaps = false;
-			texture.format = RGBFormat;
-			texture.magFilter = LinearFilter;
-			texture.minFilter = LinearFilter;
-			texture.needsUpdate = true;
+	 	this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
+	 	{
+	 		var texture = new Texture(image);
+	 		texture.generateMipmaps = false;
+	 		texture.format = RGBFormat;
+	 		texture.magFilter = LinearFilter;
+	 		texture.minFilter = LinearFilter;
+	 		texture.needsUpdate = true;
 			
-			self.material.emissiveMap = texture;
+	 		self.material.emissiveMap = texture;
 	
-			self.textureLoaded = true;
-			self.nodeReady();
-		});
+	 		self.textureLoaded = true;
+	 		self.nodeReady();
+	 	});
 	
-		this.loadHeightGeometry();
-	};
+	 	this.loadHeightGeometry();
+	 };
 	
-	nodeReady()
-	{
-		if (!this.heightLoaded || !this.textureLoaded)
-		{
-			return;
-		}
+	 nodeReady()
+	 {
+	 	if (!this.heightLoaded || !this.textureLoaded)
+	 	{
+	 		return;
+	 	}
 	
-		this.visible = true;
+	 	this.visible = true;
 	
-		MapNode.prototype.nodeReady.call(this);
-	};
+	 	MapNode.prototype.nodeReady.call(this);
+	 };
 	
-	createChildNodes()
-	{
-		var level = this.level + 1;
+	 createChildNodes()
+	 {
+	 	var level = this.level + 1;
 	
-		var x = this.x * 2;
-		var y = this.y * 2;
+	 	var x = this.x * 2;
+	 	var y = this.y * 2;
 	
-		var node = new this.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
-		node.scale.set(0.5, 1, 0.5);
-		node.position.set(-0.25, 0, -0.25);
-		this.add(node);
-		node.updateMatrix();
-		node.updateMatrixWorld(true);
+	 	var node = new this.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(-0.25, 0, -0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
 	
-		var node = new this.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
-		node.scale.set(0.5, 1, 0.5);
-		node.position.set(0.25, 0, -0.25);
-		this.add(node);
-		node.updateMatrix();
-		node.updateMatrixWorld(true);
+	 	var node = new this.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(0.25, 0, -0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
 	
-		var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
-		node.scale.set(0.5, 1, 0.5);
-		node.position.set(-0.25, 0, 0.25);
-		this.add(node);
-		node.updateMatrix();
-		node.updateMatrixWorld(true);
+	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(-0.25, 0, 0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
 	
-		var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
-		node.scale.set(0.5, 1, 0.5);
-		node.position.set(0.25, 0, 0.25);
-		this.add(node);
-		node.updateMatrix();
-		node.updateMatrixWorld(true);
-	};
+	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(0.25, 0, 0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
+	 };
 	
-	/** 
+	 /** 
 	 * Load height texture from the server and create a geometry to match it.
 	 *
 	 * @method loadHeightGeometry
 	 * @return {Promise<void>} Returns a promise indicating when the geometry generation has finished. 
 	 */
-	loadHeightGeometry()
-	{
-		if (this.mapView.heightProvider === null)
-		{
-			throw new Error("GeoThree: MapView.heightProvider provider is null.");
-		}
+	 loadHeightGeometry()
+	 {
+	 	if (this.mapView.heightProvider === null)
+	 	{
+	 		throw new Error("GeoThree: MapView.heightProvider provider is null.");
+	 	}
 		
-		var self = this;
+	 	var self = this;
 	
-		this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
-		{
-			var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-			var vertices = geometry.attributes.position.array;
+	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
+	 	{
+	 		var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	 		var vertices = geometry.attributes.position.array;
 		
-			var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+	 		var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
 	
-			var context = canvas.getContext("2d");
-			context.imageSmoothingEnabled = false;
-			context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
+	 		var context = canvas.getContext("2d");
+	 		context.imageSmoothingEnabled = false;
+	 		context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
 			
-			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-			var data = imageData.data;
-			for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
-			{
-				var r = data[i];
-				var g = data[i + 1];
-				var b = data[i + 2];
+	 		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+	 		var data = imageData.data;
+	 		for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
+	 		{
+	 			var r = data[i];
+	 			var g = data[i + 1];
+	 			var b = data[i + 2];
 	
-				// The value will be composed of the bits RGB
-				var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+	 			// The value will be composed of the bits RGB
+	 			var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
 	
-				vertices[j + 1] = value;
-			}
+	 			vertices[j + 1] = value;
+	 		}
 	
-			self.geometry = geometry;
-			self.heightLoaded = true;
-			self.nodeReady();
-		}).catch(function()
-		{
-			console.error("GeoThree: Failed to load height node data.", this);
-			self.heightLoaded = true;
-			self.nodeReady();
-		});
-	};
+	 		self.geometry = geometry;
+	 		self.heightLoaded = true;
+	 		self.nodeReady();
+	 	}).catch(function()
+	 	{
+	 		console.error("GeoThree: Failed to load height node data.", this);
+	 		self.heightLoaded = true;
+	 		self.nodeReady();
+	 	});
+	 };
 	
-	/**
+	 /**
 	 * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
 	 * 
 	 * @method raycast
 	 */
-	raycast(raycaster, intersects)
-	{
-		if (this.isMesh === true)
-		{
-			return Mesh.prototype.raycast.call(this, raycaster, intersects);
-		}
+	 raycast(raycaster, intersects)
+	 {
+	 	if (this.isMesh === true)
+	 	{
+	 		return Mesh.prototype.raycast.call(this, raycaster, intersects);
+	 	}
 	
-		return false;
-	};
+	 	return false;
+	 };
 }
 
 /** 
@@ -1696,8 +1696,10 @@ class MapView extends Mesh
 		{
 			this.root = new MapSphereNode(null, this, MapNode.ROOT, 0, 0, 0);
 		}
-		
-		this.add(this.root);
+		if (this.root)
+		{
+			this.add(this.root);
+		}
 	}
 
 	/**
@@ -1832,8 +1834,8 @@ MapView.HEIGHT = 202;
  */
 MapView.HEIGHT_SHADER = 203;
 
-var pov = new Vector3();
-var position = new Vector3();
+var pov$1 = new Vector3();
+var position$1 = new Vector3();
 
 /**
  * Check the planar distance between the nodes center and the view position.
@@ -1870,13 +1872,13 @@ class LODRadial extends LODControl
 	{
 		var self = this;
 	
-		camera.getWorldPosition(pov);
+		camera.getWorldPosition(pov$1);
 	
 		view.children[0].traverse(function(node)
 		{
-			node.getWorldPosition(position);
+			node.getWorldPosition(position$1);
 	
-			var distance = pov.distanceTo(position);
+			var distance = pov$1.distanceTo(position$1);
 			distance /= Math.pow(2, view.provider.maxZoom - node.level);
 	
 			if (distance < self.subdivideDistance)
@@ -1892,9 +1894,9 @@ class LODRadial extends LODControl
 }
 
 var projection = new Matrix4();
-var pov$1 = new Vector3();
+var pov = new Vector3();
 var frustum = new Frustum();
-var position$1 = new Vector3();
+var position = new Vector3();
 
 /**
  * Check the planar distance between the nodes center and the view position.
@@ -1929,18 +1931,18 @@ class LODFrustum extends LODRadial
 	{
 		projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projection);
-		camera.getWorldPosition(pov$1);
+		camera.getWorldPosition(pov);
 		
 		var self = this;
 	
 		view.children[0].traverse(function(node)
 		{
-			node.getWorldPosition(position$1);
+			node.getWorldPosition(position);
 	
-			var distance = pov$1.distanceTo(position$1);
+			var distance = pov.distanceTo(position);
 			distance /= Math.pow(2, view.provider.maxZoom - node.level);
 	
-			var inFrustum = self.pointOnly ? frustum.containsPoint(position$1) : frustum.intersectsObject(node);
+			var inFrustum = self.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node);
 	
 			if (distance < self.subdivideDistance && inFrustum)
 			{
@@ -2187,7 +2189,7 @@ class BingMapsProvider extends MapProvider
 		
 		XHRUtils.get(address, function(data)
 		{
-			const meta = JSON.parse(data);
+			JSON.parse(data);
 
 			// TODO <FILL METADATA>
 		});

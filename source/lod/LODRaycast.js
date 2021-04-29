@@ -56,7 +56,7 @@ export class LODRaycast extends LODControl
 	updateLOD(view, camera, renderer, scene)
 	{
 		var intersects = [];
-	
+		
 		for (var t = 0; t < this.subdivisionRays; t++)
 		{
 			// Raycast from random point
@@ -66,7 +66,10 @@ export class LODRaycast extends LODControl
 			this.raycaster.setFromCamera(this.mouse, camera);
 			this.raycaster.intersectObjects(view.children, true, intersects);
 		}
-	
+
+		const thresholdUp = this.thresholdUp;
+		const thresholdDown = this.thresholdDown;
+		
 		if (view.mode === MapView.SPHERICAL)
 		{
 			for (var i = 0; i < intersects.length; i++)
@@ -74,12 +77,12 @@ export class LODRaycast extends LODControl
 				var node = intersects[i].object;
 				const distance = Math.pow(intersects[i].distance * 2, node.level);
 	
-				if (distance < this.thresholdUp)
+				if (distance < thresholdUp)
 				{
 					node.subdivide();
 					return;
 				}
-				else if (distance > this.thresholdDown)
+				else if (distance > thresholdDown)
 				{
 					if (node.parentNode !== null)
 					{
@@ -98,12 +101,12 @@ export class LODRaycast extends LODControl
 				var scaleX = this.vector.set(matrix[0], matrix[1], matrix[2]).length();
 				var value = scaleX / intersects[i].distance;
 	
-				if (value > this.thresholdUp)
+				if (value > thresholdUp)
 				{
 					node.subdivide();
 					return;
 				}
-				else if (value < this.thresholdDown)
+				else if (value < thresholdDown)
 				{
 					if (node.parentNode !== null)
 					{

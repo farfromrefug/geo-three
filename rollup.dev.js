@@ -8,8 +8,9 @@ export default {
 			open: true,
 			contentBase: '.',
 			openPage: '/examples',
-			host: 'localhost',
-			port: 8083
+			host: '0.0.0.0',
+			port: 80,
+			headers: {'Access-Control-Allow-Origin': '*'}
 		}),
 		livereload({watch: '.'})
 	],

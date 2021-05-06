@@ -75,6 +75,10 @@ export class LODRaycast extends LODControl
 			for (var i = 0; i < intersects.length; i++)
 			{
 				var node = intersects[i].object;
+				if (!(node instanceof MapNode)) 
+				{
+					continue;
+				}
 				const distance = Math.pow(intersects[i].distance * 2, node.level);
 	
 				if (distance < thresholdUp)

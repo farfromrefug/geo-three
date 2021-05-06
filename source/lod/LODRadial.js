@@ -1,5 +1,5 @@
 import {LODControl} from "./LODControl";
-import {Vector3} from "three";
+import {Mesh, Vector3} from "three";
 
 var pov = new Vector3();
 var position = new Vector3();
@@ -43,6 +43,10 @@ export class LODRadial extends LODControl
 	
 		view.children[0].traverse(function(node)
 		{
+			if (!(node instanceof Mesh)) 
+			{
+				return;
+			}
 			node.getWorldPosition(position);
 	
 			var distance = pov.distanceTo(position);

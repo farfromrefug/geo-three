@@ -45,6 +45,10 @@ export class LODFrustum extends LODRadial
 		
 		view.children[0].traverse(function(node)
 		{
+			if (!(node instanceof MapNode)) 
+			{
+				return;
+			}
 			node.getWorldPosition(position);
 			var distance = pov.distanceTo(position);
 			distance /= Math.pow(2, view.provider.maxZoom - node.level);

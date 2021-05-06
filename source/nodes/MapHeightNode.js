@@ -142,8 +142,6 @@ export class MapHeightNode extends MapNode
 	 	var x = this.x * 2;
 	 	var y = this.y * 2;
 
-		 const nodes = [];
-	
 	 	var node = new this.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
 	 	node.scale.set(0.5, 1, 0.5);
 	 	node.position.set(-0.25, 0, -0.25);
@@ -157,7 +155,6 @@ export class MapHeightNode extends MapNode
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
-		 nodes.push(node);
 	
 	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
 	 	node.scale.set(0.5, 1, 0.5);
@@ -165,7 +162,6 @@ export class MapHeightNode extends MapNode
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
-		 nodes.push(node);
 	
 	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
 	 	node.scale.set(0.5, 1, 0.5);
@@ -173,9 +169,7 @@ export class MapHeightNode extends MapNode
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
-		 nodes.push(node);
 
-		 return nodes;
 	 };
 	
 	 /** 

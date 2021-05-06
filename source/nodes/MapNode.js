@@ -94,6 +94,10 @@ export class MapNode extends Mesh
 		 * @type {Array}
 		 */
 		this.childrenCache = null;
+
+		this.objectsHolder = new THREE.Group();
+		this.objectsHolder.visible = false;
+		this.add(this.objectsHolder);
 	}
 	
 	/**
@@ -190,6 +194,7 @@ export class MapNode extends Mesh
 		{
 			this.isMesh = false;
 			this.children = this.childrenCache;
+			this.objectsHolder.visible = false;
 		}
 		else
 		{
@@ -213,9 +218,10 @@ export class MapNode extends Mesh
 			this.childrenCache = this.children;
 		}
 	
+		this.objectsHolder.visible = true;
 		this.subdivided = false;
 		this.isMesh = true;
-		this.children = [];
+		this.children = [this.objectsHolder];
 	}
 	
 	/**
@@ -267,27 +273,34 @@ export class MapNode extends Mesh
 	nodeReady()
 	{
 		// Update parent nodes loaded
-		if (this.parentNode !== null)
+		const parentNode = this.parentNode;
+		if (parentNode !== null)
 		{
-			this.parentNode.nodesLoaded++;
+			parentNode.nodesLoaded++;
 	
-			if (this.parentNode.nodesLoaded >= MapNode.CHILDRENS)
+			if (parentNode.nodesLoaded >= MapNode.CHILDRENS)
 			{
-				if (this.parentNode.subdivided === true)
+				if (parentNode.subdivided === true)
 				{
-					this.parentNode.isMesh = false;
+					parentNode.isMesh = false;
+					parentNode.objectsHolder.visible = false;
 				}
-	
-				for (var i = 0; i < this.parentNode.children.length; i++)
+				
+				parentNode.children.forEach((child, index) => 
 				{
-					this.parentNode.children[i].visible = true;
-				}
+					if (!child.subdivided && child !== parentNode.objectsHolder) 
+					{
+						child.visible = true;
+						child.objectsHolder.visible = true;
+					}
+				});
 			}
 		}
 		// If its the root object just set visible
 		else
 		{
 			this.visible = true;
+			this.objectsHolder.visible = true;
 		}
 	}
 	

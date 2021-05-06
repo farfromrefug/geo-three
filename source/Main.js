@@ -27,3 +27,4 @@ export {MapHeightNodeShader} from "./nodes/MapHeightNodeShader.js";
 
 export {UnitsUtils} from "./utils/UnitsUtils.js";
 export {CancelablePromise} from "./utils/CancelablePromise.js";
+export {XHRUtils} from "./utils/XHRUtils.js";

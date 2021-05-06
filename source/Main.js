@@ -20,6 +20,7 @@ export {MapNodeGeometry} from "./geometries/MapNodeGeometry.js";
 export {MapSphereNodeGeometry} from "./geometries/MapSphereNodeGeometry.js";
 
 export {MapHeightNode} from "./nodes/MapHeightNode.js";
+export {MapMartiniHeightNode} from "./nodes/MapMartiniHeightNode.js";
 export {MapNode} from "./nodes/MapNode.js";
 export {MapPlaneNode} from "./nodes/MapPlaneNode.js";
 export {MapSphereNode} from "./nodes/MapSphereNode.js";

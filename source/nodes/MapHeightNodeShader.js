@@ -112,29 +112,20 @@ export class MapHeightNodeShader extends MapHeightNode
 				self.material.map = texture;
 			}
 			
-			self.textureLoaded = true;
-			self.nodeReady();
-		}).catch(function(err)
+		}).finally(function()
 		{
-			console.error("GeoThree: Failed to load color node data.", err);
 			self.textureLoaded = true;
 			self.nodeReady();
 		});
 	
 		this.loadHeightGeometry();
 	}
-	
-	loadHeightGeometry()
+
+	async onHeightImage(image) 
 	{
-		if (this.mapView.heightProvider === null)
+		if (image) 
 		{
-			throw new Error("GeoThree: MapView.heightProvider provider is null.");
-		}
-		
-		var self = this;
-	
-		this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
-		{
+				
 			var texture = new Texture(image);
 			texture.generateMipmaps = false;
 			texture.format = RGBFormat;
@@ -143,16 +134,25 @@ export class MapHeightNodeShader extends MapHeightNode
 			texture.needsUpdate = true;
 	
 			self.material.userData.heightMap.value = texture;
-			
-			self.heightLoaded = true;
-			self.nodeReady();
-		}).catch(function(err)
-		{
-			console.error("GeoThree: Failed to load height node data.", err);
-			self.heightLoaded = true;
-			self.nodeReady();
-		});
+		}
 	}
+	
+	loadHeightGeometry()
+	 {
+	 	if (this.mapView.heightProvider === null)
+	 	{
+	 		throw new Error("GeoThree: MapView.heightProvider provider is null.");
+	 	}
+		
+	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) =>
+	 	{	
+			return this.onHeightImage(image);
+	 	}).finally(() => 
+		 {
+			this.heightLoaded = true;
+			this.nodeReady();
+		  });
+	 };
 	
 	/**
 	 * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.

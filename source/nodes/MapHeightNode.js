@@ -190,35 +190,39 @@ export class MapHeightNode extends MapNode
 	
 	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
 	 	{
-	 		var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-	 		var vertices = geometry.attributes.position.array;
-		
-	 		var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
-	
-	 		var context = canvas.getContext("2d");
-	 		context.imageSmoothingEnabled = false;
-	 		context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
-			
-	 		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-	 		var data = imageData.data;
-	 		for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
+			 if (image) 
 	 		{
-	 			var r = data[i];
-	 			var g = data[i + 1];
-	 			var b = data[i + 2];
-	
-	 			// The value will be composed of the bits RGB
-	 			var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-	
-	 			vertices[j + 1] = value;
-	 		}
-	
-	 		self.geometry = geometry;
-	 		self.heightLoaded = true;
-	 		self.nodeReady();
-	 	}).catch(function()
+	 			var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	 			var vertices = geometry.attributes.position.array;
+		   
+	 			var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+	   
+	 			var context = canvas.getContext("2d");
+	 			context.imageSmoothingEnabled = false;
+	 			context.drawImage(image, 0, 0, image.width, image.width, 0, 0, canvas.width, canvas.height);
+			   
+	 			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+	 			var data = imageData.data;
+	 			for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
+	 			{
+	 				var r = data[i];
+	 				var g = data[i + 1];
+	 				var b = data[i + 2];
+	   
+	 				// The value will be composed of the bits RGB
+	 				var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+	   
+	 				vertices[j + 1] = value;
+	 			}
+	   
+	 			self.geometry = geometry;
+			 }
+	 	}).catch(function() 
 	 	{
-	 		console.error("GeoThree: Failed to load height node data.", this);
+			 console.log('error fetching heugh');
+	 		// self.geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	 	}).finally(function()
+	 	{
 	 		self.heightLoaded = true;
 	 		self.nodeReady();
 	 	});

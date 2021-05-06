@@ -60,7 +60,7 @@ export class MapView extends Mesh
 	 */
 	static HEIGHT_SHADER = 203;
 
-	constructor(mode, provider, heightProvider)
+	constructor(mode, provider, heightProvider, onNodeReady)
 	{
 		mode = mode !== undefined ? mode : MapView.PLANAR;
 
@@ -110,6 +110,12 @@ export class MapView extends Mesh
 		 * @type {MapProvider}
 		 */
 		this.heightProvider = heightProvider !== undefined ? heightProvider : null;
+
+
+		if (onNodeReady) 
+		{
+			this.onNodeReady = onNodeReady;
+		}
 
 		/**
 		 * Root map node.
@@ -208,7 +214,15 @@ export class MapView extends Mesh
 	 */
 	onBeforeRender(renderer, scene, camera, geometry, material, group)
 	{
-		this.lod.updateLOD(this, camera, renderer, scene);
+		if (!onNodeReady) 
+		{
+			this.lod.updateLOD(this, camera, renderer, scene);
+		}
+	}
+
+	onNodeReady()
+	{
+		
 	}
 
 	/**

@@ -139,9 +139,6 @@
             type="text/javascript"
             src="https://unpkg.com/@loaders.gl/terrain@2.3.13/dist/dist.min.js"
         ></script>
-        <script type="text/javascript" src="./load-bmpfont.js"></script>
-        <script type="text/javascript" src="./three-bmfont-text.js"></script>
-
         <script type="text/javascript" src="../build/geo-three.js"></script>
         <script type="text/javascript">
             var stats = new Stats();
@@ -475,7 +472,7 @@
             readFeaturesCheckbox.onchange = function (event) {
                 readFeatures = event.target.checked;
 
-                canvas2.style.visibility =
+                canvas4.style.visibility =
                     readFeatures && drawLines ? "visible" : "hidden";
                 render();
             };
@@ -723,7 +720,6 @@
                         x,
                         y,
                         material,
-                        // MaterialHeightShader.getGeometry(level)
                         MaterialHeightShader.GEOMETRY
                     );
 
@@ -839,13 +835,6 @@
                     return material;
                 }
                 loadTexture() {
-                    // console.log(
-                    //     "loadTexture",
-                    //     this.x,
-                    //     this.y,
-                    //     this.level,
-                    //     ++NODE_READY_TEST
-                    // );
                     this.geometry = MaterialHeightShader.getGeometry(
                         this.level
                     );
@@ -937,9 +926,6 @@
                                                 0
                                             );
                                             result.forEach((f, index) => {
-                                                // if (!features[id]) {
-                                                // features[id] = f;
-
                                                 var coords = Geo.UnitsUtils.datumsToSpherical(
                                                     f.geometry.coordinates[1],
                                                     f.geometry.coordinates[0]
@@ -986,38 +972,6 @@
                                                     );
                                                 }
 
-                                                // } else {
-                                                //     colors.push(
-                                                //         features[id]
-                                                //             .threeColor.r,
-                                                //         features[id]
-                                                //             .threeColor.g,
-                                                //         features[id]
-                                                //             .threeColor.b
-                                                //     );
-                                                //     points.push(
-                                                //         features[id]
-                                                //             .localCoords.x,
-                                                //         features[id]
-                                                //             .localCoords.y,
-                                                //         features[id]
-                                                //             .localCoords.z
-                                                //     );
-                                                // }
-                                                // if (f.properties.name==='Mont Jalla') {
-                                                //     // 11 1056 735 / 0.564453125, 0.07275390625
-                                                //     console.log('f', this.level, this.x, this.y, f);
-                                                // }
-                                                // return new THREE.Vector3(
-                                                //     f.geometry
-                                                //         .coordinates[0] -
-                                                //         0.5,
-                                                //     f.properties.ele *
-                                                //         exageration,
-                                                //     f.geometry
-                                                //         .coordinates[1] -
-                                                //         0.5
-                                                // );
                                             });
                                             if (points.length > 0) {
                                                 const geometry = new THREE.BufferGeometry();
@@ -1285,39 +1239,7 @@
             composer.addPass(customOutline);
             controls.addEventListener("change", onControlUpdate);
 
-            let fontFont;
-            let fontTexture;
-            let fontMaterial;
-            function loadFont(texture) {
-                // load-bmfont is included by wzrd.in
-                // however we can also use fetch() API and convert-bmfont CLI tool to use a simpler format
-                loadBmfont(
-                    "https://raw.githubusercontent.com/Jam3/three-bmfont-text/master/test/fnt/DejaVu-sdf.fnt",
-                    (err, font) => {
-                        if (err) return onLoadFontError(err);
-                        fontTexture = texture;
-                        fontFont = font;
-                        fontMaterial = new THREE.MeshBasicMaterial({
-                            map: texture,
-                            transparent: true,
-                            color: 0x000000,
-                        });
-                        render();
-                    }
-                );
-            }
-            function onLoadFontError(err) {
-                console.error(err);
-            }
-
-            const fontloader = new THREE.TextureLoader();
-            fontloader.crossOrigin = "Anonymous";
-            fontloader.load(
-                "https://raw.githubusercontent.com/Jam3/three-bmfont-text/master/test/fnt/DejaVu-sdf.png",
-                loadFont,
-                onLoadFontError
-            );
-
+            
             document.body.onresize = function () {
                 const width = window.innerWidth;
                 const height = window.innerHeight;
@@ -1398,9 +1320,7 @@
             }
 
             function readShownFeatures() {
-                if (drawLines && !fontTexture) {
-                    return;
-                }
+
                 const start = Date.now();
                 const width = pointBufferTarget.width;
                 const height = pointBufferTarget.height;
@@ -1478,7 +1398,6 @@
                 let lastFeature;
                 const minDistance = 10;
                 const featuresToShow = [];
-                // console.log('rFeatures', rFeatures.findIndex(f=>/Mont Blanc/.test(f.properties.name)))
                 rFeatures.forEach((f) => {
                     if (!lastFeature) {
                         // first
@@ -1487,7 +1406,6 @@
                         let deltaY = f.y -  lastFeature.y;
                         let deltaZ = Math.abs(f.z -  lastFeature.z);
                         if (deltaZ < 0.01) {
-                            // console.log('using', 'ele', deltaZ, f.properties.name, '|', lastFeature.properties.name)
                             deltaY = f.properties.ele -  lastFeature.properties.ele;
                         }
                         if (deltaY > 0) {
@@ -1530,73 +1448,6 @@
                         ctx2d.restore();
                     }
                 }
-                // for (
-                //     let index = 0;
-                //     index < Math.min(toShow, existing);
-                //     index++
-                // ) {
-                //     const f = featuresToShow[index];
-                //     const group = orthoscene.children[index];
-                //     const y = f.y;
-                //     if (y <= 120) {
-                //         group.visible = false;
-                //     } else {
-                //         const lineMesh = group.children[0];
-                //         const geo = lineMesh.geometry;
-                //         const array = geo.attributes.position.array;
-                //         array[0] = f.x;
-                //         array[3] = f.x;
-                //         array[4] = f.y;
-                //         geo.attributes.position.needsUpdate = true;
-                //         lineMesh.visible = true;
-
-                //         const text = group.children[1].children[0];
-                //         text.geometry.update(f.properties.name);
-                //         text.position.set(f.x * 4, 480, 0);
-                //         group.visible = true;
-                //     }
-                // }
-                // if (toShow > existing) {
-                //     for (let index = min; index < max; index++) {
-                //         const f = featuresToShow[index];
-                //         const group = new THREE.Group();
-                //         var geometry = new THREE.BufferGeometry();
-                //         var positions = new Float32Array(3 * 2);
-                //         positions[0] = f.x;
-                //         positions[1] = 120;
-                //         positions[2] = 0;
-                //         positions[3] = f.x;
-                //         positions[4] = f.y;
-                //         positions[5] = 0;
-                //         geometry.setAttribute(
-                //             "position",
-                //             new THREE.BufferAttribute(positions, 3)
-                //         );
-                //         const line = new THREE.Line(geometry, lineMaterial);
-                //         group.add(line);
-                //         var textGeometry = threeBmfontText({
-                //             text: f.properties.name,
-                //             font: fontFont,
-                //             align: "left",
-                //             flipY: fontTexture.flipY,
-                //         });
-                //         var textAnchor = new THREE.Object3D();
-                //         const layout = textGeometry.layout;
-                //         const text = new THREE.Mesh(textGeometry, fontMaterial);
-                //         const padding = 0; // from top left edge
-                //         text.position.set(f.x * 4, 480, 0);
-                //         textAnchor.scale.multiplyScalar(0.25);
-                //         text.rotateZ(-Math.PI / 4);
-                //         textAnchor.add(text);
-                //         group.add(textAnchor);
-                //         orthoscene.add(group);
-                //     }
-                // } else {
-                //     for (let index = min; index < max; index++) {
-                //         orthoscene.children[index].visible = false;
-                //     }
-                // }
-                // console.log("readFeatures", pixelsBuffer.byteLength, Date.now() - start, "ms");
             }
 
             function render() {
@@ -1614,10 +1465,6 @@
                     rendereroff.setRenderTarget(pointBufferTarget);
                     rendereroff.render(scene, camera);
                     readShownFeatures();
-                    // if (drawLines) {
-                    //     renderer2.render(orthoscene, orthocamera);
-                    // }
-
                     applyOnNodes((node) => {
                         node.material.userData.drawNormals.value = true;
                         node.objectsHolder.visible = debugFeaturePoints;

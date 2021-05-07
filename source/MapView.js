@@ -214,7 +214,7 @@ export class MapView extends Mesh
 	 */
 	onBeforeRender(renderer, scene, camera, geometry, material, group)
 	{
-		if (!onNodeReady) 
+		if (!this.onNodeReady) 
 		{
 			this.lod.updateLOD(this, camera, renderer, scene);
 		}

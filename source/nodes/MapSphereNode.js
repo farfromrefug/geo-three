@@ -20,9 +20,11 @@ export class MapSphereNode extends MapNode
 	
 		this.matrixAutoUpdate = false;
 		this.isMesh = true;
-		this.visible = false;
 	
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**

@@ -1,5 +1,9 @@
 import {Texture, RGBFormat, LinearFilter, Mesh} from "three";
 
+
+const autoLod = true;
+let NODE_READY_TEST = 0;
+
 /** 
  * Represents a map tile node inside of the tiles quad-tree
  * 
@@ -95,8 +99,11 @@ export class MapNode extends Mesh
 		 */
 		this.childrenCache = null;
 
+		this.visible = autoLod;
+		this.isReady = !autoLod;
+
 		this.objectsHolder = new THREE.Group();
-		this.objectsHolder.visible = false;
+		this.objectsHolder.visible = autoLod;
 		this.add(this.objectsHolder);
 	}
 	
@@ -183,22 +190,39 @@ export class MapNode extends Mesh
 	subdivide()
 	{
 		const maxZoom = Math.min (this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
-		if (this.children.length > 0 || this.level + 1 > maxZoom || this.parentNode !== null && this.parentNode.nodesLoaded < MapNode.CHILDRENS)
+		if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom
+		//  || this.parentNode !== null && this.parentNode.nodesLoaded < MapNode.CHILDRENS
+			 )
 		{
 			return;
 		}
 	
 		this.subdivided = true;
-	
 		if (this.childrenCache !== null)
 		{
 			this.isMesh = false;
-			this.children = this.childrenCache;
 			this.objectsHolder.visible = false;
+			this.childrenCache.forEach((n) => 
+			{
+				if (n !== this.objectsHolder) 
+				{
+					n.isMesh = !n.subdivided;
+					n.objectsHolder.visible = !n.subdivided;
+				}
+			});
+			this.children = this.childrenCache;
+			if (autoLod) 
+			{
+				return this.children;
+			}
 		}
 		else
 		{
 			this.createChildNodes();
+			if (autoLod) 
+			{
+				return this.children;
+			}
 		}
 	}
 	
@@ -223,6 +247,10 @@ export class MapNode extends Mesh
 		this.subdivided = false;
 		this.isMesh = true;
 		this.children = [this.objectsHolder];
+		if (autoLod) 
+		{
+			return this;
+		}
 	}
 	
 	/**
@@ -235,6 +263,7 @@ export class MapNode extends Mesh
 	 */
 	loadTexture(onLoad)
 	{
+		this.isReady = true;
 		var self = this;
 		
 		this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
@@ -274,11 +303,11 @@ export class MapNode extends Mesh
 	nodeReady()
 	{
 		// Update parent nodes loaded
+		this.isMesh = true;
 		const parentNode = this.parentNode;
 		if (parentNode !== null)
 		{
 			parentNode.nodesLoaded++;
-	
 			if (parentNode.nodesLoaded >= MapNode.CHILDRENS)
 			{
 				if (parentNode.subdivided === true)
@@ -289,16 +318,19 @@ export class MapNode extends Mesh
 				
 				parentNode.children.forEach((child, index) => 
 				{
-					if (!child.subdivided && child !== parentNode.objectsHolder) 
+					if (child !== parentNode.objectsHolder) 
 					{
-						child.visible = true;
-						child.objectsHolder.visible = true;
+						// child.visible = true;
+						// child.objectsHolder.visible = true;
+						// child.visible = true;
+						child.isMesh = !child.subdivided;
+						child.objectsHolder.visible = !child.subdivided;
 					}
 				});
 			}
 		}
 		// If its the root object just set visible
-		else
+		else if (!this.subdivided)
 		{
 			this.visible = true;
 			this.objectsHolder.visible = true;

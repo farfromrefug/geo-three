@@ -38,10 +38,8 @@ export class MapHeightNode extends MapNode
 		super(geometry === undefined ? MapHeightNode.GEOMETRY: geometry, material, parentNode, mapView, location, level, x, y);
 	
 		this.matrixAutoUpdate = false;
-		this.isMesh = true;
-		
-		this.visible = false;
-	
+		this.isMesh = false;
+			
 		/**
 		 * Flag indicating if the tile texture was loaded.
 		 * 
@@ -57,8 +55,10 @@ export class MapHeightNode extends MapNode
 		 * @type {boolean}
 		 */
 		this.heightLoaded = false;
-	
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -97,6 +97,7 @@ export class MapHeightNode extends MapNode
 	 */
 	 loadTexture()
 	 {
+		 this.isReady = true;
 	 	var self = this;
 	
 	 	this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)

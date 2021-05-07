@@ -15,9 +15,11 @@ export class MapPlaneNode extends MapNode
 	
 		this.matrixAutoUpdate = false;
 		this.isMesh = true;
-		this.visible = false;
 		
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -35,6 +37,7 @@ export class MapPlaneNode extends MapNode
 	
 		var x = this.x * 2;
 		var y = this.y * 2;
+		
 	
 		var node = new MapPlaneNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
 		node.scale.set(0.5, 1, 0.5);

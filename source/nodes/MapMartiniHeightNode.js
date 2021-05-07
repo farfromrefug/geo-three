@@ -222,8 +222,6 @@ export class MapMartiniHeightNode extends MapNode
 		this.matrixAutoUpdate = false;
 		this.isMesh = true;
 		
-		this.visible = false;
-
 		/**
 		 * Flag indicating if the tile texture was loaded.
 		 * 
@@ -276,7 +274,10 @@ export class MapMartiniHeightNode extends MapNode
 			this.exageration
 		);
 	
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -297,7 +298,8 @@ export class MapMartiniHeightNode extends MapNode
 	 */
 	 loadTexture()
 	 {
-	 	var self = this;
+		this.isReady = true;
+		var self = this;
 	
 	 	this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
 	 	{

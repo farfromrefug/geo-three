@@ -96,6 +96,7 @@ export class MapHeightNodeShader extends MapHeightNode
 	
 	loadTexture()
 	{
+		this.isReady = true;
 		var self = this;
 	
 		this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)

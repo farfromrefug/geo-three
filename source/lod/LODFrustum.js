@@ -36,36 +36,66 @@ export class LODFrustum extends LODRadial
 		this.testCenter = true;
 	}
 
+	handleNode(node, minZoom, maxZoom, inFrustum = false) 
+	{
+		if (!(node instanceof MapNode)) 
+		{
+			return;
+		}
+		node.getWorldPosition(position);
+		var distance = pov.distanceTo(position);
+		distance /= Math.pow(2, 20 - node.level);
+
+		 inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
+		//  console.log('handleNode', node.x, node.y, node.level, distance, inFrustum);
+		 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
+		{
+			const subdivded = node.subdivide();
+			if (subdivded) 
+			{
+				subdivded.forEach((n) => {return this.handleNode(n, minZoom, maxZoom);});
+			}
+		}
+		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
+		{
+			const simplified = node.parentNode.simplify();
+			if (simplified && simplified.level > minZoom) 
+			{
+				this.handleNode(simplified, minZoom, maxZoom);
+			}
+		}
+		else if (inFrustum && minZoom <= node.level )
+		{
+			if (!node.isReady) 
+			{
+				node.loadTexture();
+			}
+		}
+	}
+
 	updateLOD(view, camera, renderer, scene)
 	{
+		// const start = Date.now();
 		projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projection);
 		camera.getWorldPosition(pov);
 		
-		var self = this;
 		const minZoom = view.provider.minZoom;
 		const maxZoom = view.provider.maxZoom;
-		view.children[0].traverse(function(node)
-		{	
-			if (!(node instanceof MapNode)) 
+		const toHandle = [];
+		view.children[0].traverseVisible((node) => {return toHandle.push(node);});
+		toHandle.forEach((node) =>
+		{		
+			if (node.children.length <=1) 
 			{
-				return;
-			}
-			node.getWorldPosition(position);
-			var distance = pov.distanceTo(position);
-			distance /= Math.pow(2, maxZoom - node.level);
-	
-			var inFrustum = self.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node);
-	
-			if ((minZoom >= node.level || distance < self.subdivideDistance )&& inFrustum)
-			{
-				node.subdivide();
-			}
-			else if (minZoom < node.level && distance > self.simplifyDistance && node.parentNode)
-			{
-				node.parentNode.simplify();
+				this.handleNode(node, minZoom, maxZoom);
 			}
 		});
+		// view.children[0].traverse((node) =>
+		// {	
+		// 	this.handleNode(node, minZoom, maxZoom);
+		// });
+		// console.log('updateLOD', Date.now() - start, 'ms');
 	}
 }
 

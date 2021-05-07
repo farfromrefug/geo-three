@@ -213,10 +213,11 @@ export class MapNode extends Mesh
 	 */
 	simplify()
 	{
-		if (this.children.length > 0)
+		if (!this.subdivided) 
 		{
-			this.childrenCache = this.children;
+			return;
 		}
+		this.childrenCache = this.children;
 	
 		this.objectsHolder.visible = true;
 		this.subdivided = false;

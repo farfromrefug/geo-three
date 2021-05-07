@@ -1,7 +1,11 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "esnext"
+        "target": "esnext",
+        "types": ["three"]
     },
-    "include": ["source/**/*"]
+    "include": ["source/**/*"],
+    "typeAcquisition": {
+        "include": ["three"]
+    }
 }

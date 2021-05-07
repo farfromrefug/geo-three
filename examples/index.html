@@ -1444,7 +1444,11 @@
                         ctx2d.translate(f.x, 120);
                         ctx2d.rotate(-Math.PI / 4);
                         ctx2d.font = 'normal 12px Courier';
-                        ctx2d.fillText(f.properties.name, 0,0);
+                        const text = f.properties.name;
+                        var textWidth = ctx2d.measureText(text).width;
+                        ctx2d.fillText(text, 0,0);
+                        ctx2d.font = 'normal 9px Courier';
+                        ctx2d.fillText(f.properties.ele + 'm', textWidth + 5,0);
                         ctx2d.restore();
                     }
                 }

@@ -591,7 +591,8 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 	let size = MaterialHeightShader.GEOMETRY_SIZE;
                 	if (level < 11) 
                 	{
-                		size /= Math.pow(2, (11 - level) * 2);
+                		// size /= Math.pow(2, (11 - level) * 2);
+                		size /= 11 - level;
                 		size = Math.max(16, size);
                 	}
                 	let geo = MaterialHeightShader.geometries[size];
@@ -659,11 +660,42 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                  		uniform float exageration;
                                  		uniform float zoomlevel;
                                  		uniform sampler2D heightMap;
-                                 		float getElevation(vec2 coord, float bias) {
-                                 			// Convert encoded elevation value to meters
-                                 			vec4 e = texture2D(heightMap, clamp(coord, 0.0, 1.0));
-                                 			// return (((e.r * 255.0 * 65536.0 + e.g * 255.0 * 256.0 + e.b * 255.0) * 0.1) - 10000.0) * exageration;
-                                 			return ((e.r * 255.0 * 256.0 + e.g  * 255.0+ e.b * 255.0 / 256.0) - 32768.0) * exageration;
+
+                                         float getPixelElevation(vec4 e) {
+                                            // Convert encoded elevation value to meters
+                                            // return (((e.r * 255.0 * 65536.0 + e.g * 255.0 * 256.0 + e.b * 255.0) * 0.1) - 10000.0) * exageration;
+                                            return ((e.r * 255.0 * 256.0 + e.g  * 255.0+ e.b * 255.0 / 256.0) - 32768.0) * exageration;
+                                         }
+                                 		float getElevation(vec2 coord) {
+                                            vec4 e = texture2D(heightMap, coord);
+                                            return getPixelElevation(e);
+                                         }
+                                 		float getElevationMean(vec2 coord, float width, float height) {
+                                            // coord = clamp(coord, 0.0, 1.0);
+                                            float x0 = coord.x;
+                                            float x1= coord.x;
+                                            float y0 = coord.y;
+                                            float y1= coord.y;
+                                            if (x0 <= 0.0) {
+                                                x1 = 1.0 / width;
+                                            }
+                                            if (x0 >= 1.0) {
+                                                x1 = 1.0 - 1.0 / width;
+                                            }
+                                            if (y0 <= 0.0) {
+                                                y1 = 1.0 / height;
+                                            }
+                                            if (y0 >= 1.0) {
+                                                y1 = 1.0 - 1.0 / height;
+                                            }
+                                            if (x0 == x1 && y0 == y1) {
+                                 			    vec4 e = texture2D(heightMap, coord);
+                                                return getPixelElevation(e);
+                                            } else {
+                                                vec4 e1 = texture2D(heightMap, vec2(x0,y0));
+                                                vec4 e2 = texture2D(heightMap, vec2(x1,y1));
+                                                return 2.0 * getPixelElevation(e1) -  getPixelElevation(e2);
+                                            }
                                  		}
                                  		` + shader.vertexShader;
                 		shader.fragmentShader =
@@ -703,18 +735,20 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                  			// +-----------+
 
                                  			// vec4 theight = texture2D(heightMap, vUv);
-                                 			float e = getElevation(vUv, 0.0);
+                                             ivec2 size = textureSize(heightMap, 0);
+                                             float width = float(size.x);
+                                             float height = float(size.y);
+                                 			float e = getElevationMean(vUv, width,height);
                                  			if (drawNormals) {
-                                 				ivec2 size = textureSize(heightMap, 0);
-                                 				float offset = 1.0 / float(size.x);
-                                 				float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
-                                 				float b = getElevation(vUv + vec2(0, -offset), 0.0);
-                                 				float c = getElevation(vUv + vec2(offset, -offset), 0.0);
-                                 				float d = getElevation(vUv + vec2(-offset, 0), 0.0);
-                                 				float f = getElevation(vUv + vec2(offset, 0), 0.0);
-                                 				float g = getElevation(vUv + vec2(-offset, offset), 0.0);
-                                 				float h = getElevation(vUv + vec2(0, offset), 0.0);
-                                 				float i = getElevation(vUv + vec2(offset,offset), 0.0);
+                                 				float offset = 1.0 / width;
+                                 				float a = getElevationMean(vUv + vec2(-offset, -offset), width,height);
+                                 				float b = getElevationMean(vUv + vec2(0, -offset), width,height);
+                                 				float c = getElevationMean(vUv + vec2(offset, -offset), width,height);
+                                 				float d = getElevationMean(vUv + vec2(-offset, 0), width,height);
+                                 				float f = getElevationMean(vUv + vec2(offset, 0), width,height);
+                                 				float g = getElevationMean(vUv + vec2(-offset, offset), width,height);
+                                 				float h = getElevationMean(vUv + vec2(0, offset), width,height);
+                                 				float i = getElevationMean(vUv + vec2(offset,offset), width,height);
 
 
                                  				float NormalLength = 500.0 / zoomlevel;
@@ -723,8 +757,8 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                  				vec3 v1 = vec3(0.0, NormalLength, 0.0);
                                  				vec3 v2 = vec3(NormalLength, 0.0, 0.0);
                                  				v0.z = (e + d + g + h) / 4.0;
-                                 				v1.z = (e+ b + a + d) / 4.0;
-                                 				v2.z = (e+ h + i + f) / 4.0;
+                                 				v1.z = (e + b + a + d) / 4.0;
+                                 				v2.z = (e + h + i + f) / 4.0;
                                  				vNormal = (normalize(cross(v2 - v0, v1 - v0)));
                                  			}
 
@@ -732,7 +766,6 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                  			vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
 
                                  			gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
-                                 			// gl_Position = projectionMatrix * modelViewMatrix * vec4(position.yzx, 1.0);
                                  			`
                 		);
                 	};
@@ -1107,25 +1140,16 @@ var coords = Geo.UnitsUtils.datumsToSpherical(45.16667, 5.71667);
 const EPS = 1e-5;
 camera.position.set( 0, 0, EPS );
 var controls = new CameraControls(camera, canvas);
-controls.azimuthRotateSpeed = - 0.3; // negative value to invert rotation direction
-controls.polarRotateSpeed = - 0.3; // negative value to invert rotation direction
+controls.azimuthRotateSpeed = - 0.15; // negative value to invert rotation direction
+controls.polarRotateSpeed = - 0.15; // negative value to invert rotation direction
+controls.enablePan = 1;
+controls.minZoom = 1;
 controls.truckSpeed = 1 / EPS * 3;
 controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
-// controls.mouseButtons.right = CameraControls.ACTION.TRUCK;
-controls.saveState();
+controls.verticalDragToForward = true;
 controls.moveTo(coords.x, 1000, -coords.y);
-// controls.mouseButtons.right=CameraControls.ACTION.DOLLY;
-// controls.touches.one=CameraControls.ACTION.ROTATE
-// controls.minDistance=.1;
-//  controls.maxDistance=50005;
-// controls.dollyToCursor = true;
-// controls.azimuthRotateSpeed = -0.3; // negative value to invert rotation direction
-// controls.polarRotateSpeed = -0.3; // negative value to invert rotation direction
-// controls.truckSpeed = 1 / EPS * 3;
-// controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
-// controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
-// controls.verticalDragToForward = true;
+// controls.saveState();
 controls.addEventListener("update", () => 
 {
 	onControlUpdate();

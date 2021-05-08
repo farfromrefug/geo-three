@@ -371,6 +371,8 @@ class OpenStreetMapsProvider extends MapProvider
 	}
 }
 
+const autoLod = true;
+
 /** 
  * Represents a map tile node inside of the tiles quad-tree
  * 
@@ -380,7 +382,7 @@ class OpenStreetMapsProvider extends MapProvider
  * 
  * @class MapNode
  */
-class MapNode extends Mesh
+class MapNode$1 extends Mesh
 {
 	constructor(geometry, material, parentNode, mapView, location, level, x, y)
 	{
@@ -465,6 +467,13 @@ class MapNode extends Mesh
 		 * @type {Array}
 		 */
 		this.childrenCache = null;
+
+		this.visible = autoLod;
+		this.isReady = !autoLod;
+
+		this.objectsHolder = new THREE.Group();
+		this.objectsHolder.visible = autoLod;
+		this.add(this.objectsHolder);
 	}
 	
 	/**
@@ -549,21 +558,38 @@ class MapNode extends Mesh
 	 */
 	subdivide()
 	{
-		if (this.children.length > 0 || this.level + 1 > this.mapView.provider.maxZoom || this.parentNode !== null && this.parentNode.nodesLoaded < MapNode.CHILDRENS)
+		const maxZoom = Math.min (this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
+		if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom
+		//  || this.parentNode !== null && this.parentNode.nodesLoaded < MapNode.CHILDRENS
+			 )
 		{
 			return;
 		}
 	
 		this.subdivided = true;
-	
 		if (this.childrenCache !== null)
 		{
 			this.isMesh = false;
+			this.objectsHolder.visible = false;
+			this.childrenCache.forEach((n) => 
+			{
+				if (n !== this.objectsHolder) 
+				{
+					n.isMesh = !n.subdivided;
+					n.objectsHolder.visible = !n.subdivided;
+				}
+			});
 			this.children = this.childrenCache;
+			{
+				return this.children;
+			}
 		}
 		else
 		{
 			this.createChildNodes();
+			{
+				return this.children;
+			}
 		}
 	}
 	
@@ -578,14 +604,19 @@ class MapNode extends Mesh
 	 */
 	simplify()
 	{
-		if (this.children.length > 0)
+		if (!this.subdivided) 
 		{
-			this.childrenCache = this.children;
+			return;
 		}
+		this.childrenCache = this.children;
 	
+		this.objectsHolder.visible = true;
 		this.subdivided = false;
 		this.isMesh = true;
-		this.children = [];
+		this.children = [this.objectsHolder];
+		{
+			return this;
+		}
 	}
 	
 	/**
@@ -598,6 +629,7 @@ class MapNode extends Mesh
 	 */
 	loadTexture(onLoad)
 	{
+		this.isReady = true;
 		var self = this;
 		
 		this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
@@ -637,27 +669,37 @@ class MapNode extends Mesh
 	nodeReady()
 	{
 		// Update parent nodes loaded
-		if (this.parentNode !== null)
+		this.isMesh = true;
+		const parentNode = this.parentNode;
+		if (parentNode !== null)
 		{
-			this.parentNode.nodesLoaded++;
-	
-			if (this.parentNode.nodesLoaded >= MapNode.CHILDRENS)
+			parentNode.nodesLoaded++;
+			if (parentNode.nodesLoaded >= MapNode$1.CHILDRENS)
 			{
-				if (this.parentNode.subdivided === true)
+				if (parentNode.subdivided === true)
 				{
-					this.parentNode.isMesh = false;
+					parentNode.isMesh = false;
+					parentNode.objectsHolder.visible = false;
 				}
-	
-				for (var i = 0; i < this.parentNode.children.length; i++)
+				
+				parentNode.children.forEach((child, index) => 
 				{
-					this.parentNode.children[i].visible = true;
-				}
+					if (child !== parentNode.objectsHolder) 
+					{
+						// child.visible = true;
+						// child.objectsHolder.visible = true;
+						// child.visible = true;
+						child.isMesh = !child.subdivided;
+						child.objectsHolder.visible = !child.subdivided;
+					}
+				});
 			}
 		}
 		// If its the root object just set visible
-		else
+		else if (!this.subdivided)
 		{
 			this.visible = true;
+			this.objectsHolder.visible = true;
 		}
 	}
 	
@@ -780,7 +822,7 @@ class MapNodeGeometry extends BufferGeometry
  * @param material {Material} Material used to render this height node.
  * @param geometry {Geometry} Geometry used to render this height node.
  */
-class MapHeightNode extends MapNode
+class MapHeightNode extends MapNode$1
 {
 	constructor(parentNode, mapView, location, level, x, y, material, geometry)
 	{
@@ -799,10 +841,8 @@ class MapHeightNode extends MapNode
 		super(geometry === undefined ? MapHeightNode.GEOMETRY: geometry, material, parentNode, mapView, location, level, x, y);
 	
 		this.matrixAutoUpdate = false;
-		this.isMesh = true;
-		
-		this.visible = false;
-	
+		this.isMesh = false;
+			
 		/**
 		 * Flag indicating if the tile texture was loaded.
 		 * 
@@ -818,8 +858,10 @@ class MapHeightNode extends MapNode
 		 * @type {boolean}
 		 */
 		this.heightLoaded = false;
-	
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -858,19 +900,25 @@ class MapHeightNode extends MapNode
 	 */
 	 loadTexture()
 	 {
+		 this.isReady = true;
 	 	var self = this;
 	
 	 	this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
 	 	{
-	 		var texture = new Texture(image);
-	 		texture.generateMipmaps = false;
-	 		texture.format = RGBFormat;
-	 		texture.magFilter = LinearFilter;
-	 		texture.minFilter = LinearFilter;
-	 		texture.needsUpdate = true;
-			
-	 		self.material.emissiveMap = texture;
+	 		if (image) 
+	 		{
+	 			var texture = new Texture(image);
+	 			texture.generateMipmaps = false;
+	 			texture.format = RGBFormat;
+	 			texture.magFilter = LinearFilter;
+	 			texture.minFilter = LinearFilter;
+	 			texture.needsUpdate = true;
+				
+	 			self.material.emissiveMap = texture;
+	 		}
 	
+	 	}).finally(function()
+	 	{
 	 		self.textureLoaded = true;
 	 		self.nodeReady();
 	 	});
@@ -887,7 +935,8 @@ class MapHeightNode extends MapNode
 	
 	 	this.visible = true;
 	
-	 	MapNode.prototype.nodeReady.call(this);
+	 	MapNode$1.prototype.nodeReady.call(this);
+	 	this.mapView.onNodeReady();
 	 };
 	
 	 createChildNodes()
@@ -896,34 +945,35 @@ class MapHeightNode extends MapNode
 	
 	 	var x = this.x * 2;
 	 	var y = this.y * 2;
-	
-	 	var node = new this.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.TOP_LEFT, level, x, y);
 	 	node.scale.set(0.5, 1, 0.5);
 	 	node.position.set(-0.25, 0, -0.25);
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
 	
-	 	var node = new this.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.TOP_RIGHT, level, x + 1, y);
 	 	node.scale.set(0.5, 1, 0.5);
 	 	node.position.set(0.25, 0, -0.25);
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
 	
-	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.BOTTOM_LEFT, level, x, y + 1);
 	 	node.scale.set(0.5, 1, 0.5);
 	 	node.position.set(-0.25, 0, 0.25);
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
 	
-	 	var node = new this.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.BOTTOM_RIGHT, level, x + 1, y + 1);
 	 	node.scale.set(0.5, 1, 0.5);
 	 	node.position.set(0.25, 0, 0.25);
 	 	this.add(node);
 	 	node.updateMatrix();
 	 	node.updateMatrixWorld(true);
+
 	 };
 	
 	 /** 
@@ -943,35 +993,39 @@ class MapHeightNode extends MapNode
 	
 	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
 	 	{
-	 		var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-	 		var vertices = geometry.attributes.position.array;
-		
-	 		var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
-	
-	 		var context = canvas.getContext("2d");
-	 		context.imageSmoothingEnabled = false;
-	 		context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
-			
-	 		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-	 		var data = imageData.data;
-	 		for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
+			 if (image) 
 	 		{
-	 			var r = data[i];
-	 			var g = data[i + 1];
-	 			var b = data[i + 2];
-	
-	 			// The value will be composed of the bits RGB
-	 			var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-	
-	 			vertices[j + 1] = value;
-	 		}
-	
-	 		self.geometry = geometry;
-	 		self.heightLoaded = true;
-	 		self.nodeReady();
-	 	}).catch(function()
+	 			var geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	 			var vertices = geometry.attributes.position.array;
+		   
+	 			var canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+	   
+	 			var context = canvas.getContext("2d");
+	 			context.imageSmoothingEnabled = false;
+	 			context.drawImage(image, 0, 0, image.width, image.width, 0, 0, canvas.width, canvas.height);
+			   
+	 			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+	 			var data = imageData.data;
+	 			for (var i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3)
+	 			{
+	 				var r = data[i];
+	 				var g = data[i + 1];
+	 				var b = data[i + 2];
+	   
+	 				// The value will be composed of the bits RGB
+	 				var value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+	   
+	 				vertices[j + 1] = value;
+	 			}
+	   
+	 			self.geometry = geometry;
+			 }
+	 	}).catch(function() 
 	 	{
-	 		console.error("GeoThree: Failed to load height node data.", this);
+			 console.log('error fetching heugh');
+	 		// self.geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	 	}).finally(function()
+	 	{
 	 		self.heightLoaded = true;
 	 		self.nodeReady();
 	 	});
@@ -998,7 +1052,7 @@ class MapHeightNode extends MapNode
  * 
  * @class MapPlaneNode
  */
-class MapPlaneNode extends MapNode
+class MapPlaneNode extends MapNode$1
 {
 	constructor(parentNode, mapView, location, level, x, y)
 	{
@@ -1006,9 +1060,11 @@ class MapPlaneNode extends MapNode
 	
 		this.matrixAutoUpdate = false;
 		this.isMesh = true;
-		this.visible = false;
 		
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -1026,29 +1082,30 @@ class MapPlaneNode extends MapNode
 	
 		var x = this.x * 2;
 		var y = this.y * 2;
+		
 	
-		var node = new MapPlaneNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+		var node = new MapPlaneNode(this, this.mapView, MapNode$1.TOP_LEFT, level, x, y);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(-0.25, 0, -0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapPlaneNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+		var node = new MapPlaneNode(this, this.mapView, MapNode$1.TOP_RIGHT, level, x + 1, y);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(0.25, 0, -0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+		var node = new MapPlaneNode(this, this.mapView, MapNode$1.BOTTOM_LEFT, level, x, y + 1);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(-0.25, 0, 0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+		var node = new MapPlaneNode(this, this.mapView, MapNode$1.BOTTOM_RIGHT, level, x + 1, y + 1);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(0.25, 0, 0.25);
 		this.add(node);
@@ -1182,7 +1239,7 @@ class UnitsUtils
  * 
  * @class MapSphereNode
  */
-class MapSphereNode extends MapNode
+class MapSphereNode extends MapNode$1
 {
 	constructor(parentNode, mapView, location, level, x, y)
 	{
@@ -1192,9 +1249,11 @@ class MapSphereNode extends MapNode
 	
 		this.matrixAutoUpdate = false;
 		this.isMesh = true;
-		this.visible = false;
 	
-		this.loadTexture();
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
 	}
 	
 	/**
@@ -1275,22 +1334,22 @@ class MapSphereNode extends MapNode
 		var x = this.x * 2;
 		var y = this.y * 2;
 	
-		var node = new MapSphereNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+		var node = new MapSphereNode(this, this.mapView, MapNode$1.TOP_LEFT, level, x, y);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapSphereNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+		var node = new MapSphereNode(this, this.mapView, MapNode$1.TOP_RIGHT, level, x + 1, y);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapSphereNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+		var node = new MapSphereNode(this, this.mapView, MapNode$1.BOTTOM_LEFT, level, x, y + 1);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 	
-		var node = new MapSphereNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+		var node = new MapSphereNode(this, this.mapView, MapNode$1.BOTTOM_RIGHT, level, x + 1, y + 1);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
@@ -1405,42 +1464,37 @@ class MapHeightNodeShader extends MapHeightNode
 	
 	loadTexture()
 	{
+		this.isReady = true;
 		var self = this;
 	
 		this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
 		{
-			var texture = new Texture(image);
-			texture.generateMipmaps = false;
-			texture.format = RGBFormat;
-			texture.magFilter = LinearFilter;
-			texture.minFilter = LinearFilter;
-			texture.needsUpdate = true;
-	
-			self.material.map = texture;
-	
-			self.textureLoaded = true;
-			self.nodeReady();
-		}).catch(function(err)
+			if (image)
+			{
+				var texture = new Texture(image);
+				texture.generateMipmaps = false;
+				texture.format = RGBFormat;
+				texture.magFilter = LinearFilter;
+				texture.minFilter = LinearFilter;
+				texture.needsUpdate = true;
+		
+				self.material.map = texture;
+			}
+			
+		}).finally(function()
 		{
-			console.error("GeoThree: Failed to load color node data.", err);
 			self.textureLoaded = true;
 			self.nodeReady();
 		});
 	
 		this.loadHeightGeometry();
 	}
-	
-	loadHeightGeometry()
+
+	async onHeightImage(image) 
 	{
-		if (this.mapView.heightProvider === null)
+		if (image) 
 		{
-			throw new Error("GeoThree: MapView.heightProvider provider is null.");
-		}
-		
-		var self = this;
-	
-		this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(function(image)
-		{
+				
 			var texture = new Texture(image);
 			texture.generateMipmaps = false;
 			texture.format = RGBFormat;
@@ -1449,16 +1503,25 @@ class MapHeightNodeShader extends MapHeightNode
 			texture.needsUpdate = true;
 	
 			self.material.userData.heightMap.value = texture;
-			
-			self.heightLoaded = true;
-			self.nodeReady();
-		}).catch(function(err)
-		{
-			console.error("GeoThree: Failed to load height node data.", err);
-			self.heightLoaded = true;
-			self.nodeReady();
-		});
+		}
 	}
+	
+	loadHeightGeometry()
+	 {
+	 	if (this.mapView.heightProvider === null)
+	 	{
+	 		throw new Error("GeoThree: MapView.heightProvider provider is null.");
+	 	}
+		
+	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) =>
+	 	{	
+			return this.onHeightImage(image);
+	 	}).finally(() => 
+		 {
+			this.heightLoaded = true;
+			this.nodeReady();
+		  });
+	 };
 	
 	/**
 	 * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
@@ -1543,7 +1606,7 @@ class LODRaycast extends LODControl
 	updateLOD(view, camera, renderer, scene)
 	{
 		var intersects = [];
-	
+		
 		for (var t = 0; t < this.subdivisionRays; t++)
 		{
 			// Raycast from random point
@@ -1553,20 +1616,27 @@ class LODRaycast extends LODControl
 			this.raycaster.setFromCamera(this.mouse, camera);
 			this.raycaster.intersectObjects(view.children, true, intersects);
 		}
-	
+
+		const thresholdUp = this.thresholdUp;
+		const thresholdDown = this.thresholdDown;
+		
 		if (view.mode === MapView.SPHERICAL)
 		{
 			for (var i = 0; i < intersects.length; i++)
 			{
 				var node = intersects[i].object;
+				if (!(node instanceof MapNode)) 
+				{
+					continue;
+				}
 				const distance = Math.pow(intersects[i].distance * 2, node.level);
 	
-				if (distance < this.thresholdUp)
+				if (distance < thresholdUp)
 				{
 					node.subdivide();
 					return;
 				}
-				else if (distance > this.thresholdDown)
+				else if (distance > thresholdDown)
 				{
 					if (node.parentNode !== null)
 					{
@@ -1585,12 +1655,12 @@ class LODRaycast extends LODControl
 				var scaleX = this.vector.set(matrix[0], matrix[1], matrix[2]).length();
 				var value = scaleX / intersects[i].distance;
 	
-				if (value > this.thresholdUp)
+				if (value > thresholdUp)
 				{
 					node.subdivide();
 					return;
 				}
-				else if (value < this.thresholdDown)
+				else if (value < thresholdDown)
 				{
 					if (node.parentNode !== null)
 					{
@@ -1618,7 +1688,43 @@ class LODRaycast extends LODControl
  */
 class MapView extends Mesh
 {
-	constructor(mode, provider, heightProvider)
+	/**
+	 * Planar map projection.
+	 *
+	 * @static
+	 * @attribute PLANAR
+	 * @type {number}
+	 */
+	static PLANAR = 200;
+
+	/**
+	 * Spherical map projection.
+	 *
+	 * @static
+	 * @attribute SPHERICAL
+	 * @type {number}
+	 */
+	static SPHERICAL = 201;
+
+	/**
+	 * Planar map projection with height deformation.
+	 *
+	 * @static
+	 * @attribute HEIGHT
+	 * @type {number}
+	 */
+	static HEIGHT = 202;
+
+	/**
+	 * Planar map projection with height deformation using the GPU for height generation.
+	 *
+	 * @static
+	 * @attribute HEIGHT_DISPLACEMENT
+	 * @type {number}
+	 */
+	static HEIGHT_SHADER = 203;
+
+	constructor(mode, provider, heightProvider, onNodeReady)
 	{
 		mode = mode !== undefined ? mode : MapView.PLANAR;
 
@@ -1669,6 +1775,12 @@ class MapView extends Mesh
 		 */
 		this.heightProvider = heightProvider !== undefined ? heightProvider : null;
 
+
+		if (onNodeReady) 
+		{
+			this.onNodeReady = onNodeReady;
+		}
+
 		/**
 		 * Root map node.
 		 *
@@ -1680,21 +1792,21 @@ class MapView extends Mesh
 		if (this.mode === MapView.PLANAR)
 		{
 			this.scale.set(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
-			this.root = new MapPlaneNode(null, this, MapNode.ROOT, 0, 0, 0);
+			this.root = new MapPlaneNode(null, this, MapNode$1.ROOT, 0, 0, 0);
 		}
 		else if (this.mode === MapView.HEIGHT)
 		{
 			this.scale.set(UnitsUtils.EARTH_PERIMETER, MapHeightNode.USE_DISPLACEMENT ? MapHeightNode.MAX_HEIGHT : 1, UnitsUtils.EARTH_PERIMETER);
-			this.root = new MapHeightNode(null, this, MapNode.ROOT, 0, 0, 0);
+			this.root = new MapHeightNode(null, this, MapNode$1.ROOT, 0, 0, 0);
 		}
 		else if (this.mode === MapView.HEIGHT_SHADER)
 		{
 			this.scale.set(UnitsUtils.EARTH_PERIMETER, MapHeightNode.USE_DISPLACEMENT ? MapHeightNode.MAX_HEIGHT : 1, UnitsUtils.EARTH_PERIMETER);
-			this.root = new MapHeightNodeShader(null, this, MapNode.ROOT, 0, 0, 0);
+			this.root = new MapHeightNodeShader(null, this, MapNode$1.ROOT, 0, 0, 0);
 		}
 		else if (this.mode === MapView.SPHERICAL)
 		{
-			this.root = new MapSphereNode(null, this, MapNode.ROOT, 0, 0, 0);
+			this.root = new MapSphereNode(null, this, MapNode$1.ROOT, 0, 0, 0);
 		}
 		if (this.root)
 		{
@@ -1766,7 +1878,15 @@ class MapView extends Mesh
 	 */
 	onBeforeRender(renderer, scene, camera, geometry, material, group)
 	{
-		this.lod.updateLOD(this, camera, renderer, scene);
+		if (!this.onNodeReady) 
+		{
+			this.lod.updateLOD(this, camera, renderer, scene);
+		}
+	}
+
+	onNodeReady()
+	{
+		
 	}
 
 	/**
@@ -1797,42 +1917,6 @@ class MapView extends Mesh
 		return false;
 	}
 }
-
-/**
- * Planar map projection.
- *
- * @static
- * @attribute PLANAR
- * @type {number}
- */
-MapView.PLANAR = 200;
-
-/**
- * Spherical map projection.
- *
- * @static
- * @attribute SPHERICAL
- * @type {number}
- */
-MapView.SPHERICAL = 201;
-
-/**
- * Planar map projection with height deformation.
- *
- * @static
- * @attribute HEIGHT
- * @type {number}
- */
-MapView.HEIGHT = 202;
-
-/**
- * Planar map projection with height deformation using the GPU for height generation.
- *
- * @static
- * @attribute HEIGHT_DISPLACEMENT
- * @type {number}
- */
-MapView.HEIGHT_SHADER = 203;
 
 var pov$1 = new Vector3();
 var position$1 = new Vector3();
@@ -1876,6 +1960,10 @@ class LODRadial extends LODControl
 	
 		view.children[0].traverse(function(node)
 		{
+			if (!(node instanceof Mesh)) 
+			{
+				return;
+			}
 			node.getWorldPosition(position$1);
 	
 			var distance = pov$1.distanceTo(position$1);
@@ -1927,32 +2015,66 @@ class LODFrustum extends LODRadial
 		this.testCenter = true;
 	}
 
+	handleNode(node, minZoom, maxZoom, inFrustum = false) 
+	{
+		if (!(node instanceof MapNode$1)) 
+		{
+			return;
+		}
+		node.getWorldPosition(position);
+		var distance = pov.distanceTo(position);
+		distance /= Math.pow(2, 20 - node.level);
+
+		 inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
+		//  console.log('handleNode', node.x, node.y, node.level, distance, inFrustum);
+		 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
+		{
+			const subdivded = node.subdivide();
+			if (subdivded) 
+			{
+				subdivded.forEach((n) => {return this.handleNode(n, minZoom, maxZoom);});
+			}
+		}
+		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
+		{
+			const simplified = node.parentNode.simplify();
+			if (simplified && simplified.level > minZoom) 
+			{
+				this.handleNode(simplified, minZoom, maxZoom);
+			}
+		}
+		else if (inFrustum && minZoom <= node.level )
+		{
+			if (!node.isReady) 
+			{
+				node.loadTexture();
+			}
+		}
+	}
+
 	updateLOD(view, camera, renderer, scene)
 	{
+		// const start = Date.now();
 		projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projection);
 		camera.getWorldPosition(pov);
 		
-		var self = this;
-	
-		view.children[0].traverse(function(node)
-		{
-			node.getWorldPosition(position);
-	
-			var distance = pov.distanceTo(position);
-			distance /= Math.pow(2, view.provider.maxZoom - node.level);
-	
-			var inFrustum = self.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node);
-	
-			if (distance < self.subdivideDistance && inFrustum)
+		const minZoom = view.provider.minZoom;
+		const maxZoom = view.provider.maxZoom;
+		const toHandle = [];
+		view.children[0].traverseVisible((node) => {return toHandle.push(node);});
+		toHandle.forEach((node) =>
+		{		
+			if (node.children.length <=1) 
 			{
-				node.subdivide();
-			}
-			else if (distance > self.simplifyDistance && node.parentNode)
-			{
-				node.parentNode.simplify();
+				this.handleNode(node, minZoom, maxZoom);
 			}
 		});
+		// view.children[0].traverse((node) =>
+		// {	
+		// 	this.handleNode(node, minZoom, maxZoom);
+		// });
+		// console.log('updateLOD', Date.now() - start, 'ms');
 	}
 }
 
@@ -1976,6 +2098,38 @@ class XHRUtils
 	{
 		var xhr = new XMLHttpRequest();
 		xhr.overrideMimeType("text/plain");
+		xhr.open("GET", url, true);
+
+		if (onLoad !== undefined)
+		{
+			xhr.onload = function()
+			{
+				onLoad(xhr.response);
+			};
+		}
+
+		if (onError !== undefined)
+		{
+			xhr.onerror = onError;
+		}
+
+		xhr.send(null);
+
+		return xhr;
+	}
+
+	/**
+	 * Get file data from URL , using a XHR call.
+	 * 
+	 * @method readFile
+	 * @param {string} url Target for the request.
+	 * @param {Function} onLoad On load callback.
+	 * @param {Function} onError On progress callback.
+	 */
+	static getRaw(url, onLoad, onError)
+	{
+		var xhr = new XMLHttpRequest();
+		xhr.responseType = "arraybuffer";
 		xhr.open("GET", url, true);
 
 		if (onLoad !== undefined)
@@ -2949,4 +3103,781 @@ class HeightDebugProvider extends MapProvider
 	}
 }
 
-export { BingMapsProvider, DebugProvider, GoogleMapsProvider, HeightDebugProvider, HereMapsProvider, LODControl, LODFrustum, LODRadial, LODRaycast, MapBoxProvider, MapHeightNode, MapHeightNodeShader, MapNode, MapNodeGeometry, MapPlaneNode, MapProvider, MapSphereNode, MapSphereNodeGeometry, MapTilerProvider, MapView, OpenMapTilesProvider, OpenStreetMapsProvider, UnitsUtils };
+class Martini 
+{
+	constructor(gridSize = 257) 
+	{
+		this.gridSize = gridSize;
+		const tileSize = gridSize - 1;
+		if (tileSize & tileSize - 1) 
+		{
+			throw new Error(
+				`Expected grid size to be 2^n+1, got ${gridSize}.`);
+		}
+
+		this.numTriangles = tileSize * tileSize * 2 - 2;
+		this.numParentTriangles = this.numTriangles - tileSize * tileSize;
+
+		this.indices = new Uint32Array(this.gridSize * this.gridSize);
+
+		// coordinates for all possible triangles in an RTIN tile
+		this.coords = new Uint16Array(this.numTriangles * 4);
+
+		// get triangle coordinates from its index in an implicit binary tree
+		for (let i = 0; i < this.numTriangles; i++) 
+		{
+			let id = i + 2;
+			let ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0;
+			if (id & 1) 
+			{
+				bx = by = cx = tileSize; // bottom-left triangle
+			}
+			else 
+			{
+				ax = ay = cy = tileSize; // top-right triangle
+			}
+			while ((id >>= 1) > 1) 
+			{
+				const mx = ax + bx >> 1;
+				const my = ay + by >> 1;
+
+				if (id & 1) 
+				{ // left half
+					bx = ax; by = ay;
+					ax = cx; ay = cy;
+				}
+				else 
+				{ // right half
+					ax = bx; ay = by;
+					bx = cx; by = cy;
+				}
+				cx = mx; cy = my;
+			}
+			const k = i * 4;
+			this.coords[k + 0] = ax;
+			this.coords[k + 1] = ay;
+			this.coords[k + 2] = bx;
+			this.coords[k + 3] = by;
+		}
+	}
+
+	createTile(terrain) 
+	{
+		return new Tile(terrain, this);
+	}
+}
+
+class Tile 
+{
+	constructor(terrain, martini) 
+	{
+		const size = martini.gridSize;
+		if (terrain.length !== size * size) 
+		{
+			throw new Error(
+				`Expected terrain data of length ${size * size} (${size} x ${size}), got ${terrain.length}.`);
+		}
+
+		this.terrain = terrain;
+		this.martini = martini;
+		this.errors = new Float32Array(terrain.length);
+		this.update();
+	}
+
+	update() 
+	{
+		const {numTriangles, numParentTriangles, coords, gridSize: size} = this.martini;
+		const {terrain, errors} = this;
+
+		// iterate over all possible triangles, starting from the smallest level
+		for (let i = numTriangles - 1; i >= 0; i--) 
+		{
+			const k = i * 4;
+			const ax = coords[k + 0];
+			const ay = coords[k + 1];
+			const bx = coords[k + 2];
+			const by = coords[k + 3];
+			const mx = ax + bx >> 1;
+			const my = ay + by >> 1;
+			const cx = mx + my - ay;
+			const cy = my + ax - mx;
+
+			// calculate error in the middle of the long edge of the triangle
+			const interpolatedHeight = (terrain[ay * size + ax] + terrain[by * size + bx]) / 2;
+			const middleIndex = my * size + mx;
+			const middleError = Math.abs(interpolatedHeight - terrain[middleIndex]);
+
+			errors[middleIndex] = Math.max(errors[middleIndex], middleError);
+
+			if (i < numParentTriangles) 
+			{ // bigger triangles; accumulate error with children
+				const leftChildIndex = (ay + cy >> 1) * size + (ax + cx >> 1);
+				const rightChildIndex = (by + cy >> 1) * size + (bx + cx >> 1);
+				errors[middleIndex] = Math.max(errors[middleIndex], errors[leftChildIndex], errors[rightChildIndex]);
+			}
+		}
+	}
+
+	getMesh(maxError = 0, withSkirts = false) 
+	{
+		const {gridSize: size, indices} = this.martini;
+		const {errors} = this;
+		let numVertices = 0;
+		let numTriangles = 0;
+		const max = size - 1;
+		let aIndex, bIndex, cIndex = 0;
+		// Skirt indices
+		const leftSkirtIndices = [];
+		const rightSkirtIndices = [];
+		const bottomSkirtIndices = [];
+		const topSkirtIndices = [];
+		// use an index grid to keep track of vertices that were already used to avoid duplication
+		indices.fill(0);
+
+		// retrieve mesh in two stages that both traverse the error map:
+		// - countElements: find used vertices (and assign each an index), and count triangles (for minimum allocation)
+		// - processTriangle: fill the allocated vertices & triangles typed arrays
+		function countElements(ax, ay, bx, by, cx, cy) 
+		{
+			const mx = ax + bx >> 1;
+			const my = ay + by >> 1;
+
+			if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) 
+			{
+				countElements(cx, cy, ax, ay, mx, my);
+				countElements(bx, by, cx, cy, mx, my);
+			}
+			else 
+			{
+				aIndex = ay * size + ax;
+				bIndex = by * size + bx;
+				cIndex = cy * size + cx;
+
+				if (indices[aIndex] === 0) 
+				{
+					if (withSkirts) 
+					{
+						if (ax === 0) 
+						{
+							leftSkirtIndices.push(numVertices);
+						}
+						else if (ax === max)
+						{
+							rightSkirtIndices.push(numVertices);
+						} if (ay === 0) 
+						{
+							bottomSkirtIndices.push(numVertices);
+						}
+						else if (ay === max) 
+						{
+							topSkirtIndices.push(numVertices);
+						}
+					}
+                    
+					indices[aIndex] = ++numVertices;
+				}
+				if (indices[bIndex] === 0) 
+				{
+					if (withSkirts) 
+					{
+						if (bx === 0) 
+						{
+							leftSkirtIndices.push(numVertices);
+						}
+						else if (bx === max) 
+						{
+							rightSkirtIndices.push(numVertices);
+						} if (by === 0) 
+						{
+							bottomSkirtIndices.push(numVertices);
+						}
+						else if (by === max) 
+						{
+							topSkirtIndices.push(numVertices);
+						}
+					}
+					indices[bIndex] = ++numVertices;
+				}
+				if (indices[cIndex] === 0) 
+				{
+					if (withSkirts) 
+					{
+						if (cx === 0) 
+						{
+							leftSkirtIndices.push(numVertices);
+						}
+						else if (cx === max) 
+						{
+							rightSkirtIndices.push(numVertices);
+						} if (cy === 0) 
+						{
+							bottomSkirtIndices.push(numVertices);
+						}
+						else if (cy === max) 
+						{
+							topSkirtIndices.push(numVertices);
+						}
+					}
+					indices[cIndex] = ++numVertices;
+				}
+				numTriangles++;
+			}
+		}
+		countElements(0, 0, max, max, max, 0);
+		countElements(max, max, 0, 0, 0, max);
+
+		let numTotalVertices =numVertices * 2;
+		let numTotalTriangles = numTriangles * 3 ;
+		if (withSkirts) 
+		{
+			numTotalVertices +=(leftSkirtIndices.length +
+                    rightSkirtIndices.length +
+                    bottomSkirtIndices.length +
+                    topSkirtIndices.length) * 2;
+			numTotalTriangles += (
+				(leftSkirtIndices.length - 1) * 2 +
+                    (rightSkirtIndices.length - 1) * 2 +
+                    (bottomSkirtIndices.length - 1) * 2 +
+                    (topSkirtIndices.length - 1) * 2) * 3;
+		}
+
+		const vertices = new Uint16Array(numTotalVertices);
+		const triangles = new Uint32Array(numTotalTriangles);
+
+		let triIndex = 0;
+		function processTriangle(ax, ay, bx, by, cx, cy) 
+		{
+			const mx = ax + bx >> 1;
+			const my = ay + by >> 1;
+
+			if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) 
+			{
+				// triangle doesn't approximate the surface well enough; drill down further
+				processTriangle(cx, cy, ax, ay, mx, my);
+				processTriangle(bx, by, cx, cy, mx, my);
+
+			}
+			else 
+			{
+				// add a triangle
+				const a = indices[ay * size + ax] - 1;
+				const b = indices[by * size + bx] - 1;
+				const c = indices[cy * size + cx] - 1;
+
+				vertices[2 * a] = ax;
+				vertices[2 * a + 1] = ay;
+
+				vertices[2 * b] = bx;
+				vertices[2 * b + 1] = by;
+
+				vertices[2 * c] = cx;
+				vertices[2 * c + 1] = cy;
+				triangles[triIndex++] = a;
+				triangles[triIndex++] = b;
+				triangles[triIndex++] = c;
+			}
+		}
+		processTriangle(0, 0, max, max, max, 0);
+		processTriangle(max, max, 0, 0, 0, max);
+		if (withSkirts) 
+		{
+			// Sort skirt indices to create adjacent triangles
+			leftSkirtIndices.sort((a, b) => {return vertices[2 * a + 1] - vertices[2 * b + 1];});
+
+			// Reverse (b - a) to match triangle winding
+			rightSkirtIndices.sort((a, b) => {return vertices[2 * b + 1] - vertices[2 * a + 1];});
+
+			bottomSkirtIndices.sort((a, b) => {return vertices[2 * b] - vertices[2 * a];});
+
+			// Reverse (b - a) to match triangle winding
+			topSkirtIndices.sort((a, b) => {return vertices[2 * a] - vertices[2 * b];});
+
+			let skirtIndex = numVertices * 2;
+			let currIndex, nextIndex, currentSkirt, nextSkirt, skirtLength = 0;
+
+			// Add skirt vertices from index of last mesh vertex
+			function constructSkirt(skirt) 
+			{
+				skirtLength = skirt.length;
+				// Loop through indices in groups of two to generate triangles
+				for (let i = 0; i < skirtLength - 1; i++) 
+				{
+					currIndex = skirt[i];
+					nextIndex = skirt[i + 1];
+					currentSkirt = skirtIndex / 2;
+					nextSkirt = (skirtIndex + 2) / 2;
+					vertices[skirtIndex++] = vertices[2 * currIndex];
+					vertices[skirtIndex++] = vertices[2 * currIndex + 1];
+
+					triangles[triIndex++] = currIndex;
+					triangles[triIndex++] = currentSkirt;
+					triangles[triIndex++] = nextIndex;
+
+					triangles[triIndex++] = currentSkirt;
+					triangles[triIndex++] = nextSkirt;
+					triangles[triIndex++] = nextIndex;
+				}
+				// Add vertices of last skirt not added above (i < skirtLength - 1)
+				vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1]];
+				vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1] + 1];
+			}
+
+			constructSkirt(leftSkirtIndices);
+			constructSkirt(rightSkirtIndices);
+			constructSkirt(bottomSkirtIndices);
+			constructSkirt(topSkirtIndices);
+		}
+
+ 
+		// Return vertices and triangles and index into vertices array where skirts start
+		return {vertices: vertices, triangles: triangles, numVerticesWithoutSkirts: numVertices};
+	}
+}
+
+function getTerrain(imageData, tileSize, elevationDecoder) 
+{
+	const {rScaler, bScaler, gScaler, offset} = elevationDecoder;
+  
+	const gridSize = tileSize + 1;
+	// From Martini demo
+	// https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+	const terrain = new Float32Array(gridSize * gridSize);
+	// decode terrain values
+	for (let i = 0, y = 0; y < tileSize; y++) 
+	{
+	  for (let x = 0; x < tileSize; x++, i++) 
+		{
+			const k = i * 4;
+			const r = imageData[k + 0];
+			const g = imageData[k + 1];
+			const b = imageData[k + 2];
+			terrain[i + y] = r * rScaler + g * gScaler + b * bScaler + offset;
+	  }
+	}
+	// backfill bottom border
+	for (let i = gridSize * (gridSize - 1), x = 0; x < gridSize - 1; x++, i++) 
+	{
+	  terrain[i] = terrain[i - gridSize];
+	}
+	// backfill right border
+	for (let i = gridSize - 1, y = 0; y < gridSize; y++, i += gridSize) 
+	{
+	  terrain[i] = terrain[i - 1];
+	}
+	return terrain;
+}
+
+function getMeshAttributes(vertices, terrain, tileSize, bounds, exageration) 
+{
+	const gridSize = tileSize + 1;
+	const numOfVerticies = vertices.length / 2;
+	// vec3. x, y in pixels, z in meters
+	const positions = new Float32Array(numOfVerticies * 3);
+	// vec2. 1 to 1 relationship with position. represents the uv on the texture image. 0,0 to 1,1.
+	const texCoords = new Float32Array(numOfVerticies * 2);
+  
+	const [minX, minY, maxX, maxY] = bounds || [0, 0, tileSize, tileSize];
+	const xScale = (maxX - minX) / tileSize;
+	const yScale = (maxY - minY) / tileSize;
+  
+	for (let i = 0; i < numOfVerticies; i++) 
+	{
+	  const x = vertices[i * 2];
+	  const y = vertices[i * 2 + 1];
+	  const pixelIdx = y * gridSize + x;
+  
+	  positions[3 * i + 0] = x * xScale + minX;
+	  positions[3 * i + 1] = -terrain[pixelIdx] * exageration;
+	  positions[3 * i + 2] = -y * yScale + maxY;
+
+  
+	  texCoords[2 * i + 0] = x / tileSize;
+	  texCoords[2 * i + 1] = y / tileSize;
+	}
+  
+	return {
+	  position: {value: positions, size: 3},
+	  uv: {value: texCoords, size: 2}
+	  // NORMAL: {}, - optional, but creates the high poly look with lighting
+	};
+}
+
+/** 
+ * Represents a height map tile node that can be subdivided into other height nodes.
+ * 
+ * Its important to update match the height of the tile with the neighbors nodes edge heights to ensure proper continuity of the surface.
+ * 
+ * The height node is designed to use MapBox elevation tile encoded data as described in https://www.mapbox.com/help/access-elevation-data/
+ *
+ * @class MapHeightNode
+ * @param parentNode {MapHeightNode} The parent node of this node.
+ * @param mapView {MapView} Map view object where this node is placed.
+ * @param location {number} Position in the node tree relative to the parent.
+ * @param level {number} Zoom level in the tile tree of the node.
+ * @param x {number} X position of the node in the tile tree.
+ * @param y {number} Y position of the node in the tile tree.
+ * @param material {Material} Material used to render this height node.
+ * @param geometry {Geometry} Geometry used to render this height node.
+ */
+class MapMartiniHeightNode extends MapNode$1
+{
+	static GEOMETRY_SIZE = 16;
+
+	static GEOMETRY = new MapNodeGeometry(1, 1, MapMartiniHeightNode.GEOMETRY_SIZE, MapMartiniHeightNode.GEOMETRY_SIZE);
+
+	static prepareMaterial(material, level, exageration) 
+	{
+		material.userData = {
+			heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
+			drawNormals: {value: 1},
+			zoomlevel: {value: level},
+			exageration: {value: exageration}
+		};
+
+		material.onBeforeCompile = (shader) => 
+		{
+			// Pass uniforms from userData to the
+			for (let i in material.userData) 
+			{
+				shader.uniforms[i] = material.userData[i];
+			}
+			// Vertex variables
+			shader.vertexShader =
+				`
+				uniform bool drawNormals;
+				uniform float exageration;
+				uniform float zoomlevel;
+				uniform sampler2D heightMap;
+				float getElevation(vec2 coord, float bias) {
+					// Convert encoded elevation value to meters
+					coord = clamp(coord, 0.0, 1.0);
+					vec4 e = texture2D(heightMap,vec2(coord.x, 1.0 -coord.y));
+					return (((e.r * 255.0 * 65536.0 + e.g * 255.0 * 256.0 + e.b * 255.0) * 0.1) - 10000.0) * exageration;
+					// return ((e.r * 255.0 * 256.0 + e.g  * 255.0+ e.b * 255.0 / 256.0) - 32768.0) * exageration;
+				}
+				` + shader.vertexShader;
+			shader.fragmentShader =
+				`
+				uniform bool drawNormals;
+				` + shader.fragmentShader;
+
+			// Vertex depth logic
+			shader.fragmentShader = shader.fragmentShader.replace(
+				"#include <dithering_fragment>",
+				`
+					if(drawNormals) {
+						gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+					}
+					`
+			);
+			shader.vertexShader = shader.vertexShader.replace(
+				"#include <fog_vertex>",
+				`
+					#include <fog_vertex>
+
+					// queried pixels:
+					// +-----------+
+					// |   |   |   |
+					// | a | b | c |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | d | e | f |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | g | h | i |
+					// |   |   |   |
+					// +-----------+
+
+					// vec4 theight = texture2D(heightMap, vUv);
+					float e = getElevation(vUv, 0.0);
+					if (drawNormals) {
+						ivec2 size = textureSize(heightMap, 0);
+						float offset = 1.0 / float(size.x);
+						float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
+						float b = getElevation(vUv + vec2(0, -offset), 0.0);
+						float c = getElevation(vUv + vec2(offset, -offset), 0.0);
+						float d = getElevation(vUv + vec2(-offset, 0), 0.0);
+						float f = getElevation(vUv + vec2(offset, 0), 0.0);
+						float g = getElevation(vUv + vec2(-offset, offset), 0.0);
+						float h = getElevation(vUv + vec2(0, offset), 0.0);
+						float i = getElevation(vUv + vec2(offset,offset), 0.0);
+
+
+						float NormalLength = 500.0 / zoomlevel;
+
+						vec3 v0 = vec3(0.0, 0.0, 0.0);
+						vec3 v1 = vec3(0.0, NormalLength, 0.0);
+						vec3 v2 = vec3(NormalLength, 0.0, 0.0);
+						v0.z = (e + d + g + h) / 4.0;
+						v1.z = (e+ b + a + d) / 4.0;
+						v2.z = (e+ h + i + f) / 4.0;
+						vNormal = (normalize(cross(v2 - v0, v1 - v0)));
+					}
+
+					vec3 _transformed = position + e * normal;
+					vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+
+					// gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
+					// gl_Position = projectionMatrix * modelViewMatrix * vec4(position.yzx, 1.0);
+					`
+			);
+		};
+
+		return material;
+	}
+	
+	constructor(parentNode, mapView, location, level, x, y, material, {elevationDecoder, meshMaxError, exageration} = {})
+	{
+		if (material === undefined)
+		{
+			 material = new THREE.MeshPhongMaterial({
+				map: MaterialHeightShader.EMPTY_TEXTURE,
+				color: 0xffffff
+				// wireframe: true,
+			});
+			// material = new MeshPhongMaterial(
+			// 	{
+			// 		color: 0x000000,
+			// 		specular: 0x000000,
+			// 		shininess: 0,
+			// 		wireframe: false,
+			// 		emissive: 0xFFFFFF
+			// 	});
+		}
+	
+		super(MapMartiniHeightNode.GEOMETRY, material, parentNode, mapView, location, level, x, y);
+	
+		this.matrixAutoUpdate = false;
+		this.isMesh = true;
+		
+		/**
+		 * Flag indicating if the tile texture was loaded.
+		 * 
+		 * @attribute textureLoaded
+		 * @type {boolean}
+		 */
+		this.textureLoaded = false;
+	
+		/**
+		 * Flag indicating if the tile height data was loaded.
+		 * 
+		 * @attribute heightLoaded
+		 * @type {boolean}
+		 */
+		this.heightLoaded = false;
+
+
+		if (elevationDecoder) 
+		{
+			this.elevationDecoder = elevationDecoder;
+		}
+		else 
+		{
+			this.elevationDecoder = {
+				rScaler: 6553.6,
+				gScaler: 25.6,
+				bScaler: 0.1,
+				offset: -10000
+			};
+		}
+		if (meshMaxError) 
+		{
+			this.meshMaxError = meshMaxError;
+		}
+		else 
+		{
+			this.meshMaxError = 10;
+		}
+		if (exageration) 
+		{
+			this.exageration = exageration;
+		}
+		else 
+		{
+			this.exageration = 1.4;
+		}
+		MapMartiniHeightNode.prepareMaterial(
+			material,
+			this.level,
+			this.exageration
+		);
+	
+		if (this.isReady) 
+		{
+			this.loadTexture();
+		}
+	}
+	
+	/**
+	 * Original tile size of the images retrieved from the height provider.
+	 *
+	 * @static
+	 * @attribute TILE_SIZE
+	 * @type {number}
+	 */
+	static TILE_SIZE = 256;
+	
+	 /**
+	 * Load tile texture from the server.
+	 * 
+	 * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
+	 *
+	 * @method loadTexture
+	 */
+	 loadTexture()
+	 {
+		this.isReady = true;
+		var self = this;
+	
+	 	this.mapView.fetchTile(this.level, this.x, this.y).then(function(image)
+	 	{
+			if (image) 
+			{
+				var texture = new Texture(image);
+				texture.generateMipmaps = false;
+				texture.format = RGBFormat;
+				texture.magFilter = LinearFilter;
+				texture.minFilter = LinearFilter;
+				texture.needsUpdate = true;
+			
+	 			self.material.emissiveMap = texture;
+		 }
+	
+	 	}).finally(() => 
+		{
+			self.textureLoaded = true;
+			self.nodeReady();
+		 });
+	
+	 	this.loadHeightGeometry();
+	 };
+	
+	 nodeReady()
+	 {
+	 	if (!this.heightLoaded || !this.textureLoaded)
+	 	{
+	 		return;
+	 	}
+	
+	 	this.visible = true;
+	
+	 	MapNode$1.prototype.nodeReady.call(this);
+	 	this.mapView.onNodeReady();
+	 };
+	
+	 createChildNodes()
+	 {
+	 	var level = this.level + 1;
+	
+	 	var x = this.x * 2;
+	 	var y = this.y * 2;
+
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.TOP_LEFT, level, x, y, undefined, this);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(-0.25, 0, -0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
+	
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.TOP_RIGHT, level, x + 1, y, undefined, this);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(0.25, 0, -0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
+	
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.BOTTOM_LEFT, level, x, y + 1, undefined, this);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(-0.25, 0, 0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
+	
+	 	var node = new this.constructor(this, this.mapView, MapNode$1.BOTTOM_RIGHT, level, x + 1, y + 1, undefined, this);
+	 	node.scale.set(0.5, 1, 0.5);
+	 	node.position.set(0.25, 0, 0.25);
+	 	this.add(node);
+	 	node.updateMatrix();
+	 	node.updateMatrixWorld(true);
+
+	 };
+
+
+	async onHeightImage(image) 
+	{
+		if (image) 
+		{
+			const tileSize = image.width;
+			const gridSize = tileSize + 1;
+			var canvas = new OffscreenCanvas(tileSize, tileSize);
+	
+			var context = canvas.getContext("2d");
+			context.imageSmoothingEnabled = false;
+			context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+			
+			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+			var data = imageData.data;
+
+			const terrain = getTerrain(data, tileSize, this.elevationDecoder);
+			const martini = new Martini(gridSize);
+			const tile = martini.createTile(terrain);
+			const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError);
+			const attributes = getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+			this.geometry = new THREE.BufferGeometry();
+			this.geometry.setIndex(new THREE.Uint32BufferAttribute(triangles, 1));
+			this.geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( attributes.position.value, attributes.position.size ) );
+			this.geometry.setAttribute( 'uv', new THREE.Float32BufferAttribute( attributes.uv.value, attributes.uv.size ) );
+			this.geometry.rotateX(Math.PI);
+
+			var texture = new THREE.Texture(image);
+			texture.generateMipmaps = false;
+			texture.format = THREE.RGBFormat;
+			texture.magFilter = THREE.NearestFilter;
+			texture.minFilter = THREE.NearestFilter;
+			texture.needsUpdate = true;
+			this.material.userData.heightMap.value = texture;
+		}
+	 }
+	
+	 /** 
+	 * Load height texture from the server and create a geometry to match it.
+	 *
+	 * @method loadHeightGeometry
+	 * @return {Promise<void>} Returns a promise indicating when the geometry generation has finished. 
+	 */
+	 loadHeightGeometry()
+	 {
+	 	if (this.mapView.heightProvider === null)
+	 	{
+	 		throw new Error("GeoThree: MapView.heightProvider provider is null.");
+	 	}
+		
+	 	this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) =>
+	 	{	
+			return this.onHeightImage(image);
+	 	}).finally(() => 
+		 {
+			this.heightLoaded = true;
+			this.nodeReady();
+		  });
+	 };
+	
+	 /**
+	 * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
+	 * 
+	 * @method raycast
+	 */
+	 raycast(raycaster, intersects)
+	 {
+	 	if (this.isMesh === true)
+	 	{
+	 		return Mesh.prototype.raycast.call(this, raycaster, intersects);
+	 	}
+	
+	 	return false;
+	 };
+}
+
+export { BingMapsProvider, CancelablePromise, DebugProvider, GoogleMapsProvider, HeightDebugProvider, HereMapsProvider, LODControl, LODFrustum, LODRadial, LODRaycast, MapBoxProvider, MapHeightNode, MapHeightNodeShader, MapMartiniHeightNode, MapNode$1 as MapNode, MapNodeGeometry, MapPlaneNode, MapProvider, MapSphereNode, MapSphereNodeGeometry, MapTilerProvider, MapView, OpenMapTilesProvider, OpenStreetMapsProvider, UnitsUtils, XHRUtils };

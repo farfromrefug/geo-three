@@ -1,5 +1,5 @@
-import {MapProvider} from "./MapProvider.js";
-import {CancelablePromise} from "../utils/CancelablePromise.js";
+import {MapProvider} from "./MapProvider";
+import {CancelablePromise} from "../utils/CancelablePromise";
 
 /**
  * Here maps tile server.

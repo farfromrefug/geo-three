@@ -69,5 +69,6 @@ export class MapNodeGeometry extends BufferGeometry
 		this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
 		this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
 		this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+        console.log('MapNodeGeometry', width, height, widthSegments, heightSegments, indices.length, vertices.length, uvs.length);
 	}
 }

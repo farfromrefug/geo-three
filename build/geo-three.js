@@ -3622,9 +3622,9 @@
 						vNormal = (normalize(cross(v2 - v0, v1 - v0)));
 					}
 
-					vec3 _transformed = position + e * normal;
-					vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-
+					// vec3 _transformed = position + e * normal;
+					// vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+// 
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(position.yzx, 1.0);
 					`
@@ -3748,14 +3748,20 @@
 					texture.minFilter = three.LinearFilter;
 					texture.needsUpdate = true;
 				
-		 			self.material.emissiveMap = texture;
-			 }
-		
-		 	}).finally(() => 
-			{
-				self.textureLoaded = true;
-				self.nodeReady();
-			 });
+					self.material.map = texture;
+				}
+			 self.textureLoaded = true;
+			 self.nodeReady();
+			})
+				.catch(function(err) 
+				{
+					console.error(
+						"GeoThree: Failed to load color node data.",
+						err
+					);
+					self.textureLoaded = true;
+					self.nodeReady();
+				});
 		
 		 	this.loadHeightGeometry();
 		 };

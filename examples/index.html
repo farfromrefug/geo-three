@@ -1,43 +1,47 @@
 <!DOCTYPE html>
 <html>
     <style>
-        .body {
-            background-color: white;
+        body {
+            margin: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden;
         }
-        .lineHolder {
+        video {
+            object-fit: cover;
             position: absolute;
-            top: 0px;
-            width: 3px;
+            min-width: 100%;
+            min-height: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
-        .vl {
-            border-left: 3px solid white;
+
+        #elevationSlider {
             position: absolute;
-            top: 100px;
-            bottom: 0px;
-        }
-        .rotatedText {
-            position: absolute;
-            white-space: nowrap;
-            top: 80px;
-            height: 100px;
-            -webkit-transform-origin: 0 0;
-            -moz-transform-origin: 0 0;
-            -ms-transform-origin: 0 0;
-            -o-transform-origin: 0 0;
-            transform-origin: 0 0;
-            -moz-transform: rotate(-40deg); /* FF3.5+ */
-            -o-transform: rotate(-40deg); /* Opera 10.5 */
-            -webkit-transform: rotate(-40deg);
+            top: 40%;
+            right:-10vh;
+            width:30vh;
+            overflow: hidden;
+            transform: rotate(270deg);
         }
     </style>
     <head>
+        <meta
+            id="Viewport"
+            name="viewport"
+            content="initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5, user-scalable=no"
+        />
         <title></title>
     </head>
     <body>
         <!-- GUI -->
+        <video id="video" autoplay playsinline></video>
+
         <canvas
             id="canvas"
             style="
+            background-color:transparent;
                 position: absolute;
                 top: 0px;
                 left: 0px;
@@ -69,7 +73,7 @@
             "
         ></canvas>
 
-        <form style="position: absolute; top: 150px; right: 20px">
+        <form style="position: absolute; bottom: 20px; right: 20px">
             <input type="checkbox" id="debugMap" name="debugMap" />
             <label for="debugMap"> Debug Map</label><br />
             <input
@@ -84,10 +88,22 @@
                 name="readFeatures"
                 checked
             />
-            <label for="readFeatures"> Enable read features</label><br />
+            <label for="drawFeatures"> Enable read features</label><br />
+            <input
+                type="checkbox"
+                id="debugFeaturePoints"
+                name="debugFeaturePoints"
+            />
+            <label for="readFeatures"> Debug Draw Features</label><br />
             <input type="checkbox" id="drawLines" name="drawLines" checked />
             <label for="readFeatures"> Enable drawing features</label><br />
+            <input type="checkbox" id="camera" name="camera" />
+            <label for="camera"> Enable camera</label><br />
+            <input type="checkbox" id="darkmode" name="darkmode" />
+            <label for="darkmode"> Dark Mode</label><br />
         </form>
+
+        <input id="elevationSlider" type="range" min="0" max="9000"/>
 
         <!-- Code -->
         <script
@@ -124,6 +140,11 @@
         ></script>
         <script
             type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/controls/DeviceOrientationControls.js";
+            "
+        ></script>
+        <script
+            type="text/javascript"
             src="https://unpkg.com/three@0.127.0/examples/js/objects/Sky.js"
         ></script>
         <script
@@ -144,8 +165,6 @@
             src="https://unpkg.com/camera-controls@1.28.1/dist/camera-controls.js"
         ></script>
         <script type="text/javascript" src="../build/geo-three.js"></script>
-        <script type="text/javascript" src="./app.js">
-            
-        </script>
+        <script type="text/javascript" src="./app.js"></script>
     </body>
 </html>

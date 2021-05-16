@@ -1,7 +1,7 @@
 import {Mesh, MeshBasicMaterial, Vector3, Matrix4, Quaternion} from "three";
-import {MapNode} from "./MapNode.js";
-import {MapSphereNodeGeometry} from "../geometries/MapSphereNodeGeometry.js";
-import {UnitsUtils} from "../utils/UnitsUtils.js";
+import {MapNode} from "./MapNode";
+import {MapSphereNodeGeometry} from "../geometries/MapSphereNodeGeometry";
+import {UnitsUtils} from "../utils/UnitsUtils";
 
 /** 
  * Represents a map tile node.

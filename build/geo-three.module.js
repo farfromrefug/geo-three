@@ -1,5 +1,5 @@
-import { BufferGeometry, Vector3, Float32BufferAttribute, Mesh, Texture, RGBFormat, LinearFilter, MeshPhongMaterial, MeshBasicMaterial, Matrix4, Quaternion, NearestFilter, Raycaster, Vector2, Frustum, Color } from 'three';
-
+import { BufferGeometry, Vector3, Float32BufferAttribute, Mesh, Texture, RGBFormat, LinearFilter, MeshPhongMaterial, MeshBasicMaterial, Matrix4, Quaternion, NearestFilter, Raycaster, Vector2, Frustum, Color } from 'three/build/three.module';
+console.log('test', Texture)
 /**
  * Map node geometry is a geometry used to represent the spherical map nodes.
  *

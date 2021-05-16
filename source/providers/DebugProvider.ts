@@ -1,6 +1,6 @@
-import {MapProvider} from "./MapProvider.js";
+import {MapProvider} from "./MapProvider";
 import {Color} from "three";
-import {CancelablePromise} from "../utils/CancelablePromise.js";
+import {CancelablePromise} from "../utils/CancelablePromise";
 
 /**
  * Debug provider can be used to debug the levels of the map three based on the zoom level they change between green and red.

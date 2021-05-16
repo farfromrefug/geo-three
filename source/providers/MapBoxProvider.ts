@@ -1,6 +1,6 @@
-import {MapProvider} from "./MapProvider.js";
-import {XHRUtils} from "../utils/XHRUtils.js";
-import {CancelablePromise} from "../utils/CancelablePromise.js";
+import {MapProvider} from "./MapProvider";
+import {XHRUtils} from "../utils/XHRUtils";
+import {CancelablePromise} from "../utils/CancelablePromise";
 
 /**
  * Map box service tile provider. Map tiles can be fetched from style or from a map id.

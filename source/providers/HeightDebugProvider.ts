@@ -1,6 +1,6 @@
-import {MapProvider} from "./MapProvider.js";
+import {MapProvider} from "./MapProvider";
 import {Color} from "three";
-import {CancelablePromise} from "../utils/CancelablePromise.js";
+import {CancelablePromise} from "../utils/CancelablePromise";
 
 /**
  * Height debug provider takes a RGB encoded height map from another provider and converts it to a gradient for preview.

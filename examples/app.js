@@ -5,12 +5,7 @@ var stats = new Stats();
 stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
 document.body.appendChild(stats.dom);
 var devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
-let pixelRatio = window.devicePixelRatio;
-let AA = false;
-if (pixelRatio > 1) 
-{
-	AA = false;
-}
+
 Array.prototype.sortOn = function(key) 
 {
 	return this.sort(function(a, b) 
@@ -100,7 +95,7 @@ class CustomOutlinePass extends THREE.Pass
 		uniform float cameraFar;
 		uniform vec4 screenSize;
 		uniform vec3 outlineColor;
-		uniform vec4 multiplierParameters;
+		uniform vec2 multiplierParameters;
 		varying vec2 vUv;
 		
 		// Helper functions for reading from depth buffer.
@@ -143,11 +138,11 @@ class CustomOutlinePass extends THREE.Pass
 			vec4 outlineColor = vec4(outlineColor, 1.0);
 			gl_FragColor = vec4(mix(sceneColor, outlineColor, depthDiff));
 
-				// optional depth rendering
+			// optional depth rendering
 			//  gl_FragColor = vec4(vec3(1.0 -pow(1.0-depth, 2.0)), 1.0);
 
 		}
-                                 	`;
+        `;
 	}
 
 	createOutlinePostProcessMaterial() 
@@ -158,7 +153,7 @@ class CustomOutlinePass extends THREE.Pass
 				depthBuffer: {},
 				outlineColor: {value: new THREE.Color(darkTheme ? 0xffffff : 0x000000)},
 				// 4 scalar values packed in one uniform: depth multiplier, depth bias, and same for normals.
-				multiplierParameters: {value: new THREE.Vector4(2, 4, 2.0, 1.3)},
+				multiplierParameters: {value: new THREE.Vector2(2, 4)},
 				cameraNear: {value: this.renderCamera.near},
 				cameraFar: {value: this.renderCamera.far},
 				screenSize: {
@@ -184,6 +179,8 @@ let drawLines = true;
 let darkTheme = false;
 let pointBufferTargetScale = 10;
 let featuresToShow = [];
+let renderingIndex =-1;
+let linesToDraw = [];
 const tempVector = new THREE.Vector3(0, 0, 0);
 const exageration = 1.7;
 let currentColor = 0xffffff;
@@ -198,16 +195,18 @@ const position = {lat: 45.19177, lon: 5.72831};
 // updSunPos(45.16667, 5.71667);
 const EPS = 1e-5;
 // let elevationDecoder = [6553.6* 255, 25.6* 255, 0.1* 255, -10000];
-
-var canvas = document.getElementById("canvas");
-var canvas2 = document.getElementById("canvas2");
-var canvas3 = document.getElementById("canvas3");
-var canvas4 = document.getElementById("canvas4");
-var ctx2d = canvas4.getContext("2d");
-let pixelsBuffer;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+let pixelsBuffer;
+const AA = devicePixelRatio <= 1;
+let showingCamera =false;
 
-var renderer = new THREE.WebGLRenderer({
+const canvas = document.getElementById("canvas");
+const canvas3 = document.getElementById("canvas3");
+const canvas4 = document.getElementById("canvas4");
+const video = document.getElementById( 'video' );
+const ctx2d = canvas4.getContext("2d");
+
+const renderer = new THREE.WebGLRenderer({
 	canvas: canvas,
 	// logarithmicDepthBuffer: true,
 	antialias: AA,
@@ -218,14 +217,7 @@ var renderer = new THREE.WebGLRenderer({
 document.body.style.backgroundColor = darkTheme ? "black" : "white";
 
 renderer.setClearColor(0x000000, 0); // the default
-// var renderer2 = new THREE.WebGLRenderer({
-//     canvas: canvas2,
-//     antialias: true,
-//     alpha: true,
-//     powerPreference: "high-performance",
-// });
-// renderer2.setClearColor(0x000000, 0); // the default
-var rendereroff = new THREE.WebGLRenderer({
+const rendereroff = new THREE.WebGLRenderer({
 	canvas: canvas3,
 	antialias: false,
 	alpha: false,
@@ -233,11 +225,7 @@ var rendereroff = new THREE.WebGLRenderer({
 	stencil: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
-// rendereroff.setClearColor(0x000000, 1); // the default
-const pointBufferTarget = new THREE.WebGLRenderTarget(
-	Math.round(window.innerWidth / pointBufferTargetScale),
-	Math.round(window.innerHeight / pointBufferTargetScale)
-);
+const pointBufferTarget = new THREE.WebGLRenderTarget(0, 0);
 pointBufferTarget.texture.minFilter = THREE.NearestFilter;
 pointBufferTarget.texture.magFilter = THREE.NearestFilter;
 pointBufferTarget.texture.generateMipmaps = false;
@@ -279,18 +267,16 @@ function createSky()
 	return sky;
 }
 
-var scene = new THREE.Scene();
-const video = document.getElementById( 'video' );
-// const videotexture = new THREE.VideoTexture( video );
-
-// const ambientLight = new THREE.AmbientLight(0x777777);
-// var ambientLight = new THREE.HemisphereLight(0x777777, 0x777777, 1.0);
+const scene = new THREE.Scene();
 const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 1);
-const curSunLight = new THREE.SpotLight( 0xffffff, 200, 100, 0.7, 1, 1 );
-// const directionalLight = new THREE.DirectionalLight(0x777777);
-// const axesHelper = new THREE.AxesHelper( 500 );
-// scene.add( axesHelper );
-scene.add( ambientLight );
+const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
+const sky = createSky();
+// scene.add(sky);
+// scene.add(ambientLight);
+// scene.add(directionalLight);
+sky.visible = debug;
+ambientLight.visible = debug;
+curSunLight.visible = debug;
 
 let devicecontrols;
 let listeningForDeviceSensors = false;
@@ -348,21 +334,6 @@ function startCam()
 
 	}
 }
-// startCam();
-// scene.add( curSunLight );
-// const directionalLight = new THREE.PointLight( 16777215, 1);
-// directionalLight.position.set(100, 10000, 700);
-// const lightCoords = Geo.UnitsUtils.datumsToSpherical(45.5982, 4.4083);
-// directionalLight.position.set(lightCoords.x, 10000, -lightCoords.y);
-// directionalLight.position.set(100, 10000, 700);
-const sky = createSky();
-// scene.add(sky);
-scene.add(ambientLight);
-// scene.add(directionalLight);
-sky.visible = debug;
-// ambientLight.visible = false;
-// directionalLight.visible = false;
-
 // =============================================================================================================
 // Sun Position
 // params: (date, latitude in radian, longitude in degree)
@@ -452,78 +423,32 @@ function updSunPos(lat, lon)
 	var coords = Geo.UnitsUtils.datumsToSpherical(lat, lon);
 	curSunLight.position.set( coords.x, 4000, -coords.y );
 }
-// var geometry = new THREE.BufferGeometry();
-// var positions = new Float32Array(3 * 2);
-// positions[0] = 300;
-// positions[1] = 0;
-// positions[2] = 0;
-// positions[3] = 300;
-// positions[4] = 550;
-// positions[5] = 0;
-// geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-// orthoscene.add(
-//     new THREE.Line(
-//         geometry,
-//         new THREE.LineBasicMaterial({
-//             size:10,
-//             color: 0x0000ff,
-//         })
-//     )
-// );
-// scene.background = new THREE.Color(0.4, 0.4, 0.4);
-
-// var sky = createSky();
-// scene.add(sky);
-
-var debugMapCheckBox = document.getElementById("debugMap");
-debugMapCheckBox.onchange = function(event) 
+function setDebugMode(value) 
 {
-	debug = event.target.checked;
-	sky.visible = debug;
-	// ambientLight.visible = debug;
-	// directionalLight.visible = debug;
+	debug = value;
 	render();
-};
-var debugGPUPickingCheckbox = document.getElementById(
-	"debugGPUPicking"
-);
-debugGPUPickingCheckbox.onchange = function(event) 
+}
+function setDebugGPUPicking(value) 
 {
-	debugGPUPicking = event.target.checked;
-	canvas3.style.visibility = debugGPUPicking
-		? "visible"
-		: "hidden";
+	debugGPUPicking = value;
+	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
 	render();
-};
-canvas3.style.visibility = debugGPUPicking
-	? "visible"
-	: "hidden";
-var readFeaturesCheckbox = document.getElementById("readFeatures");
-readFeaturesCheckbox.onchange = function(event) 
+}
+function setReadFeatures(value) 
 {
-	readFeatures = event.target.checked;
-
-	canvas4.style.visibility =
-                    readFeatures && drawLines ? "visible" : "hidden";
+	readFeatures = value;
+	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
 	render();
-};
-canvas4.style.visibility =
-                    readFeatures && drawLines ? "visible" : "hidden";
-var drawLinesCheckbox = document.getElementById("drawLines");
-drawLinesCheckbox.onchange = function(event) 
+}
+function setDrawLines(value) 
 {
-	drawLines = event.target.checked;
-	canvas4.style.visibility =
-                    readFeatures && drawLines ? "visible" : "hidden";
+	drawLines = value;
+	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
 	render();
-};
-canvas4.style.visibility =
-                    readFeatures && drawLines ? "visible" : "hidden";
-var debugFeaturePointsCheckbox = document.getElementById("debugFeaturePoints");
-debugFeaturePointsCheckbox.onchange = function(event) 
+}
+function setDebugFeaturePoints(value) 
 {
-	debugFeaturePoints = event.target.checked;
+	debugFeaturePoints = value;
 	if (map) 
 	{
 		applyOnNodes((node) => 
@@ -532,24 +457,16 @@ debugFeaturePointsCheckbox.onchange = function(event)
 		});
 	}
 	render();
-};
-var darkmodeCheckbox = document.getElementById("darkmode");
-darkmodeCheckbox.onchange = function(event) 
+}
+function setDarkMode(value) 
 {
-	darkTheme = event.target.checked;
+	darkTheme = value;
 	customOutline.fsQuad.material.uniforms.outlineColor.value.set(darkTheme ? 0xffffff : 0x000000);
-	document.body.style.backgroundColor = darkTheme ? "black" : "white";
+	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
 	render();
-};
-var elevationSlider = document.getElementById("elevationSlider");
-elevationSlider.oninput = function(event) 
-{
-	setElevation(event.target.value);
-};
-elevationSlider.value = elevation;
-var cameraCheckbox = document.getElementById("camera");
-let showingCamera = false;
-cameraCheckbox.onchange = function(event) 
+}
+
+function toggleCamera() 
 {
 	if (showingCamera) 
 	{
@@ -557,18 +474,52 @@ cameraCheckbox.onchange = function(event)
 		video.srcObject.getTracks().forEach(function(track) 
 		{
 			track.stop();
-		  });
+		});
 		showingCamera = false;
 
-		video.style.visibility = "hidden";
+		video.style.visibility = 'hidden';
 		toggleDeviceSensors();
 	}
 	else 
 	{
 		startCam();
-
 	}
-};
+}
+
+const debugMapCheckBox = document.getElementById('debugMap');
+debugMapCheckBox.onchange = (event) => {return setDebugMode(event.target.checked);};
+debugMapCheckBox.value = debugMapCheckBox;
+
+const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking');
+debugGPUPickingCheckbox.onchange = (event) => {return setDebugGPUPicking(event.target.checked);};
+debugGPUPickingCheckbox.value = debugGPUPicking;
+canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+
+const readFeaturesCheckbox = document.getElementById('readFeatures');
+readFeaturesCheckbox.onchange = (event) => {return setReadFeatures(event.target.checked);};
+readFeaturesCheckbox.value = readFeatures;
+canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+
+const drawLinesCheckbox = document.getElementById('drawLines');
+drawLinesCheckbox.onchange = (event) => {return setDrawLines(event.target.checked);};
+drawLinesCheckbox.value = drawLines;
+canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+
+const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints');
+debugFeaturePointsCheckbox.onchange = (event) => {return setDebugFeaturePoints(event.target.checked);};
+debugFeaturePointsCheckbox.value = debugFeaturePoints;
+
+const darkmodeCheckbox = document.getElementById('darkmode');
+darkmodeCheckbox.onchange = (event) => {return setDarkMode(event.target.checked);};
+darkmodeCheckbox.value = darkTheme;
+
+const elevationSlider = document.getElementById('elevationSlider');
+elevationSlider.oninput = (event) => {return setElevation(event.target.value);};
+elevationSlider.value = elevation;
+
+const cameraCheckbox = document.getElementById('camera');
+cameraCheckbox.onchange = (event) => {return toggleCamera();};
+cameraCheckbox.value = showingCamera;
 
 class EmptyProvider extends Geo.MapProvider 
 {
@@ -607,84 +558,17 @@ class LocalHeightProvider extends Geo.MapProvider
 				};
 				image.onerror = () => 
 				{
-					// if (zoom < this.minZoom) {
 					resolve();
-					// } else {
-					// reject();
-					// }
 				};
 				image.crossOrigin = "Anonymous";
-				image.src =
-                                // "http://192.168.1.45:8080/data/BDALTIV2_75M_rvb/" +
-                                "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/" +
-                                zoom +
-                                "/" +
-                                x +
-                                "/" +
-                                y +
-                                ".png";
-				// console.log("fetchTile", image.src);
+				image.src = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/" +
+					zoom +
+					"/" +
+					x +
+					"/" +
+					y +
+					".png";
 			})
-
-			// new Geo.CancelablePromise((resolve, reject) => {
-			//     const url =
-			//         "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/" +
-			//         zoom +
-			//         "/" +
-			//         x +
-			//         "/" +
-			//         y +
-			//         ".png";
-			//     try {
-			//         Geo.XHRUtils.getRaw(
-			//             url,
-			//             async (data) => {
-			//                 const result = await ImageLoader.parse(
-			//                     data,
-			//                     {
-			//                         image: { type: "data" },
-			//                     }
-			//                 );
-			//                 resolve(result);
-			//             },
-			//             resolve
-			//         );
-			//     } catch (err) {
-			//         console.error(err);
-			//     }
-			// }),
-			// new Geo.CancelablePromise((resolve, reject) => {
-			//     const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-			//     try {
-			//         Geo.XHRUtils.getRaw(
-			//             url,
-			//             async (data) => {
-			//                 const result = await MVTLoader.parse(
-			//                     data,
-			//                     {
-			//                         mvt: {
-			//                             tileIndex: {
-			//                                 x,
-			//                                 y,
-			//                                 z: zoom,
-			//                             },
-			//                             coordinates: "wgs84",
-			//                             layers: ["mountain_peak"],
-			//                         },
-			//                     }
-			//                 );
-			//                 this.features = result.filter(
-			//                     (f) => f.properties.name
-			//                 );
-
-			//                 resolve(this.features);
-			//             },
-			//             resolve
-			//         );
-			//     } catch (err) {
-			//         console.error(err);
-			//     }
-			// }),
 		]);
 		return result[0];
 	}
@@ -710,24 +594,15 @@ class MaterialHeightShader extends Geo.MapHeightNode
                  */
                 static GEOMETRY_SIZE = 200;
 
-                /**
-                 * Map node plane geometry.
-                 *
-                 * @static
-                 * @attribute GEOMETRY
-                 * @type {PlaneBufferGeometry}
-                 */
-                static GEOMETRY = new Geo.MapNodeGeometry(1, 1, 16, 16);
+				static geometries = {};
 
-                static geometries = {};
-
-                static getGeometry(level) 
-                {
+				static getGeometry(level) 
+				{
                 	let size = MaterialHeightShader.GEOMETRY_SIZE;
                 	if (level < 11) 
                 	{
-                		size /= Math.pow(2, 11 - level 	);
-                		// size /= 11 - level;
+                		// size /= Math.pow(2, 11 - level 	);
+                		size /= 11 - level;
                 		size = Math.max(16, size);
                 	}
                 	let geo = MaterialHeightShader.geometries[size];
@@ -738,21 +613,19 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 		] = new Geo.MapNodeGeometry(1, 1, size, size);
                 	}
                 	return geo;
-                }
+				}
 
-                static getSoftGeometry(level) 
-                {
+				static getSoftGeometry(level) 
+				{
                 	return MaterialHeightShader.getGeometry(level - 1);
-                }
+				}
 
-                constructor(parentNode, mapView, location, level, x, y) 
-                {
+				constructor(parentNode, mapView, location, level, x, y) 
+				{
                 	var material = new THREE.MeshPhongMaterial({
                 		map: MaterialHeightShader.EMPTY_TEXTURE,
                 		color: 0xffffff,
                 		side: THREE.DoubleSide
-                		// flatShading: false
-                		// wireframe: true,
                 	});
                 	material = MaterialHeightShader.prepareMaterial(
                 		material,
@@ -771,13 +644,14 @@ class MaterialHeightShader extends Geo.MapHeightNode
 
                 	this.frustumCulled = false;
                 	this.exageration = exageration;
-                }
+				}
 
-                static prepareMaterial(material, level) 
-                {
+				static prepareMaterial(material, level) 
+				{
                 	material.userData = {
                 		heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
                 		drawNormals: {value: 0},
+                		drawTexture: {value: 0},
                 		drawBlack: {value: 0},
                 		zoomlevel: {value: level},
                 		exageration: {value: exageration},
@@ -802,10 +676,9 @@ class MaterialHeightShader extends Geo.MapHeightNode
 					//  varying vec3 vNormal;
 
 						float getPixelElevation(vec4 e) {
-						// Convert encoded elevation value to meters
-						return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
-						// return ((e.r * 255.0 * 256.0 + e.g  * 255.0+ e.b * 255.0 / 256.0) - 32768.0) * exageration;
-					}
+							// Convert encoded elevation value to meters
+							return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
+						}
 						float getElevation(vec2 coord) {
 						vec4 e = texture2D(heightMap, coord);
 						return getPixelElevation(e);
@@ -841,6 +714,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
 							`
 							uniform bool drawNormals;
 							uniform bool drawBlack;
+							uniform bool drawTexture;
 							` + shader.fragmentShader;
 			
                 		// Vertex depth logic
@@ -851,7 +725,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
 								gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
 							 } else if(drawNormals) {
 								gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
-							} else {
+							} else if (!drawTexture) {
 								gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
 							}
 							`
@@ -892,7 +766,6 @@ class MaterialHeightShader extends Geo.MapHeightNode
 								float h = getElevationMean(vUv + vec2(0, offset), width,height);
 								float i = getElevationMean(vUv + vec2(offset,offset), width,height);
 
-
 								float NormalLength = 500.0 / zoomlevel;
 
 								vec3 v0 = vec3(0.0, 0.0, 0.0);
@@ -914,10 +787,10 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 	};
 			
                 	return material;
-                }
+				}
 
-                loadTexture() 
-                {
+				loadTexture() 
+				{
                 	this.geometry = MaterialHeightShader.getGeometry(
                 		this.level
                 	);
@@ -954,10 +827,10 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 		});
 
                 	this.loadHeightGeometry();
-                }
+				}
 
-                loadHeightGeometry() 
-                {
+				loadHeightGeometry() 
+				{
                 	if (this.mapView.heightProvider === null) 
                 	{
                 		throw new Error(
@@ -975,10 +848,10 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 			this.heightLoaded = true;
                 			this.nodeReady();
                 		});
-                }
+				}
 
-                async onHeightImage(image) 
-                {
+				async onHeightImage(image) 
+				{
                 	if (image) 
                 	{
                 		new Geo.CancelablePromise((resolve, reject) => 
@@ -1106,10 +979,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                                                  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
                                                                 //  gl_PointSize =  floor(elevation / 1000.0)* 2.0;
                                                                 //  gl_PointSize = gl_Position.z ;
-                                                                 gl_Position = projectionMatrix * mvPosition;
-                                                    			// gl_Position.y -= 100.0;
-																//  gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * 30.0;
-                                                                //  gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * 30.0;
+                                                                gl_Position = projectionMatrix * mvPosition;
                                                     			gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
 												}
                                                          `,
@@ -1153,17 +1023,17 @@ class MaterialHeightShader extends Geo.MapHeightNode
 
                 		this.material.userData.heightMap.value = texture;
                 	}
-                }
+				}
 
-                /**
+				/**
                  * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
                  *
                  * Switches the geometry for a simpler one for faster raycasting.
                  *
                  * @method raycast
                  */
-                raycast(raycaster, intersects) 
-                {
+				raycast(raycaster, intersects) 
+				{
                 	if (this.isMesh === true) 
                 	{
                 		const oldGeometry = this.geometry;
@@ -1181,29 +1051,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 	}
 
                 	return false;
-                }
-}
-let renderingIndex =-1;
-
-let linesToDraw = [];
-function throttle(callback, limit) 
-{
-	var waiting = false; // Initially, we're not waiting
-	return function() 
-	{
-		// We return a throttled function
-		if (!waiting) 
-		{
-			// If we're not waiting
-			callback.apply(this, arguments); // Execute users function
-			waiting = true; // Prevent future invocations
-			setTimeout(function() 
-			{
-				// After a period of time
-				waiting = false; // And allow future invocations
-			}, limit);
-		}
-	};
+				}
 }
 
 function onControlUpdate() 
@@ -1213,9 +1061,9 @@ function onControlUpdate()
 }
 const lod = new Geo.LODFrustum();
 lod.subdivideDistance = 40;
-
 lod.simplifyDistance = 140;
 let map;
+
 function createMap() 
 {
 	if (map !== undefined) 
@@ -1261,17 +1109,6 @@ function createMap()
 }
 
 createMap();
-// map.root = new MaterialHeightShader(
-//     null,
-//     map,
-//     Geo.MapNode.ROOT,
-//     0,
-//     0,
-//     0
-// );
-// map.lod.subdivisionRays = 2;
-// map.lod.thresholdUp = 0.9;
-// map.lod.thresholdDown = 0.5;
 var camera = new THREE.PerspectiveCamera(
 	40,
 	window.innerWidth/ window.innerHeight,
@@ -1279,7 +1116,6 @@ var camera = new THREE.PerspectiveCamera(
 	FAR
 );
 camera.position.set( 0, 0, EPS );
-
 var controls = new CameraControls(camera, canvas);
 controls.azimuthRotateSpeed = - 0.3; // negative value to invert rotation direction
 controls.polarRotateSpeed = - 0.3; // negative value to invert rotation direction
@@ -1287,7 +1123,6 @@ controls.minZoom = 1;
 controls.truckSpeed = 1 / EPS * 30000;
 controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_TRUCK;
-
 controls.verticalDragToForward = true;
 controls.saveState();
 
@@ -1308,9 +1143,6 @@ function setElevation(newValue)
 	controls.moveTo(tempVector.x, elevation* exageration, tempVector.z);
 	controls.update(clock.getDelta());
 }
-
-// var coords2 = Geo.UnitsUtils.datumsToSpherical(...position);
-// axesHelper.position.set(coords2.x, 1000, -coords2.y);
 controls.addEventListener("update", () => 
 {
 	onControlUpdate();
@@ -1367,12 +1199,17 @@ document.body.onresize = function()
 		offHeight = 200;
 		offWidth = roundToNearest(offHeight * scale, 4);
 	}
-	minYPx = Math.round(TEXT_HEIGHT / height * offHeight);
 	pointBufferTargetScale = width / offWidth;
+
+	minYPx = Math.round(TEXT_HEIGHT / height * offHeight);
+
 	canvas4.width = Math.floor(width * devicePixelRatio);
 	canvas4.height = Math.floor(height* devicePixelRatio);
+	const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
+
 	renderer.setSize(width, height);
 	renderer.setPixelRatio(1);
+	// renderTarget.setSize(width, height);
 
 	pixelsBuffer = new Uint8Array(offWidth * offHeight * 3);
 	rendereroff.setSize(offWidth, offHeight);
@@ -1445,7 +1282,6 @@ function wrapText(context, text, x, y, maxWidth, lineHeight)
 	  }
 	}
 	context.fillText(line, x, y);
-	// ctx2d.measureText(text).width;
 	return {x: x + context.measureText(line).width, y: y, nbLines: nbLines};
 }
 
@@ -1458,7 +1294,6 @@ function drawFeatures()
 
 	let lastFeature;
 	const minDistance = 20;
-	// const total = rFeatures.length;
 	featuresToShow = featuresToShow.map((f) => 
 	{
 		var coords = Geo.UnitsUtils.datumsToSpherical(
@@ -1474,7 +1309,6 @@ function drawFeatures()
 		return {...f, x: vector.x, y: vector.y, z: vector.z};
 	});
 	let deltaY;
-	// console.log('featuresToShow', featuresToShow);
 	featuresToShow = featuresToShow.sortOn("x");
 
 	const featuresToDraw = [];
@@ -1487,13 +1321,7 @@ function drawFeatures()
 		}
 		else if (f.x - lastFeature.x <= minDistance) 
 		{
-			// let deltaY = f.y - lastFeature.y;
-			// let deltaZ = Math.abs(f.z - lastFeature.z/);
-			// if (deltaZ > 0.0001) 
-			// {
 			deltaY = f.properties.ele - lastFeature.properties.ele;
-			// }
-			// console.log('test', f, lastFeature);
 			if (deltaY > 0) 
 			{
 				lastFeature = f;
@@ -1501,14 +1329,6 @@ function drawFeatures()
 		}
 		else 
 		{
-			// if (index < total -2) 
-			// {
-			// 	let next = rFeatures[index+ 1];
-			// 	if (next.x - f.x <= 10 && next.properties.ele> f.properties.ele) 
-			// 	{
-			// 		return;
-			// 	}
-			// }
 			featuresToDraw.push(lastFeature);
 			lastFeature = f;
 		}
@@ -1535,7 +1355,6 @@ function drawFeatures()
 
 		const textColor = darkTheme? 'white':'black';
 		const color = darkTheme? '#000000':'#ffffff';
-		// console.log('test')
 		ctx2d.beginPath();
 		ctx2d.strokeStyle = textColor;
 		ctx2d.moveTo(f.x, TEXT_HEIGHT);
@@ -1582,7 +1401,6 @@ function readShownFeatures()
 	let readColors = [];
 	let rFeatures = [];
 	let lastColor;
-	let lastColorNb = 0;
 	function handleLastColor(index) 
 	{
 		if (readColors.indexOf(lastColor) === -1) 
@@ -1591,28 +1409,7 @@ function readShownFeatures()
 			const feature = featuresByColor[lastColor];
 			if (feature) 
 			{
-				// const Y = (height - Math.round(index /4/ width)) * pointBufferTargetScale;
-				// var coords = Geo.UnitsUtils.datumsToSpherical(
-				// 	feature.geometry.coordinates[1],
-				// 	feature.geometry.coordinates[0]
-				// );
-				// tempvector.set(
-				// 	coords.x,
-				// 	feature.properties.ele * exageration,
-				// 	-coords.y
-				// );
-				// const vector = toScreenXY(tempvector);
-				// if (vector.z / feature.properties.ele <= FAR / 4000) 
-				// {
 				rFeatures.push(feature);
-				// rFeatures.push({
-				// ...feature
-				// x: vector.x,
-				// y: Y,
-				// y: vector.y,
-				// z: vector.z
-				// });
-				// }
 			}
 		}
 	}
@@ -1665,7 +1462,7 @@ function readShownFeatures()
 	
 }
 
-function render() 
+function render(forceDrawFeatures = false) 
 {
 	if (!renderer || !composer) 
 	{
@@ -1674,7 +1471,7 @@ function render()
 	if (readFeatures && pixelsBuffer) 
 	{
 		renderingIndex = (renderingIndex + 1) % 5;
-		if (!isMobile || renderingIndex === 0) 
+		if (!isMobile || forceDrawFeatures || renderingIndex === 0) 
 		{
 			applyOnNodes((node) => 
 			{
@@ -1688,7 +1485,6 @@ function render()
 			}
 			rendereroff.setRenderTarget(pointBufferTarget);
 			rendereroff.render(scene, camera);
-			// renderingIndex = 1- renderingIndex;
 		
 			readShownFeatures();
 			applyOnNodes((node) => 

@@ -1,6 +1,6 @@
 import {Mesh, MeshPhongMaterial, Texture, RGBFormat, LinearFilter} from "three";
 import {MapNodeGeometry} from "../geometries/MapNodeGeometry";
-import {MapNode} from "./MapNode";
+import {MapNode} from "./MapNode.js";
 
 /** 
  * Represents a height map tile node that can be subdivided into other height nodes.

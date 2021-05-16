@@ -1,5 +1,5 @@
 import {Mesh, MeshBasicMaterial} from "three";
-import {MapNode} from "./MapNode";
+import {MapNode} from "./MapNode.js";
 import {MapNodeGeometry} from "../geometries/MapNodeGeometry";
 
 /** 

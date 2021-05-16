@@ -1,7 +1,7 @@
 import {Texture, LinearFilter, RGBFormat, MeshPhongMaterial, Mesh, NearestFilter} from "three";
-import {MapHeightNode} from "./MapHeightNode";
-import {MapNodeGeometry} from "../geometries/MapNodeGeometry";
-import {MapPlaneNode} from "./MapPlaneNode";
+import {MapHeightNode} from "./MapHeightNode.js";
+import {MapNodeGeometry} from "../geometries/MapNodeGeometry.js";
+import {MapPlaneNode} from "./MapPlaneNode.js";
 
 /**
  * Map height node that uses GPU height calculation to generate the deformed plane mesh.

@@ -1,7 +1,7 @@
 import {Mesh, MeshPhongMaterial, Texture, RGBFormat, LinearFilter} from "three";
 import {MapNodeGeometry} from "../geometries/MapNodeGeometry";
-import {MapNode} from "./MapNode";
-import Martini from "../martini/index";
+import {MapNode} from "./MapNode.js";
+import Martini from "../martini/index.js";
 
 
 function getTerrain(imageData, tileSize, elevationDecoder) 

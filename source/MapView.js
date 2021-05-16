@@ -1,13 +1,13 @@
 import {Mesh, MeshBasicMaterial} from "three";
-import {MapSphereNodeGeometry} from "./geometries/MapSphereNodeGeometry";
-import {OpenStreetMapsProvider} from "./providers/OpenStreetMapsProvider";
-import {MapNode} from "./nodes/MapNode";
-import {MapHeightNode} from "./nodes/MapHeightNode";
-import {MapPlaneNode} from "./nodes/MapPlaneNode";
-import {MapSphereNode} from "./nodes/MapSphereNode";
-import {UnitsUtils} from "./utils/UnitsUtils";
-import {MapHeightNodeShader} from "./nodes/MapHeightNodeShader";
-import {LODRaycast} from "./lod/LODRaycast";
+import {MapSphereNodeGeometry} from "./geometries/MapSphereNodeGeometry.js";
+import {OpenStreetMapsProvider} from "./providers/OpenStreetMapsProvider.js";
+import {MapNode} from "./nodes/MapNode.js";
+import {MapHeightNode} from "./nodes/MapHeightNode.js";
+import {MapPlaneNode} from "./nodes/MapPlaneNode.js";
+import {MapSphereNode} from "./nodes/MapSphereNode.js";
+import {UnitsUtils} from "./utils/UnitsUtils.js";
+import {MapHeightNodeShader} from "./nodes/MapHeightNodeShader.js";
+import {LODRaycast} from "./lod/LODRaycast.js";
 
 /**
  * Map viewer is used to read and display map tiles from a server.

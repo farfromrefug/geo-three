@@ -312,14 +312,20 @@ export class MapMartiniHeightNode extends MapNode
 				texture.minFilter = LinearFilter;
 				texture.needsUpdate = true;
 			
-	 			self.material.emissiveMap = texture;
-		 }
-	
-	 	}).finally(() => 
-		{
-			self.textureLoaded = true;
-			self.nodeReady();
-		 });
+				self.material.map = texture;
+			}
+		 self.textureLoaded = true;
+		 self.nodeReady();
+		})
+			.catch(function(err) 
+			{
+				console.error(
+					"GeoThree: Failed to load color node data.",
+					err
+				);
+				self.textureLoaded = true;
+				self.nodeReady();
+			});
 	
 	 	this.loadHeightGeometry();
 	 };

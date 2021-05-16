@@ -186,9 +186,9 @@ export class MapMartiniHeightNode extends MapNode
 						vNormal = (normalize(cross(v2 - v0, v1 - v0)));
 					}
 
-					vec3 _transformed = position + e * normal;
-					vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-
+					// vec3 _transformed = position + e * normal;
+					// vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+// 
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(position.yzx, 1.0);
 					`

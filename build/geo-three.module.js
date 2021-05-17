@@ -2019,7 +2019,7 @@ class LODFrustum extends LODRadial
 	{
 		if (!(node instanceof MapNode$1)) 
 		{
-			return;
+			return true;
 		}
 		node.getWorldPosition(position);
 		var distance = pov.distanceTo(position);
@@ -2030,10 +2030,18 @@ class LODFrustum extends LODRadial
 		 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
 		{
 			const subdivded = node.subdivide();
+			let allLoading = true;
 			if (subdivded) 
 			{
-				subdivded.forEach((n) => {return this.handleNode(n, minZoom, maxZoom);});
+				subdivded.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
+				if (!allLoading) 
+				{
+					// one not in frustum let still hide ourself
+					node.isMesh = false;
+					node.objectsHolder.visible = false;
+				}
 			}
+			return allLoading;
 		}
 		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
 		{
@@ -2042,6 +2050,7 @@ class LODFrustum extends LODRadial
 			{
 				this.handleNode(simplified, minZoom, maxZoom);
 			}
+			return true;
 		}
 		else if (inFrustum && minZoom <= node.level )
 		{
@@ -2049,6 +2058,11 @@ class LODFrustum extends LODRadial
 			{
 				node.loadTexture();
 			}
+			return true;
+		}
+		else
+		{
+			return node.isReady;
 		}
 	}
 
@@ -3616,9 +3630,9 @@ class MapMartiniHeightNode extends MapNode$1
 						vNormal = (normalize(cross(v2 - v0, v1 - v0)));
 					}
 
-					vec3 _transformed = position + e * normal;
-					vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-
+					// vec3 _transformed = position + e * normal;
+					// vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+// 
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
 					// gl_Position = projectionMatrix * modelViewMatrix * vec4(position.yzx, 1.0);
 					`
@@ -3742,14 +3756,20 @@ class MapMartiniHeightNode extends MapNode$1
 				texture.minFilter = LinearFilter;
 				texture.needsUpdate = true;
 			
-	 			self.material.emissiveMap = texture;
-		 }
-	
-	 	}).finally(() => 
-		{
-			self.textureLoaded = true;
-			self.nodeReady();
-		 });
+				self.material.map = texture;
+			}
+		 self.textureLoaded = true;
+		 self.nodeReady();
+		})
+			.catch(function(err) 
+			{
+				console.error(
+					"GeoThree: Failed to load color node data.",
+					err
+				);
+				self.textureLoaded = true;
+				self.nodeReady();
+			});
 	
 	 	this.loadHeightGeometry();
 	 };

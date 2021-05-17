@@ -67,182 +67,14 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 	}
 
 }
-// Follows the structure of
-// 		https://github.com/mrdoob/three.js/blob/master/examples/jsm/postprocessing/OutlinePass.js
-class CustomOutlinePass extends POSTPROCESSING.Pass 
-{
-	constructor() 
-	{
-		super('CustomOutlinePass');
-
-		// this.renderScene = scene;
-		// this.renderCamera = camera;
-		// this.resolution = new THREE.Vector2(
-		// 	resolution.x,
-		// 	resolution.y
-		// );
-
-		// this.fsQuad = new THREE.Pass.FullScreenQuad(null);
-		this.fsQuad.material = this.createOutlinePostProcessMaterial();
-
-		this.setFullscreenMaterial(this.createOutlinePostProcessMaterial());
-	}
-
-	// dispose() 
-	// {
-	// 	this.fsQuad.dispose();
-	// }
-
-	// setSize(width, height) 
-	// {
-	// 	this.resolution.set(width, height);
-
-	// 	this.fsQuad.material.uniforms.screenSize.value.set(width,
-	// 		height,
-	// 		1 / width,
-	// 		1 / height);
-
-	// }
-
-	render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest) 
-	{
-
-		// const depthBufferValue = writeBuffer.depthBuffer;
-		// writeBuffer.depthBuffer = false;
-		// renderer.render(this.renderScene, this.renderCamera);
-		const material = this.getFullscreenMaterial();
-		material.uniforms.inputBuffer.value = inputBuffer.texture;
-
-		renderer.setRenderTarget(this.renderToScreen ? null : outputBuffer);
-		renderer.render(this.scene, this.camera);
-		// this.fsQuad.material.uniforms["sceneColorBuffer"].value =
-		//                 readBuffer.texture;
-		// this.fsQuad.material.uniforms["depthBuffer"].value =
-		// 				readBuffer.depthTexture;
-		// renderer.setRenderTarget(null);
-		// this.fsQuad.render(renderer);
-		// writeBuffer.depthBuffer = depthBufferValue;
-	}
-
-	get vertexShader() 
-	{
-		return `
-		varying vec2 vUv;
-		void main() {
-			vUv = uv;
-			gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-		}
-		`;
-	}
-
-	get fragmentShader() 
-	{
-		return `
-		#include <packing>
-		// The above include imports "perspectiveDepthToViewZ"
-		// and other GLSL functions from ThreeJS we need for reading depth.
-		uniform sampler2D inputBuffer;
-		uniform sampler2D depthBuffer;
-		uniform float cameraNear;
-		uniform float cameraFar;
-		uniform vec4 screenSize;
-		uniform vec3 outlineColor;
-		uniform vec2 multiplierParameters;
-		varying vec2 vUv;
-		
-		// Helper functions for reading from depth buffer.
-		float readDepth (sampler2D depthSampler, vec2 coord) {
-			// #if DEPTH_PACKING == 3201
-				// float fragCoordZ = unpackRGBAToDepth(texture2D(depthSampler, coord));
-				// float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
-				// return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
-			// #else
-				float fragCoordZ = texture2D(depthSampler, coord).x;
-				float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
-				return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
-			// #endif
-		}
-			float getPixelDepth(int x, int y) {
-			// screenSize.zw is pixel size 
-			// vUv is current position
-			return readDepth(depthBuffer, vUv + screenSize.zw * vec2(x, y));
-		}
-		float saturate(float num) {
-			return clamp(num, 0.0, 1.0);
-		}
-		void main() {
-			// vec4 sceneColor = vec4(1.0,1.0,1.0,1.0);
-			vec4 sceneColor = texture2D(inputBuffer, vUv);
-			float delta =  1.0;
-			int delta2 = 1;
-
-			float depthDiff = 0.0;
-			float depth = getPixelDepth(0, 0);
-			depthDiff += abs(depth - getPixelDepth(delta2, 0));
-			depthDiff += abs(depth - getPixelDepth(-delta2, 0));
-			depthDiff += abs(depth - getPixelDepth(0, delta2));
-			depthDiff += abs(depth - getPixelDepth(0, -delta2));
-			depthDiff = depthDiff /depth;
-			// Apply multiplier & bias to each
-				float depthBias = multiplierParameters.x;
-			float depthMultiplier = multiplierParameters.y;
-				depthDiff = depthDiff * multiplierParameters.y;
-			depthDiff = saturate(depthDiff);
-			if (depthDiff < 0.04) {
-				depthDiff = pow(depthDiff, depthBias);
-			}
-
-			// Combine outline with scene color.
-			vec4 outlineColor = vec4(outlineColor, 1.0);
-			gl_FragColor = vec4(mix(sceneColor, outlineColor, depthDiff));
-
-			// optional depth rendering
-			//  gl_FragColor = vec4(vec3(depth), 1.0);
-			//  gl_FragColor = vec4(vec3(1.0 -pow(1.0-depth, 2.0)), 1.0);
-
-		}
-        `;
-	}
-
-	createOutlinePostProcessMaterial() 
-	{
-		const result = new THREE.ShaderMaterial({
-			type: "CustomMaterial",
-			toneMapped: false,
-			depthWrite: true,
-			depthTest: false,
-			uniforms: {
-				inputBuffer: {},
-				// depthBuffer: {},
-				outlineColor: {value: new THREE.Color(darkTheme ? 0xffffff : 0x000000)},
-				// 4 scalar values packed in one uniform: depth multiplier, depth bias, and same for normals.
-				multiplierParameters: {value: new THREE.Vector2(2, 4)},
-				// cameraNear: {value: this.renderCamera.near},
-				// cameraFar: {value: this.renderCamera.far},
-				screenSize: {
-					value: new THREE.Vector4(
-						this.resolution.x,
-						this.resolution.y,
-						1 / this.resolution.x,
-						1 / this.resolution.y
-					)
-				}
-			},
-			blending: THREE.NoBlending,
-			vertexShader: this.vertexShader,
-			fragmentShader: this.fragmentShader
-		});
-		result.toneMapped = false;
-		return result;
-	}
-}
-
 let debug = false;
 let debugFeaturePoints = false;
 let debugGPUPicking = false;
 let readFeatures = true;
 let drawLines = true;
+let drawElevations = false;
 let darkTheme = false;
+let normalsInDebug = false;
 let pointBufferTargetScale = 10;
 let featuresToShow = [];
 let renderingIndex =-1;
@@ -255,7 +87,7 @@ let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
 const FAR = 200000;
 const TEXT_HEIGHT = 200;
 let currentPosition;
-let elevation = 7000;
+let elevation = 2000;
 const clock = new THREE.Clock();
 const position = {lat: 45.19177, lon: 5.72831};
 // updSunPos(45.16667, 5.71667);
@@ -274,13 +106,10 @@ const ctx2d = canvas4.getContext("2d");
 
 const renderer = new THREE.WebGLRenderer({
 	canvas: canvas,
-	// logarithmicDepthBuffer: true,
-	antialias: AA,
 	alpha: true,
 	powerPreference: "high-performance",
 	antialias: false,
-	stencil: false,
-	depth: false
+	stencil: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
 document.body.style.backgroundColor = darkTheme ? "black" : "white";
@@ -340,11 +169,11 @@ const scene = new THREE.Scene();
 const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
 const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
 const sky = createSky();
-scene.add(sky);
+// scene.add(sky);
 scene.add(ambientLight);
 // scene.add(directionalLight);
 sky.visible = debug;
-ambientLight.visible = debug;
+// ambientLight.visible = debug;
 curSunLight.visible = debug;
 
 let devicecontrols;
@@ -520,6 +349,24 @@ function setDebugGPUPicking(value)
 	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
 	render();
 }
+
+function toggleNormalsInDebug() 
+{
+	setNormalsInDebug(!normalsInDebug);
+}
+function setNormalsInDebug(value) 
+{
+	normalsInDebug = value;
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.computeNormals.value = normalsInDebug;
+			node.material.userData.drawNormals.value = normalsInDebug;
+		});
+	}
+	render();
+}
 function setReadFeatures(value) 
 {
 	readFeatures = value;
@@ -551,6 +398,16 @@ function setDarkMode(value)
 	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
 	render();
 }
+function setDrawElevations(value) 
+{
+	drawElevations = value;
+	render();
+}
+function toggleDrawElevations(value) 
+{
+	setDrawElevations(!drawElevations);
+	render();
+}
 
 function toggleCamera() 
 {
@@ -575,6 +432,9 @@ function toggleCamera()
 const debugMapCheckBox = document.getElementById('debugMap');
 debugMapCheckBox.onchange = (event) => {return setDebugMode(event.target.checked);};
 debugMapCheckBox.value = debugMapCheckBox;
+const dnormalsInDebugCheckBox = document.getElementById('normalsInDebug');
+dnormalsInDebugCheckBox.onchange = (event) => {return setDebugMode(event.target.checked);};
+dnormalsInDebugCheckBox.value = normalsInDebug;
 
 const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking');
 debugGPUPickingCheckbox.onchange = (event) => {return setDebugGPUPicking(event.target.checked);};
@@ -598,6 +458,9 @@ debugFeaturePointsCheckbox.value = debugFeaturePoints;
 const darkmodeCheckbox = document.getElementById('darkmode');
 darkmodeCheckbox.onchange = (event) => {return setDarkMode(event.target.checked);};
 darkmodeCheckbox.value = darkTheme;
+const drawElevationsCheckbox = document.getElementById('drawElevations');
+drawElevationsCheckbox.onchange = (event) => {return setDrawElevations(event.target.checked);};
+drawElevationsCheckbox.value = drawElevations;
 
 const elevationSlider = document.getElementById('elevationSlider');
 elevationSlider.oninput = (event) => {return setElevation(event.target.value);};
@@ -629,7 +492,7 @@ class LocalHeightProvider extends Geo.MapProvider
 		super();
 		this.name = "local";
 		this.minZoom = 5;
-		this.maxZoom = 15;
+		this.maxZoom = 11;
 	}
 
 	async fetchTile(zoom, x, y) 
@@ -736,8 +599,8 @@ class MaterialHeightShader extends Geo.MapHeightNode
 				{
                 	material.userData = {
                 		heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
-                		drawNormals: {value: 0},
-                		computeNormals: {value: debug},
+                		drawNormals: {value: normalsInDebug},
+                		computeNormals: {value: normalsInDebug || debug},
                 		drawTexture: {value: debug},
                 		drawBlack: {value: 0},
                 		zoomlevel: {value: level},
@@ -766,7 +629,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
 							// Convert encoded elevation value to meters
 							return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
 						}
-						float getElevation(vec2 coord) {
+						float getElevation(vec2 coord, float width, float height) {
 						vec4 e = texture2D(heightMap, coord);
 						return getPixelElevation(e);
 						}
@@ -844,14 +707,14 @@ class MaterialHeightShader extends Geo.MapHeightNode
 							float e = getElevationMean(vUv, width,height);
 							if (computeNormals ) {
 								float offset = 1.0 / width;
-								float a = getElevationMean(vUv + vec2(-offset, -offset), width,height);
-								float b = getElevationMean(vUv + vec2(0, -offset), width,height);
-								float c = getElevationMean(vUv + vec2(offset, -offset), width,height);
-								float d = getElevationMean(vUv + vec2(-offset, 0), width,height);
-								float f = getElevationMean(vUv + vec2(offset, 0), width,height);
-								float g = getElevationMean(vUv + vec2(-offset, offset), width,height);
-								float h = getElevationMean(vUv + vec2(0, offset), width,height);
-								float i = getElevationMean(vUv + vec2(offset,offset), width,height);
+								float a = getElevation(vUv + vec2(-offset, -offset), width,height);
+								float b = getElevation(vUv + vec2(0, -offset), width,height);
+								float c = getElevation(vUv + vec2(offset, -offset), width,height);
+								float d = getElevation(vUv + vec2(-offset, 0), width,height);
+								float f = getElevation(vUv + vec2(offset, 0), width,height);
+								float g = getElevation(vUv + vec2(-offset, offset), width,height);
+								float h = getElevation(vUv + vec2(0, offset), width,height);
+								float i = getElevation(vUv + vec2(offset,offset), width,height);
 
 								float NormalLength = 500.0 / zoomlevel;
 
@@ -1064,8 +927,8 @@ class MaterialHeightShader extends Geo.MapHeightNode
                                                              void main() {
                                                                  vColor = color;
                                                                  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-                                                                //  gl_PointSize =  floor(elevation / 1000.0)* 2.0;
-                                                                //  gl_PointSize = gl_Position.z ;
+                                                                //  gl_PointSize =  floor(elevation / 1000.0)* 1.0;
+                                                                //  gl_PointSize = gl_Position.z _ ;
                                                                 gl_Position = projectionMatrix * mvPosition;
                                                     			gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
 												}
@@ -1158,12 +1021,9 @@ function createMap()
 		scene.remove(map);
 	}
 	// const provider = new Geo.OpenStreetMapsProvider('https://a.tile.openstreetmap.org');
-	const provider = debug
-		? new Geo.DebugProvider('https://a.tile.openstreetmap.org')
-		// ? new Geo.OpenStreetMapsProvider('https://a.tile.openstreetmap.org')
-		: new EmptyProvider();
+	const provider = debug && !normalsInDebug ? new Geo.DebugProvider() : new EmptyProvider();
 	provider.minZoom = 5;
-	provider.maxZoom = 15	;
+	provider.maxZoom = 11	;
 	map = new Geo.MapView(
 		null,
 		// new Geo.DebugProvider(),
@@ -1373,7 +1233,18 @@ function wrapText(context, text, x, y, maxWidth, lineHeight)
 	context.fillText(line, x, y);
 	return {x: x + context.measureText(line).width, y: y, nbLines: nbLines};
 }
-
+function roundRect(ctx, x, y, w, h, r) 
+{
+	if (w < 2 * r) {r = w / 2;}
+	if (h < 2 * r) {r = h / 2;}
+	ctx.beginPath();
+	ctx.moveTo(x+r, y);
+	ctx.arcTo(x+w, y, x+w, y+h, r);
+	ctx.arcTo(x+w, y+h, x, y+h, r);
+	ctx.arcTo(x, y+h, x, y, r);
+	ctx.arcTo(x, y, x+w, y, r);
+	ctx.closePath();
+};
 function drawFeatures() 
 {
 	if (!drawLines) 
@@ -1382,7 +1253,7 @@ function drawFeatures()
 	}
 
 	let lastFeature;
-	const minDistance = 20;
+	const minDistance = 24;
 	featuresToShow = featuresToShow.map((f) => 
 	{
 		var coords = Geo.UnitsUtils.datumsToSpherical(
@@ -1443,7 +1314,7 @@ function drawFeatures()
 			continue;
 		}
 
-		const textColor = darkTheme? 'white':'black';
+		const textColor = darkTheme? '#ffffff':'#000000';
 		const color = darkTheme? '#000000':'#ffffff';
 		ctx2d.beginPath();
 		ctx2d.strokeStyle = textColor;
@@ -1452,25 +1323,33 @@ function drawFeatures()
 		ctx2d.closePath();
 		ctx2d.stroke();
 		ctx2d.save();
-		ctx2d.translate(f.x, TEXT_HEIGHT);
+		ctx2d.translate(f.x, TEXT_HEIGHT-5);
 		ctx2d.rotate(-Math.PI / 4);
-		ctx2d.font = "bold 12px Courier";
+		ctx2d.font = "14px Noto Sans";
 		const text = f.properties.name;
-		const text2 = f.properties.ele + "m";
 		var textWidth = ctx2d.measureText(text).width;
-		var textWidth2 = ctx2d.measureText(text2).width;
-		// const res = wrapText(ctx2d, text, 0, 0, 110, 12);
-		ctx2d.fillStyle = color + "aa";
-		ctx2d.rect(0, 3, textWidth + 5 + textWidth2, -14);
+		var totalWidth = textWidth + 10;
+		let text2;
+		if (drawElevations) 
+		{
+			 text2 = f.properties.ele + "m";
+			var textWidth2 = ctx2d.measureText(text2).width;
+			totalWidth += textWidth2 - 5;
+		}
+		ctx2d.fillStyle = color + "cc";
+		roundRect(ctx2d, 0, -12, totalWidth, 17, 8);
 		ctx2d.fill();
 		ctx2d.fillStyle = textColor;
-		ctx2d.fillText(text, 0, 0);
-		ctx2d.font = "normal 9px Courier";
-		ctx2d.fillText(
-			text2,
-			textWidth + 5,
-			0
-		);
+		ctx2d.fillText(text, 5, 0);
+		if (drawElevations) 
+		{
+			ctx2d.font = "normal 9px Courier";
+			ctx2d.fillText(
+				text2,
+				textWidth + 10,
+				0
+			);
+		}
 		ctx2d.restore();
 	}
 	ctx2d.restore();
@@ -1561,7 +1440,7 @@ function render(forceDrawFeatures = false)
 	if (readFeatures && pixelsBuffer) 
 	{
 		renderingIndex = (renderingIndex + 1) % 5;
-		if (!isMobile || forceDrawFeatures || renderingIndex === 0) 
+		if (forceDrawFeatures || renderingIndex === 0) 
 		{
 			let skyWasVisible = sky.visible;
 			sky.visible = false;

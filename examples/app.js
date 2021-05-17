@@ -287,7 +287,7 @@ document.body.style.backgroundColor = darkTheme ? "black" : "white";
 
 renderer.setClearColor(0x000000, 0); // the default
 const rendereroff = new THREE.WebGLRenderer({
-	// canvas: canvas3,
+	canvas: canvas3,
 	antialias: false,
 	alpha: false,
 	powerPreference: "high-performance",
@@ -313,7 +313,7 @@ function createSky()
 		rayleigh: 0.5,
 		mieCoefficient: 0.005,
 		mieDirectionalG: 0.7,
-		inclination: 0.39,
+		inclination: 0.48,
 		azimuth: 0.25,
 		exposure: 0.5
 	};
@@ -495,7 +495,24 @@ function updSunPos(lat, lon)
 function setDebugMode(value) 
 {
 	debug = value;
-	render();
+
+	sky.visible = debug;
+	ambientLight.visible = debug;
+	curSunLight.visible = debug;
+	// if (debug) 
+	// {
+		 
+	// 	lod.subdivideDistance = 120;
+	// 	lod.simplifyDistance =150;
+	// }
+	// else 
+	// {
+
+	// 	lod.subdivideDistance = 40;
+	// 	lod.simplifyDistance = 140;
+	// }
+	createMap();
+	onControlUpdate();
 }
 function setDebugGPUPicking(value) 
 {
@@ -530,7 +547,7 @@ function setDebugFeaturePoints(value)
 function setDarkMode(value) 
 {
 	darkTheme = value;
-	customOutline.fsQuad.material.uniforms.outlineColor.value.set(darkTheme ? 0xffffff : 0x000000);
+	outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
 	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
 	render();
 }
@@ -1238,7 +1255,8 @@ controls.addEventListener("control", () =>
 
 const composer = new POSTPROCESSING.EffectComposer(renderer);
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
-composer.addPass(new POSTPROCESSING.EffectPass(camera, new CustomOutlineEffect()));
+const outlineEffect = new CustomOutlineEffect();
+composer.addPass(new POSTPROCESSING.EffectPass(camera, outlineEffect));
 
 // const customOutline = new CustomOutlinePass(
 // 	new THREE.Vector2(window.innerWidth, window.innerHeight),

@@ -21,54 +21,106 @@ Array.prototype.sortOn = function(key)
 		return 0;
 	});
 };
+
+class CustomOutlineEffect extends POSTPROCESSING.Effect 
+{
+
+	constructor() 
+	{
+
+		super("CustomEffect", `
+		uniform vec3 weights;
+		uniform vec3 outlineColor;
+		uniform vec2 multiplierParameters;
+
+		float readZDepth(vec2 uv) {
+			return viewZToOrthographicDepth( getViewZ(readDepth(uv)), cameraNear, cameraFar );
+		}
+		void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
+
+			// outputColor = vec4(inputColor.rgb * weights, inputColor.a);
+			// outputColor = vec4(vec3(viewZToOrthographicDepth( getViewZ(depth), cameraNear, cameraFar )), 1.0);
+			float depthDiff = 0.0;
+			float zdepth = viewZToOrthographicDepth( getViewZ(depth), cameraNear, cameraFar );
+			// depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(1, 0)));
+			depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(-1, 0)));
+			depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(0, 1)));
+			// depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(0, -1)));
+			depthDiff = depthDiff /depth;
+			depthDiff = depthDiff * multiplierParameters.y;
+			depthDiff = pow(depthDiff, multiplierParameters.x);
+			// Combine outline with scene color.
+			vec4 outlineColor = vec4(outlineColor, 1.0);
+			outputColor = vec4(mix(inputColor, outlineColor, depthDiff));
+		}
+`, {
+			attributes: POSTPROCESSING.EffectAttribute.DEPTH,
+			uniforms: new Map([
+				['outlineColor', new THREE.Uniform(new THREE.Color(darkTheme ? 0xffffff : 0x000000))],
+				['multiplierParameters', new THREE.Uniform(new THREE.Vector2(0.6, 30))]
+				// ['multiplierParameters', new THREE.Uniform(new THREE.Vector2(1, 40))]
+				
+			])
+
+		});
+
+	}
+
+}
 // Follows the structure of
 // 		https://github.com/mrdoob/three.js/blob/master/examples/jsm/postprocessing/OutlinePass.js
-class CustomOutlinePass extends THREE.Pass 
+class CustomOutlinePass extends POSTPROCESSING.Pass 
 {
-	constructor(resolution, scene, camera) 
+	constructor() 
 	{
-		super();
+		super('CustomOutlinePass');
 
-		this.renderScene = scene;
-		this.renderCamera = camera;
-		this.resolution = new THREE.Vector2(
-			resolution.x,
-			resolution.y
-		);
+		// this.renderScene = scene;
+		// this.renderCamera = camera;
+		// this.resolution = new THREE.Vector2(
+		// 	resolution.x,
+		// 	resolution.y
+		// );
 
-		this.fsQuad = new THREE.Pass.FullScreenQuad(null);
+		// this.fsQuad = new THREE.Pass.FullScreenQuad(null);
 		this.fsQuad.material = this.createOutlinePostProcessMaterial();
+
+		this.setFullscreenMaterial(this.createOutlinePostProcessMaterial());
 	}
 
-	dispose() 
-	{
-		this.fsQuad.dispose();
-	}
+	// dispose() 
+	// {
+	// 	this.fsQuad.dispose();
+	// }
 
-	setSize(width, height) 
-	{
-		this.resolution.set(width, height);
+	// setSize(width, height) 
+	// {
+	// 	this.resolution.set(width, height);
 
-		this.fsQuad.material.uniforms.screenSize.value.set(width,
-			height,
-			1 / width,
-			1 / height);
+	// 	this.fsQuad.material.uniforms.screenSize.value.set(width,
+	// 		height,
+	// 		1 / width,
+	// 		1 / height);
 
-	}
+	// }
 
-	render(renderer, writeBuffer, readBuffer) 
+	render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest) 
 	{
 
 		// const depthBufferValue = writeBuffer.depthBuffer;
 		// writeBuffer.depthBuffer = false;
 		// renderer.render(this.renderScene, this.renderCamera);
+		const material = this.getFullscreenMaterial();
+		material.uniforms.inputBuffer.value = inputBuffer.texture;
 
-		this.fsQuad.material.uniforms["sceneColorBuffer"].value =
-                        readBuffer.texture;
-		this.fsQuad.material.uniforms["depthBuffer"].value =
-						readBuffer.depthTexture;
-		renderer.setRenderTarget(null);
-		this.fsQuad.render(renderer);
+		renderer.setRenderTarget(this.renderToScreen ? null : outputBuffer);
+		renderer.render(this.scene, this.camera);
+		// this.fsQuad.material.uniforms["sceneColorBuffer"].value =
+		//                 readBuffer.texture;
+		// this.fsQuad.material.uniforms["depthBuffer"].value =
+		// 				readBuffer.depthTexture;
+		// renderer.setRenderTarget(null);
+		// this.fsQuad.render(renderer);
 		// writeBuffer.depthBuffer = depthBufferValue;
 	}
 
@@ -89,7 +141,7 @@ class CustomOutlinePass extends THREE.Pass
 		#include <packing>
 		// The above include imports "perspectiveDepthToViewZ"
 		// and other GLSL functions from ThreeJS we need for reading depth.
-		uniform sampler2D sceneColorBuffer;
+		uniform sampler2D inputBuffer;
 		uniform sampler2D depthBuffer;
 		uniform float cameraNear;
 		uniform float cameraFar;
@@ -100,9 +152,15 @@ class CustomOutlinePass extends THREE.Pass
 		
 		// Helper functions for reading from depth buffer.
 		float readDepth (sampler2D depthSampler, vec2 coord) {
-			float fragCoordZ = texture2D(depthSampler, coord).x;
-			float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
-			return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
+			// #if DEPTH_PACKING == 3201
+				// float fragCoordZ = unpackRGBAToDepth(texture2D(depthSampler, coord));
+				// float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
+				// return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
+			// #else
+				float fragCoordZ = texture2D(depthSampler, coord).x;
+				float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
+				return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
+			// #endif
 		}
 			float getPixelDepth(int x, int y) {
 			// screenSize.zw is pixel size 
@@ -114,7 +172,7 @@ class CustomOutlinePass extends THREE.Pass
 		}
 		void main() {
 			// vec4 sceneColor = vec4(1.0,1.0,1.0,1.0);
-			vec4 sceneColor = texture2D(sceneColorBuffer, vUv);
+			vec4 sceneColor = texture2D(inputBuffer, vUv);
 			float delta =  1.0;
 			int delta2 = 1;
 
@@ -128,7 +186,7 @@ class CustomOutlinePass extends THREE.Pass
 			// Apply multiplier & bias to each
 				float depthBias = multiplierParameters.x;
 			float depthMultiplier = multiplierParameters.y;
-				depthDiff = depthDiff * depthMultiplier;
+				depthDiff = depthDiff * multiplierParameters.y;
 			depthDiff = saturate(depthDiff);
 			if (depthDiff < 0.04) {
 				depthDiff = pow(depthDiff, depthBias);
@@ -139,6 +197,7 @@ class CustomOutlinePass extends THREE.Pass
 			gl_FragColor = vec4(mix(sceneColor, outlineColor, depthDiff));
 
 			// optional depth rendering
+			//  gl_FragColor = vec4(vec3(depth), 1.0);
 			//  gl_FragColor = vec4(vec3(1.0 -pow(1.0-depth, 2.0)), 1.0);
 
 		}
@@ -147,15 +206,19 @@ class CustomOutlinePass extends THREE.Pass
 
 	createOutlinePostProcessMaterial() 
 	{
-		return new THREE.ShaderMaterial({
+		const result = new THREE.ShaderMaterial({
+			type: "CustomMaterial",
+			toneMapped: false,
+			depthWrite: true,
+			depthTest: false,
 			uniforms: {
-				sceneColorBuffer: {},
-				depthBuffer: {},
+				inputBuffer: {},
+				// depthBuffer: {},
 				outlineColor: {value: new THREE.Color(darkTheme ? 0xffffff : 0x000000)},
 				// 4 scalar values packed in one uniform: depth multiplier, depth bias, and same for normals.
 				multiplierParameters: {value: new THREE.Vector2(2, 4)},
-				cameraNear: {value: this.renderCamera.near},
-				cameraFar: {value: this.renderCamera.far},
+				// cameraNear: {value: this.renderCamera.near},
+				// cameraFar: {value: this.renderCamera.far},
 				screenSize: {
 					value: new THREE.Vector4(
 						this.resolution.x,
@@ -165,9 +228,12 @@ class CustomOutlinePass extends THREE.Pass
 					)
 				}
 			},
+			blending: THREE.NoBlending,
 			vertexShader: this.vertexShader,
 			fragmentShader: this.fragmentShader
 		});
+		result.toneMapped = false;
+		return result;
 	}
 }
 
@@ -189,7 +255,7 @@ let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
 const FAR = 200000;
 const TEXT_HEIGHT = 200;
 let currentPosition;
-let elevation = 1000;
+let elevation = 7000;
 const clock = new THREE.Clock();
 const position = {lat: 45.19177, lon: 5.72831};
 // updSunPos(45.16667, 5.71667);
@@ -211,14 +277,17 @@ const renderer = new THREE.WebGLRenderer({
 	// logarithmicDepthBuffer: true,
 	antialias: AA,
 	alpha: true,
-	powerPreference: "high-performance"
+	powerPreference: "high-performance",
+	antialias: false,
+	stencil: false,
+	depth: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
 document.body.style.backgroundColor = darkTheme ? "black" : "white";
 
 renderer.setClearColor(0x000000, 0); // the default
 const rendereroff = new THREE.WebGLRenderer({
-	canvas: canvas3,
+	// canvas: canvas3,
 	antialias: false,
 	alpha: false,
 	powerPreference: "high-performance",
@@ -244,7 +313,7 @@ function createSky()
 		rayleigh: 0.5,
 		mieCoefficient: 0.005,
 		mieDirectionalG: 0.7,
-		inclination: 0.48,
+		inclination: 0.39,
 		azimuth: 0.25,
 		exposure: 0.5
 	};
@@ -268,11 +337,11 @@ function createSky()
 }
 
 const scene = new THREE.Scene();
-const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 1);
+const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
 const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
 const sky = createSky();
-// scene.add(sky);
-// scene.add(ambientLight);
+scene.add(sky);
+scene.add(ambientLight);
 // scene.add(directionalLight);
 sky.visible = debug;
 ambientLight.visible = debug;
@@ -543,7 +612,7 @@ class LocalHeightProvider extends Geo.MapProvider
 		super();
 		this.name = "local";
 		this.minZoom = 5;
-		this.maxZoom = 11;
+		this.maxZoom = 15;
 	}
 
 	async fetchTile(zoom, x, y) 
@@ -651,7 +720,8 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 	material.userData = {
                 		heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
                 		drawNormals: {value: 0},
-                		drawTexture: {value: 0},
+                		computeNormals: {value: debug},
+                		drawTexture: {value: debug},
                 		drawBlack: {value: 0},
                 		zoomlevel: {value: level},
                 		exageration: {value: exageration},
@@ -668,7 +738,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
                 		// Vertex variables
                 		shader.vertexShader =
 							`
-						uniform bool drawNormals;
+						uniform bool computeNormals;
 						uniform float exageration;
 						uniform float zoomlevel;
 						uniform sampler2D heightMap;
@@ -755,7 +825,7 @@ class MaterialHeightShader extends Geo.MapHeightNode
 							float width = float(size.x);
 							float height = float(size.y);
 							float e = getElevationMean(vUv, width,height);
-							if (drawNormals) {
+							if (computeNormals ) {
 								float offset = 1.0 / width;
 								float a = getElevationMean(vUv + vec2(-offset, -offset), width,height);
 								float b = getElevationMean(vUv + vec2(0, -offset), width,height);
@@ -1072,10 +1142,11 @@ function createMap()
 	}
 	// const provider = new Geo.OpenStreetMapsProvider('https://a.tile.openstreetmap.org');
 	const provider = debug
-		? new Geo.OpenStreetMapsProvider('https://a.tile.openstreetmap.org')
+		? new Geo.DebugProvider('https://a.tile.openstreetmap.org')
+		// ? new Geo.OpenStreetMapsProvider('https://a.tile.openstreetmap.org')
 		: new EmptyProvider();
 	provider.minZoom = 5;
-	provider.maxZoom = 11;
+	provider.maxZoom = 15	;
 	map = new Geo.MapView(
 		null,
 		// new Geo.DebugProvider(),
@@ -1155,26 +1226,26 @@ controls.addEventListener("control", () =>
 });
 
 // Create a multi render target with Float buffers
-const renderTarget = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight );
-renderTarget.texture.format = THREE.RGBAFormat;
-renderTarget.texture.minFilter = THREE.NearestFilter;
-renderTarget.texture.magFilter = THREE.NearestFilter;
-renderTarget.texture.generateMipmaps = false;
-renderTarget.stencilBuffer = false;
-renderTarget.depthBuffer = true;
-renderTarget.depthTexture = new THREE.DepthTexture();
-renderTarget.depthTexture.type = renderer.capabilities.isWebGL2 ? THREE.FloatType : THREE.UnsignedShortType;
+// const renderTarget = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight );
+// renderTarget.texture.format = THREE.RGBAFormat;
+// renderTarget.texture.minFilter = THREE.NearestFilter;
+// renderTarget.texture.magFilter = THREE.NearestFilter;
+// renderTarget.texture.generateMipmaps = false;
+// renderTarget.stencilBuffer = false;
+// renderTarget.depthBuffer = true;
+// renderTarget.depthTexture = new THREE.DepthTexture();
+// renderTarget.depthTexture.type = renderer.capabilities.isWebGL2 ? THREE.FloatType : THREE.UnsignedShortType;
 
-const composer = new THREE.EffectComposer(renderer, renderTarget);
-const renderPass = new THREE.RenderPass(scene, camera);
-composer.addPass(renderPass);
+const composer = new POSTPROCESSING.EffectComposer(renderer);
+composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
+composer.addPass(new POSTPROCESSING.EffectPass(camera, new CustomOutlineEffect()));
 
-const customOutline = new CustomOutlinePass(
-	new THREE.Vector2(window.innerWidth, window.innerHeight),
-	scene,
-	camera
-);
-composer.addPass(customOutline);
+// const customOutline = new CustomOutlinePass(
+// 	new THREE.Vector2(window.innerWidth, window.innerHeight),
+// 	scene,
+// 	camera
+// );
+// composer.addPass(customOutline);
 
 let minYPx = 0;
 function roundToNearest( number, multiple )
@@ -1217,7 +1288,7 @@ document.body.onresize = function()
 	pointBufferTarget.setSize(offWidth, offHeight);
 
 	composer.setSize(width, height);
-	composer.setPixelRatio(1);
+	// composer.setPixelRatio(1);
 	camera.aspect = width / height;
 	camera.updateProjectionMatrix();
 
@@ -1347,6 +1418,7 @@ function drawFeatures()
 		const f = featuresToDraw[index];
 		
 		if (f.y < TEXT_HEIGHT
+			|| f.z >= FAR
 			 || f.z / f.properties.ele > FAR / 3000
 			 ) 
 		{
@@ -1473,6 +1545,8 @@ function render(forceDrawFeatures = false)
 		renderingIndex = (renderingIndex + 1) % 5;
 		if (!isMobile || forceDrawFeatures || renderingIndex === 0) 
 		{
+			let skyWasVisible = sky.visible;
+			sky.visible = false;
 			applyOnNodes((node) => 
 			{
 				node.material.userData.drawBlack.value = true;
@@ -1492,6 +1566,7 @@ function render(forceDrawFeatures = false)
 				node.material.userData.drawBlack.value = false;
 				node.objectsHolder.visible = debugFeaturePoints;
 			});
+			sky.visible = skyWasVisible;
 		}
 		drawFeatures();
 	}
@@ -1511,7 +1586,7 @@ function render(forceDrawFeatures = false)
 	}
 	else 
 	{
-		composer.render();
+		composer.render(clock.getDelta());
 	}
 	stats.end();
 }

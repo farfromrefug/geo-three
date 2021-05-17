@@ -40,7 +40,7 @@ export class LODFrustum extends LODRadial
 	{
 		if (!(node instanceof MapNode)) 
 		{
-			return;
+			return true;
 		}
 		node.getWorldPosition(position);
 		var distance = pov.distanceTo(position);
@@ -51,10 +51,18 @@ export class LODFrustum extends LODRadial
 		 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
 		{
 			const subdivded = node.subdivide();
+			let allLoading = true;
 			if (subdivded) 
 			{
-				subdivded.forEach((n) => {return this.handleNode(n, minZoom, maxZoom, true);});
+				subdivded.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
+				if (!allLoading) 
+				{
+					// one not in frustum let still hide ourself
+					node.isMesh = false;
+					node.objectsHolder.visible = false;
+				}
 			}
+			return allLoading;
 		}
 		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
 		{
@@ -63,6 +71,7 @@ export class LODFrustum extends LODRadial
 			{
 				this.handleNode(simplified, minZoom, maxZoom);
 			}
+			return true;
 		}
 		else if (inFrustum && minZoom <= node.level )
 		{
@@ -70,6 +79,11 @@ export class LODFrustum extends LODRadial
 			{
 				node.loadTexture();
 			}
+			return true;
+		}
+		else
+		{
+			return node.isReady;
 		}
 	}
 

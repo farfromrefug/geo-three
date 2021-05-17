@@ -2025,7 +2025,7 @@
 		{
 			if (!(node instanceof MapNode$1)) 
 			{
-				return;
+				return true;
 			}
 			node.getWorldPosition(position);
 			var distance = pov.distanceTo(position);
@@ -2036,10 +2036,18 @@
 			 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
 			{
 				const subdivded = node.subdivide();
+				let allLoading = true;
 				if (subdivded) 
 				{
-					subdivded.forEach((n) => {return this.handleNode(n, minZoom, maxZoom, true);});
+					subdivded.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
+					if (!allLoading) 
+					{
+						// one not in frustum let still hide ourself
+						node.isMesh = false;
+						node.objectsHolder.visible = false;
+					}
 				}
+				return allLoading;
 			}
 			else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
 			{
@@ -2048,6 +2056,7 @@
 				{
 					this.handleNode(simplified, minZoom, maxZoom);
 				}
+				return true;
 			}
 			else if (inFrustum && minZoom <= node.level )
 			{
@@ -2055,6 +2064,11 @@
 				{
 					node.loadTexture();
 				}
+				return true;
+			}
+			else
+			{
+				return node.isReady;
 			}
 		}
 

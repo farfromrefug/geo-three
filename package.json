@@ -2,20 +2,19 @@
 	"name": "geo-three",
 	"version": "0.0.7",
 	"description": "geo-three is library for tile based geographic map layers in with three.js supporting selective loading/unloading of real-time generated 3D tiles",
-	"main": "build/geo-three.js",
+	"main": "build/geo-three.min.js",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/tentone/geothree.git"
 	},
 	"scripts": {
-		"start": "rollup -c rollup.dev.js",
-		"watch": "rollup -c rollup.dev.js --watch",
+		"start": "rollup -c rollup.dev.js --watch",
 		"build": "rollup -c",
 		"docs": "jsdoc -d docs -r source",
 		"uglify": "uglifyjs --compress --mangle --output build/geo-three.min.js -- build/geo-three.js",
 		"pub": "npm run build && npm run docs && npm publish --access public .",
-		"lint": "eslint --ext .js ./source",
-		"lint-fix": "eslint --ext .js --fix ./source"
+		"lint": "eslint --ext .ts .",
+		"lint-fix": "eslint --ext .ts --fix ."
 	},
 	"keywords": [
 		"maps",
@@ -33,19 +32,26 @@
 		"three": ">0.80.0"
 	},
 	"devDependencies": {
-		"@babel/core": "7.13.16",
-		"@babel/eslint-parser": "7.13.14",
-		"@babel/plugin-syntax-class-properties": "7.12.13",
-		"@babel/preset-env": "7.13.15",
-		"@rollup/plugin-strip": "~2.0.0",
-		"@types/three": "^0.127.1",
-		"eslint": "~7.25.0",
-		"jsdoc": "~3.6.4",
-		"rollup": "~2.46.0",
-		"rollup-plugin-livereload": "~2.0.0",
+		"@loaders.gl/mvt": "^2.3.13",
+		"@rollup/plugin-commonjs": "^19.0.0",
+		"@rollup/plugin-node-resolve": "^13.0.0",
+		"@rollup/plugin-strip": "^2.0.1",
+		"@rollup/plugin-typescript": "^8.2.1",
+		"@types/node": "~14.6.4",
+		"@typescript-eslint/eslint-plugin": "^4.22.1",
+		"@typescript-eslint/parser": "^4.22.1",
+		"camera-controls": "^1.28.3",
+		"eslint": "^7.26.0",
+		"eslint-plugin-import": "~2.22.1",
+		"eslint-plugin-tsdoc": "^0.2.11",
+		"eslint-plugin-typescript": "~0.14.0",
+		"postprocessing": "^6.21.5",
+		"rollup": "^2.48.0",
+		"rollup-plugin-livereload": "^2.0.0",
 		"rollup-plugin-serve": "2.0.0-beta.0",
-		"rollup-plugin-uglify": "~6.0.4",
+		"stats.js": "^0.17.0",
 		"three": "~0.125.0",
-		"uglify-js": "~3.9.2"
+		"typedoc": "^0.20.36",
+		"typescript": "^4.2.4"
 	}
 }

@@ -1,5 +1,3 @@
-
-(function(l, r) { if (l.getElementById('livereloadscript')) return; r = l.createElement('script'); r.async = 1; r.src = '//' + (window.location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1'; r.id = 'livereloadscript'; l.getElementsByTagName('head')[0].appendChild(r) })(window.document);
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('three')) :
 	typeof define === 'function' && define.amd ? define(['exports', 'three'], factory) :
@@ -243,8 +241,6 @@
 	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
 	        super(parentNode, mapView, location, level, x, y, MapPlaneNode.GEOMETRY, new three.MeshBasicMaterial({ wireframe: false }));
 	        this.matrixAutoUpdate = false;
-	        this.isMesh = true;
-	        this.visible = false;
 	    }
 	    initialize() {
 	        this.loadTexture();
@@ -295,8 +291,6 @@
 	        this.heightLoaded = false;
 	        this.textureLoaded = false;
 	        this.matrixAutoUpdate = false;
-	        this.isMesh = true;
-	        this.visible = false;
 	    }
 	    initialize() {
 	        this.loadTexture();
@@ -326,27 +320,28 @@
 	    }
 	    createChildNodes() {
 	        const level = this.level + 1;
+	        var prototype = Object.getPrototypeOf(this);
 	        const x = this.x * 2;
 	        const y = this.y * 2;
-	        let node = new MapHeightNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+	        let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(-0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapHeightNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	        node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapHeightNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(-0.25, 0, 0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapHeightNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(0.25, 0, 0.25);
 	        this.add(node);
@@ -449,8 +444,6 @@
 	        super(parentNode, mapView, location, level, x, y, MapSphereNode.createGeometry(level, x, y), new three.MeshBasicMaterial({ wireframe: false }));
 	        this.applyScaleNode();
 	        this.matrixAutoUpdate = false;
-	        this.isMesh = true;
-	        this.visible = false;
 	    }
 	    initialize() {
 	        this.loadTexture();
@@ -816,6 +809,21 @@
 	    static get(url, onLoad, onError) {
 	        const xhr = new XMLHttpRequest();
 	        xhr.overrideMimeType('text/plain');
+	        xhr.open('GET', url, true);
+	        if (onLoad !== undefined) {
+	            xhr.onload = function () {
+	                onLoad(xhr.response);
+	            };
+	        }
+	        if (onError !== undefined) {
+	            xhr.onerror = onError;
+	        }
+	        xhr.send(null);
+	        return xhr;
+	    }
+	    static getRaw(url, onLoad, onError) {
+	        var xhr = new XMLHttpRequest();
+	        xhr.responseType = 'arraybuffer';
 	        xhr.open('GET', url, true);
 	        if (onLoad !== undefined) {
 	            xhr.onload = function () {
@@ -1261,6 +1269,7 @@
 	exports.OpenMapTilesProvider = OpenMapTilesProvider;
 	exports.OpenStreetMapsProvider = OpenStreetMapsProvider;
 	exports.UnitsUtils = UnitsUtils;
+	exports.XHRUtils = XHRUtils;
 
 	Object.defineProperty(exports, '__esModule', { value: true });
 

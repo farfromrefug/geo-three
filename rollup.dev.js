@@ -3,11 +3,29 @@ import livereload from 'rollup-plugin-livereload';
 import typescript from '@rollup/plugin-typescript';
 import {resolve} from 'path';
 import * as fs from 'fs';
+import {nodeResolve} from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
 
-export default {
+export default [{
 	input: 'source/Main.ts',
 	plugins: [
-		typescript(),
+		typescript()
+	],
+	output: [
+		{
+			globals: {'three': 'THREE'},
+			format: 'umd',
+			name: 'Geo',
+			file: 'build/geo-three.js',
+			indent: '\t'
+		}
+	]
+}, {
+	input: 'webapp/app.ts',
+	plugins: [
+		typescript({tsconfig: 'webapp/tsconfig.json'}),
+		nodeResolve(),
+		commonjs(),
 		serve({
 			open: true,
 			contentBase: '.',
@@ -25,11 +43,10 @@ export default {
 	],
 	output: [
 		{
-			globals: {'three': 'THREE'},
-			format: 'umd',
-			name: 'Geo',
-			file: 'build/geo-three.js',
-			indent: '\t'
+			esModule: false,
+			format: 'iife',
+			name: 'webapp',
+			file: 'example/app.js'
 		}
 	]
-};
+}];

@@ -1,15 +1,17 @@
 import serve from 'rollup-plugin-serve';
 import livereload from 'rollup-plugin-livereload';
+import typescript from '@rollup/plugin-typescript';
 import {resolve} from 'path';
 import * as fs from 'fs';
 
 export default {
 	input: 'source/Main.ts',
 	plugins: [
+		typescript(),
 		serve({
 			open: true,
 			contentBase: '.',
-			openPage: '/examples',
+			openPage: '/example',
 			host: '0.0.0.0',
 			port: 8081,
 			// headers: {'Access-Control-Allow-Origin': '*'},

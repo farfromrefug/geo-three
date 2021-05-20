@@ -5,9 +5,7 @@ export default {
 	input: 'source/Main.ts',
 	plugins: [
 		typescript(),
-		strip({
-			functions: ['assert.*', 'debug', 'alert']
-		})
+		strip({functions: ['assert.*', 'debug', 'alert']})
 	],
 
 	output: [

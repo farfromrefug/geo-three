@@ -4,7 +4,7 @@ import {resolve} from 'path';
 import * as fs from 'fs';
 
 export default {
-	input: 'source/Main.js',
+	input: 'source/Main.ts',
 	plugins: [
 		serve({
 			open: true,

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+    <style>
+        body {
+            margin: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden;
+        }
+        video {
+            object-fit: cover;
+            position: absolute;
+            min-width: 100%;
+            min-height: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #elevationSlider {
+            position: absolute;
+            top: 40%;
+            right:-10vh;
+            width:30vh;
+            overflow: hidden;
+            transform: rotate(270deg);
+        }
+    </style>
+    <head>
+        <meta
+            id="Viewport"
+            name="viewport"
+            content="initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5, user-scalable=no"
+        />
+        <title></title>
+    </head>
+    <body>
+        <video id="video" autoplay playsinline></video>
+        <canvas
+            id="canvas"
+            style="
+            background-color:transparent;
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+            "
+        ></canvas>
+        <canvas
+            id="canvas3"
+            style="
+                visibility: hidden;
+                position: absolute;
+                pointer-events: none;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+            "
+        ></canvas>
+        <canvas
+            id="canvas4"
+            style="
+                position: absolute;
+                pointer-events: none;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+            "
+        ></canvas>
+
+        <form style="position: absolute; bottom: 20px; right: 20px">
+            <input type="checkbox" id="debugMap" name="debugMap" />
+            <label for="debugMap"> Debug Map</label><br />
+            <input type="checkbox" id="normalsInDebug" name="normalsInDebug" />
+            <label for="normalsInDebug"> normalsInDebug</label><br />
+            <input
+                type="checkbox"
+                id="debugGPUPicking"
+                name="debugGPUPicking"
+            />
+            <label for="debugGPUPicking"> Debug GPU Picking</label><br />
+            <input
+                type="checkbox"
+                id="readFeatures"
+                name="readFeatures"
+                checked
+            />
+            <label for="drawFeatures"> Enable read features</label><br />
+            <input
+                type="checkbox"
+                id="debugFeaturePoints"
+                name="debugFeaturePoints"
+            />
+            <label for="readFeatures"> Debug Draw Features</label><br />
+            <input type="checkbox" id="drawLines" name="drawLines" checked />
+            <label for="readFeatures"> Enable drawing features</label><br />
+            <input type="checkbox" id="camera" name="camera" />
+            <label for="camera"> Enable camera</label><br />
+            <input type="checkbox" id="darkmode" name="darkmode" />
+            <label for="darkmode"> Dark Mode</label><br />
+            <input type="checkbox" id="drawElevations" name="drawElevations" />
+            <label for="drawElevations"> peaks elevation</label><br />
+        </form>
+
+        <input id="elevationSlider" type="range" min="0" max="9000"/>
+
+        <!-- Code -->
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/stats.js@0.17.0/build/stats.min.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/build/three.min.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/controls/OrbitControls.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/controls/FirstPersonControls.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/postprocessing/EffectComposer.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/postprocessing/RenderPass.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/postprocessing/ShaderPass.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/shaders/CopyShader.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/controls/DeviceOrientationControls.js";
+            "
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/three@0.127.0/examples/js/objects/Sky.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/@loaders.gl/images@2.3.13/dist/dist.min.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/@loaders.gl/mvt@2.3.13/dist/dist.min.js"
+        ></script>
+
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/@loaders.gl/terrain@2.3.13/dist/dist.min.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/camera-controls@1.28.1/dist/camera-controls.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="https://unpkg.com/postprocessing@6.21.5/build/postprocessing.js"
+        ></script>
+        <script type="text/javascript" src="../build/geo-three.js"></script>
+        <script type="text/javascript" src="./app.js"></script>
+    </body>
+</html>

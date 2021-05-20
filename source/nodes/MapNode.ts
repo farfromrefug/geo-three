@@ -1,5 +1,8 @@
-import {LinearFilter, Material, Mesh, MeshPhongMaterial, RGBFormat, Texture, Vector3, BufferGeometry} from 'three';
+import {Group, LinearFilter, Material, Mesh, MeshPhongMaterial, Object3D, RGBFormat, Texture, Vector3, BufferGeometry} from 'three';
 import {MapView} from '../MapView';
+
+
+const autoLod = true;
 
 /**
  * Represents a map tile node inside of the tiles quad-tree
@@ -43,6 +46,12 @@ export abstract class MapNode extends Mesh
 	public y: number;
 
 	/**
+	 * Variable indicating if it ready to be drawn
+	 * which means it has started or loaded its textures
+	 */
+	public isReady:boolean;
+
+	/**
 	 * Indicates how many children nodes where loaded.
 	 */
 	public nodesLoaded: number = 0;
@@ -70,6 +79,11 @@ export abstract class MapNode extends Mesh
 	 */
 	// @ts-ignore
 	public isMesh: boolean = true;
+
+	/**
+	 * Three Group used to show markers or anything related to the tile.
+	 */
+	public objectsHolder: THREE.Group;
 
 	/**
 	 * Base geometry is attached to the map viewer object.
@@ -122,6 +136,7 @@ export abstract class MapNode extends Mesh
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
 	public static BOTTOM_RIGHT: number = 3;
+	
 
 	public constructor(parentNode: MapNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = null, material: Material = null) 
 	{
@@ -135,7 +150,15 @@ export abstract class MapNode extends Mesh
 		this.x = x;
 		this.y = y;
 
-		this.initialize();
+		this.visible = autoLod;
+		this.isReady = !autoLod;
+
+		this.objectsHolder = new Group();
+		this.objectsHolder.visible = autoLod;
+		this.add(this.objectsHolder);
+		if (!autoLod) {
+			this.initialize();
+		}
 	}
 
 	/**
@@ -157,10 +180,10 @@ export abstract class MapNode extends Mesh
 	 *
 	 * Uses the createChildNodes() method to actually create the child nodes that represent the next tree level.
 	 */
-	public subdivide(): void 
+	public subdivide(): Object3D[] 
 	{
 		const maxZoom = Math.min(this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
-		if (this.children.length > 0 || this.level + 1 > maxZoom || this.parentNode !== null && this.parentNode.nodesLoaded < MapNode.CHILDRENS) 
+		if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) 
 		{
 			return;
 		}
@@ -170,11 +193,28 @@ export abstract class MapNode extends Mesh
 		if (this.childrenCache !== null) 
 		{
 			this.isMesh = false;
+			this.objectsHolder.visible = false;
+			this.childrenCache.forEach((n) => 
+			{
+				if (n !== this.objectsHolder) 
+				{
+					n.isMesh = !n.subdivided;
+					n.objectsHolder.visible = !n.subdivided;
+				}
+			});
 			this.children = this.childrenCache;
+			if (autoLod) 
+			{
+				return this.children;
+			}
 		}
 		else 
 		{
 			this.createChildNodes();
+			if (autoLod) 
+			{
+				return this.children;
+			}
 		}
 	}
 
@@ -185,16 +225,22 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
 	 */
-	public simplify(): void
+	public simplify()
 	{
-		if (this.children.length > 0) 
+		if (!this.subdivided) 
 		{
-			this.childrenCache = this.children;
+			return;
 		}
+		this.childrenCache = this.children;
 
+		this.objectsHolder.visible = true;
 		this.subdivided = false;
 		this.isMesh = true;
-		this.children = [];
+		this.children = [this.objectsHolder];
+		if (autoLod) 
+		{
+			return this;
+		}
 	}
 
 	/**
@@ -204,17 +250,20 @@ export abstract class MapNode extends Mesh
 	 */
 	public loadTexture(): void
 	{
+		this.isReady = true;
 		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
 		{
-			const texture = new Texture(image as any);
-			texture.generateMipmaps = false;
-			texture.format = RGBFormat;
-			texture.magFilter = LinearFilter;
-			texture.minFilter = LinearFilter;
-			texture.needsUpdate = true;
-			
-			// @ts-ignore
-			this.material.map = texture;
+			if (image) {
+				const texture = new Texture(image as any);
+				texture.generateMipmaps = false;
+				texture.format = RGBFormat;
+				texture.magFilter = LinearFilter;
+				texture.minFilter = LinearFilter;
+				texture.needsUpdate = true;
+				
+				// @ts-ignore
+				this.material.map = texture;
+			}
 			this.nodeReady();
 		}).catch(() => 
 		{
@@ -240,28 +289,41 @@ export abstract class MapNode extends Mesh
 	public nodeReady(): void
 	{
 		// Update parent nodes loaded
-		if (this.parentNode !== null) 
+		this.isMesh = true;
+		const parentNode = this.parentNode;
+		if (parentNode !== null) 
 		{
-			this.parentNode.nodesLoaded++;
+			parentNode.nodesLoaded++;
 
-			if (this.parentNode.nodesLoaded >= MapNode.CHILDRENS) 
+			if (parentNode.nodesLoaded >= MapNode.CHILDRENS) 
 			{
-				if (this.parentNode.subdivided === true) 
+				if (parentNode.subdivided === true) 
 				{
-					this.parentNode.isMesh = false;
+					parentNode.isMesh = false;
+					parentNode.objectsHolder.visible = false;
 				}
 
-				for (let i = 0; i < this.parentNode.children.length; i++) 
+				parentNode.children.forEach((child, index) => 
 				{
-					this.parentNode.children[i].visible = true;
-				}
+					if (child !== parentNode.objectsHolder) 
+					{
+						let theNode = child as MapNode;
+						// child.visible = true;
+						// child.objectsHolder.visible = true;
+						// child.visible = true;
+						theNode.isMesh = !theNode.subdivided;
+						theNode.objectsHolder.visible = !theNode.subdivided;
+					}
+				});
 			}
 		}
 		// If its the root object just set visible
-		else 
+		else if (!this.subdivided)
 		{
 			this.visible = true;
+			this.objectsHolder.visible = true;
 		}
+		this.mapView.onNodeReady();
 	}
 
 	/**

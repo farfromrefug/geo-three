@@ -1,6 +1,6 @@
 import {LODRadial} from './LODRadial';
 import {Frustum, Matrix4, Vector3} from 'three';
-import { MapNode } from '../nodes/MapNode';
+import {MapNode} from '../nodes/MapNode';
 
 const projection = new Matrix4();
 const pov = new Vector3();
@@ -39,19 +39,19 @@ export class LODFrustum extends LODRadial
 	public pointOnly: boolean = false;
 
 
-	handleNode(node, minZoom, maxZoom, inFrustum = false) 
+	protected handleNode(node, minZoom, maxZoom, inFrustum = false): boolean
 	{
 		if (!(node instanceof MapNode)) 
 		{
 			return true;
 		}
+
 		node.getWorldPosition(position);
 		var distance = pov.distanceTo(position);
 		distance /= Math.pow(2, 20 - node.level);
 
-		 inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
-		//  console.log('handleNode', node.x, node.y, node.level, distance, inFrustum);
-		 if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
+		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
+		if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
 		{
 			const subdivded = node.subdivide();
 			let allLoading = true;

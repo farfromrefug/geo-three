@@ -49,7 +49,7 @@ export abstract class MapNode extends Mesh
 	 * Variable indicating if it ready to be drawn
 	 * which means it has started or loaded its textures
 	 */
-	public isReady:boolean;
+	public isReady: boolean;
 
 	/**
 	 * Indicates how many children nodes where loaded.
@@ -156,7 +156,8 @@ export abstract class MapNode extends Mesh
 		this.objectsHolder = new Group();
 		this.objectsHolder.visible = autoLod;
 		this.add(this.objectsHolder);
-		if (!autoLod) {
+		if (!autoLod) 
+		{
 			this.initialize();
 		}
 	}
@@ -225,7 +226,7 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
 	 */
-	public simplify()
+	public simplify(): this
 	{
 		if (!this.subdivided) 
 		{
@@ -253,7 +254,8 @@ export abstract class MapNode extends Mesh
 		this.isReady = true;
 		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
 		{
-			if (image) {
+			if (image) 
+			{
 				const texture = new Texture(image as any);
 				texture.generateMipmaps = false;
 				texture.format = RGBFormat;

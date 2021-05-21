@@ -2,8 +2,6 @@ import {Group, LinearFilter, Material, Mesh, MeshPhongMaterial, Object3D, RGBFor
 import {MapView} from '../MapView';
 
 
-const autoLod = true;
-
 /**
  * Represents a map tile node inside of the tiles quad-tree
  *
@@ -150,13 +148,16 @@ export abstract class MapNode extends Mesh
 		this.x = x;
 		this.y = y;
 
-		this.visible = autoLod;
-		this.isReady = !autoLod;
+
+		const autoLoad = mapView.nodeShouldAutoLoad();
+
+		this.visible = !autoLoad;
+		this.isReady = autoLoad;
 
 		this.objectsHolder = new Group();
-		this.objectsHolder.visible = autoLod;
+		this.objectsHolder.visible = !autoLoad;
 		this.add(this.objectsHolder);
-		if (!autoLod) 
+		if (autoLoad) 
 		{
 			this.initialize();
 		}
@@ -167,7 +168,10 @@ export abstract class MapNode extends Mesh
 	 *
 	 * Called automatically by the constructor for child nodes and MapView when a root node is attached to it.
 	 */
-	public initialize(): void {}
+	public initialize(): void 
+	{
+		this.isReady = true;
+	}
 
 	/**
 	 * Create the child nodes to represent the next tree level.
@@ -181,7 +185,7 @@ export abstract class MapNode extends Mesh
 	 *
 	 * Uses the createChildNodes() method to actually create the child nodes that represent the next tree level.
 	 */
-	public subdivide(): Object3D[] 
+	public subdivide(): void
 	{
 		const maxZoom = Math.min(this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
 		if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) 
@@ -204,18 +208,10 @@ export abstract class MapNode extends Mesh
 				}
 			});
 			this.children = this.childrenCache;
-			if (autoLod) 
-			{
-				return this.children;
-			}
 		}
 		else 
 		{
 			this.createChildNodes();
-			if (autoLod) 
-			{
-				return this.children;
-			}
 		}
 	}
 
@@ -226,7 +222,7 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
 	 */
-	public simplify(): this
+	public simplify(): void
 	{
 		if (!this.subdivided) 
 		{
@@ -238,10 +234,6 @@ export abstract class MapNode extends Mesh
 		this.subdivided = false;
 		this.isMesh = true;
 		this.children = [this.objectsHolder];
-		if (autoLod) 
-		{
-			return this;
-		}
 	}
 
 	/**
@@ -251,7 +243,6 @@ export abstract class MapNode extends Mesh
 	 */
 	public loadTexture(): void
 	{
-		this.isReady = true;
 		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
 		{
 			if (image) 

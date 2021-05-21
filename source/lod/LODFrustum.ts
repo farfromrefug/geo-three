@@ -53,11 +53,12 @@ export class LODFrustum extends LODRadial
 		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
 		if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum)
 		{
-			const subdivded = node.subdivide();
+			node.subdivide();
+			const children = node.children;
 			let allLoading = true;
-			if (subdivded) 
+			if (children) 
 			{
-				subdivded.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
+				children.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
 				if (!allLoading) 
 				{
 					// one not in frustum let still hide ourself
@@ -69,10 +70,11 @@ export class LODFrustum extends LODRadial
 		}
 		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
 		{
-			const simplified = node.parentNode.simplify();
-			if (simplified && simplified.level > minZoom) 
+			const parentNode = node.parentNode;
+			parentNode.simplify();
+			if (parentNode.level > minZoom) 
 			{
-				this.handleNode(simplified, minZoom, maxZoom);
+				this.handleNode(parentNode, minZoom, maxZoom);
 			}
 			return true;
 		}

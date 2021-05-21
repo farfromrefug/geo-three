@@ -72,6 +72,8 @@ export class MapView extends Mesh
 
 	public onNodeReady: Function = null;
 
+	public nodeAutoLoad: boolean;
+
 	/**
 	 * Constructor for the map view objects.
 	 *
@@ -79,7 +81,7 @@ export class MapView extends Mesh
 	 * @param provider - Map color tile provider by default a OSM maps provider is used if none specified.
 	 * @param heightProvider - Map height tile provider, by default no height provider is used.
 	 */
-	public constructor(root: (number | MapNode) = MapView.PLANAR, provider: MapProvider = new OpenStreetMapsProvider(), heightProvider: MapProvider = null, onNodeReady?: Function) 
+	public constructor(root: (number | MapNode) = MapView.PLANAR, provider: MapProvider = new OpenStreetMapsProvider(), heightProvider: MapProvider = null, nodeAutoLoad = false, onNodeReady?: Function) 
 	{
 		super(undefined, new MeshBasicMaterial({transparent: true, opacity: 0.0}));
 
@@ -87,6 +89,7 @@ export class MapView extends Mesh
 
 		this.provider = provider;
 		this.heightProvider = heightProvider;
+		this.nodeAutoLoad = nodeAutoLoad;
 
 		if (onNodeReady) 
 		{
@@ -94,6 +97,11 @@ export class MapView extends Mesh
 		}
 		
 		this.setRoot(root);
+	}
+
+	public nodeShouldAutoLoad(): boolean
+	{
+		return this.nodeAutoLoad;
 	}
 
 	/**

@@ -63,6 +63,7 @@ export class MapHeightNode extends MapNode
 
 	public initialize(): void 
 	{
+		super.initialize();
 		this.loadTexture();
 		this.loadHeightGeometry();
 	}

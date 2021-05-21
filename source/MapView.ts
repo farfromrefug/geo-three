@@ -95,6 +95,15 @@ export class MapView extends Mesh
 		{
 			this.onNodeReady = onNodeReady;
 		}
+		else 
+		{
+			// Ajust node configuration depending on the camera distance.
+			// Called everytime before render.
+			this.onBeforeRender = (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group) => 
+			{
+				this.lod.updateLOD(this, camera, renderer, scene);
+			};
+		}
 		
 		this.setRoot(root);
 	}
@@ -202,19 +211,6 @@ export class MapView extends Mesh
 
 		return this;
 	}
-
-	/**
-	 * Ajust node configuration depending on the camera distance.
-	 *
-	 * Called everytime before render.
-	 */
-	public onBeforeRender: (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group)=> void = (renderer, scene, camera, geometry, material, group) => 
-	{
-		if (!this.onNodeReady) 
-		{
-			this.lod.updateLOD(this, camera, renderer, scene);
-		}
-	};
 
 	/**
 	 * Get map meta data from server if supported.

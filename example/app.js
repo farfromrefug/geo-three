@@ -57983,7 +57983,6 @@ var webapp = (function (exports) {
             this.objectsHolder.visible = !autoLoad;
             this.add(this.objectsHolder);
             if (autoLoad) {
-                console.log('initialize');
                 this.initialize();
             }
         }
@@ -58786,22 +58785,19 @@ var webapp = (function (exports) {
              */
             this.root = null;
             this.onNodeReady = null;
-            /**
-             * Ajust node configuration depending on the camera distance.
-             *
-             * Called everytime before render.
-             */
-            this.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
-                if (!this.onNodeReady) {
-                    this.lod.updateLOD(this, camera, renderer, scene);
-                }
-            };
             this.lod = new LODRaycast();
             this.provider = provider;
             this.heightProvider = heightProvider;
             this.nodeAutoLoad = nodeAutoLoad;
             if (onNodeReady) {
                 this.onNodeReady = onNodeReady;
+            }
+            else {
+                // Ajust node configuration depending on the camera distance.
+                // Called everytime before render.
+                this.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+                    this.lod.updateLOD(this, camera, renderer, scene);
+                };
             }
             this.setRoot(root);
         }
@@ -63416,7 +63412,6 @@ var webapp = (function (exports) {
         setNormalsInDebug(!exports.normalsInDebug);
     }
     function setNormalsInDebug(value) {
-        console.log('setNormalsInDebug', value);
         exports.normalsInDebug = value;
         if (map) {
             applyOnNodes((node) => {

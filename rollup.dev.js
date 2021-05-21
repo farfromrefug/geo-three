@@ -19,7 +19,7 @@ export default [{
 			// host: '0.0.0.0',
 			host: '127.0.0.1',
 			port: 8081,
-			// headers: {'Access-Control-Allow-Origin': '*'},
+			headers: {'Access-Control-Allow-Origin': '*'},
 			https: {
 				cert: fs.readFileSync(resolve(__dirname, 'cert.pem')),
 				key: fs.readFileSync(resolve(__dirname, 'key.pem')),

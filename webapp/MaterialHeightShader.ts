@@ -6,8 +6,8 @@ import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {CancelablePromise} from '../source/utils/CancelablePromise';
 import {XHRUtils} from '../source/utils/XHRUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {exageration, normalsInDebug, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render} from './app';
-
+import {exageration, mapMap, normalsInDebug, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render} from './app';
+// import { csm} from './app';
 
 export let currentColor = 0xffffff;
 
@@ -66,6 +66,13 @@ export class MaterialHeightShader extends MapHeightNode
 		});
 		material = MaterialHeightShader.prepareMaterial(material, level);
 		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, material);
+
+		// if (mapView.csm) 
+		// {
+		// mapView.csm.setupMaterial(material);
+		this.castShadow = true;
+		this.receiveShadow = true;
+		// }
 		this.frustumCulled = false;
 		this.exageration = exageration;
 	}
@@ -75,8 +82,8 @@ export class MaterialHeightShader extends MapHeightNode
 		material.userData = {
 			heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
 			drawNormals: {value: normalsInDebug},
-			computeNormals: {value: normalsInDebug || debug},
-			drawTexture: {value: debug},
+			computeNormals: {value: normalsInDebug || debug || mapMap},
+			drawTexture: {value: debug || mapMap},
 			drawBlack: {value: 0},
 			zoomlevel: {value: level},
 			exageration: {value: exageration},
@@ -197,7 +204,7 @@ export class MaterialHeightShader extends MapHeightNode
 					v0.z = (e + d + g + h) / 4.0;
 					v1.z = (e + b + a + d) / 4.0;
 					v2.z = (e + h + i + f) / 4.0;
-					vNormal = (normalize(cross(v2 - v0, v1 - v0)));
+					vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
 				}
 
 				vec3 _transformed = position + e * vec3(0,1,0);
@@ -207,7 +214,6 @@ export class MaterialHeightShader extends MapHeightNode
 				`
 			);
 		};
-
 		return material;
 	}
 

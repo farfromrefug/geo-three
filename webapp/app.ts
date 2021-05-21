@@ -5,19 +5,25 @@ import CameraControls from 'camera-controls';
 // import * as  Stats from 'stats.js';
 
 import * as THREE from 'three';
+import CSM from 'three-csm';
 // @ts-ignore
 window.THREE = THREE;
+
 import {DeviceOrientationControls} from 'three/examples/jsm/controls/DeviceOrientationControls';
 import {Sky} from 'three/examples/jsm/objects/Sky';
 import * as POSTPROCESSING from 'postprocessing';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapView} from '../source/MapView';
 import {MapNode} from '../source/nodes/MapNode';
+import {MapMartiniHeightNode} from '../source/nodes/MapMartiniHeightNode';
 import {DebugProvider} from '../source/providers/DebugProvider';
 import {LODFrustum} from '../source/lod/LODFrustum';
 import {EmptyProvider} from './EmptyProvider';
 import {MaterialHeightShader} from './MaterialHeightShader';
 import {LocalHeightProvider} from './LocalHeightProvider';
+import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider';
+import {SunLight} from './SunLight';
+
 
 class CustomOutlineEffect extends POSTPROCESSING.Effect 
 {
@@ -87,6 +93,7 @@ function ArraySortOn(array, key)
 const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
 
 export let debug = false;
+export let mapMap = true;
 export let debugFeaturePoints = false;
 let debugGPUPicking = false;
 let readFeatures = true;
@@ -150,6 +157,7 @@ const renderer = new THREE.WebGLRenderer({
 	// depth: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
+
 renderer.setClearColor(0x000000, 0);
 const rendereroff = new THREE.WebGLRenderer({
 	canvas: canvas3,
@@ -180,7 +188,7 @@ function createSky()
 		mieDirectionalG: 0.7,
 		inclination: 0.48,
 		azimuth: 0.25,
-		exposure: 0.5
+		exposure: renderer.toneMappingExposure
 	};
 
 	const uniforms = sky.material.uniforms;
@@ -202,17 +210,11 @@ function createSky()
 }
 
 const scene = new THREE.Scene();
-
-const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
-const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
+// const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
+// const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
 const sky = createSky();
 scene.add(sky);
-scene.add(ambientLight);
-// scene.add(directionalLight);
-sky.visible = debug;
-ambientLight.visible = debug;
-curSunLight.visible = debug;
-
+sky.visible = debug || mapMap;
 let devicecontrols;
 let listeningForDeviceSensors = false;
 
@@ -287,9 +289,20 @@ export function setDebugMode(value)
 {
 	debug = value;
 
-	sky.visible = debug;
-	ambientLight.visible = debug;
-	curSunLight.visible = debug;
+	sky.visible = debug || mapMap;
+	sunLight.visible = debug || mapMap;
+	// curSunLight.visible = debug || mapMap;
+	createMap();
+	onControlUpdate();
+}
+export function setMapMode(value) 
+{
+	mapMap = value;
+
+	sky.visible = debug || mapMap;
+	sunLight.visible = debug || mapMap;
+	// ambientLight.visible = debug || mapMap;
+	// curSunLight.visible = debug || mapMap;
 	createMap();
 	onControlUpdate();
 }
@@ -405,7 +418,12 @@ export function toggleCamera()
 
 const debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
 debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
-debugMapCheckBox.value = debugMapCheckBox as any;
+debugMapCheckBox.value = debug as any;
+
+
+const mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
+mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
+mapMapCheckBox.value = mapMap as any;
 
 const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
 debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
@@ -444,6 +462,17 @@ const depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInpu
 depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
 depthBiaisSlider.value = depthBiais as any;
 
+const now = new Date();
+const secondsInDay = now.getHours() * 3600 + now.getMinutes()* 60 + now.getSeconds();
+console.log('secondsInDay', secondsInDay);
+
+
+const dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
+dateSlider.oninput = (event: any) => {return setDate(event.target.value);};
+dateSlider.value = secondsInDay as any;
+const datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
+datelabel.innerText = new Date().toLocaleString();
+
 const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
 cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
 cameraCheckbox.value = showingCamera as any;
@@ -458,6 +487,10 @@ normalsInDebugCheckbox.value = normalsInDebug as any;
 
 function onControlUpdate() 
 {	
+	// if (map.csm) 
+	// {
+	// 	map.csm.update(camera.matrix);
+	// }
 	map.lod.updateLOD(map, camera, renderer, scene);
 	render();
 }
@@ -468,19 +501,36 @@ let map;
 
 function createMap() 
 {
-	if (map !== undefined) 
+	if (map !== undefined)
 	{
 		scene.remove(map);
 	}
-	const provider = debug && !normalsInDebug ? new DebugProvider() : new EmptyProvider();
+	let provider;
+	if (mapMap) 
+	{
+		provider = new OpenStreetMapsProvider('https://a.tile.openstreetmap.fr/osmfr');
+	}
+	else if (debug && !normalsInDebug) 
+	{
+		provider = new DebugProvider();
+	}
+	else 
+	{
+		provider = new EmptyProvider();
+
+	}
 	provider.minZoom = 5;
 	provider.maxZoom = 11;
 
 	map = new MapView(null, provider, new LocalHeightProvider(), false, render);
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
+	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
+	// renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+	// renderer.shadowMap.enabled = mapMap;
+
 }
 
 createMap();
@@ -500,9 +550,55 @@ controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
 controls.saveState();
 
+
+const sunLight = new SunLight(
+	new THREE.Vector2( 45.05, 25.47 ),
+	new THREE.Vector3( 0.0, 0.0, -1.0 ),
+	new THREE.Vector3( 1.0, 0.0, 0.0 ),
+	new THREE.Vector3( 0.0, -1.0, 0.0 )
+);
+camera.add( sunLight as any );
+// camera.add( sunLight.directionalLight );
+// Add an ambient light
+scene.add( new THREE.AmbientLight( 0x333333) );
+scene.add(camera );
+
+// Adjust the directional light's shadow camera dimensions
+// sunLight.directionalLight.shadow.camera.right = 30.0;
+// sunLight.directionalLight.shadow.camera.left = -30.0;
+// sunLight.directionalLight.shadow.camera.top = 30.0;
+// sunLight.directionalLight.shadow.camera.bottom = -30.0;
+// sunLight.directionalLight.shadow.camera.near = camera.near;
+// sunLight.directionalLight.shadow.camera.far = camera.far;
+sunLight.directionalLight.shadow.mapSize.width = 512;
+sunLight.directionalLight.shadow.mapSize.height = 512;
+sunLight.directionalLight.castShadow = true;
+const helper1 = new THREE.DirectionalLightHelper( sunLight.directionalLight, 500 );
+scene.add( helper1 );
+const helper = new THREE.CameraHelper(sunLight.directionalLight.shadow.camera);
+scene.add(helper);
+
+// const axesHelper = new THREE.AxesHelper( 50 );
+// scene.add( axesHelper );
+
+function updateSky() 
+{
+	const phi = Math.PI /2 - sunLight.elevation;
+	const theta = Math.PI - sunLight.azimuth;
+	const sun = new THREE.Vector3();
+	sun.setFromSphericalCoords( 1, phi, theta );
+
+	sky.material.uniforms['sunPosition'].value.copy( sun );
+}
 export function setPosition(coords) 
 {
+
 	currentPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
+	// axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
+	sunLight.setPosition(coords.lat, coords.lon);
+	sunLight.setDate(new Date());
+	updateSky();
+
 	if (coords.altitude) 
 	{
 		elevation = coords.altitude;
@@ -546,6 +642,24 @@ export function setDepthMultiplier(newValue)
 	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier);
 	render();
 }
+
+
+function setDate(secondsInDay) 
+{
+	let date = new Date();
+	const hours = Math.floor(secondsInDay/3600);
+	const minutes = Math.floor((secondsInDay - hours*3600)/ 60);
+	const seconds = secondsInDay - hours*3600 - minutes*60;
+	date.setHours(hours);
+	date.setMinutes(minutes);
+	date.setSeconds(seconds);
+	console.log('setDate', date);
+	sunLight.setDate(date);
+	datelabel.innerText = date.toLocaleString();
+
+	updateSky();
+	render();
+} 
 controls.addEventListener('update', () => 
 {
 	onControlUpdate();
@@ -555,6 +669,14 @@ controls.addEventListener('control', () =>
 	const delta = clock.getDelta();
 	controls.update(delta);
 });
+// export let csm = new CSM({
+// 	maxFar: camera.far,
+// 	cascades: 4,
+// 	shadowMapSize: 1024,
+// 	lightDirection: new THREE.Vector3(1, -1, 1).normalize(),
+// 	camera: camera,
+// 	parent: scene
+// });
 
 const composer = new POSTPROCESSING.EffectComposer(renderer);
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
@@ -853,6 +975,8 @@ export function render(forceDrawFeatures = false)
 		{
 			const skyWasVisible = sky.visible;
 			sky.visible = false;
+			sunLight.visible = false;
+
 
 			applyOnNodes((node) => 
 			{
@@ -874,6 +998,7 @@ export function render(forceDrawFeatures = false)
 				node.objectsHolder.visible = debugFeaturePoints;
 			});
 			sky.visible = skyWasVisible;
+			sunLight.visible = skyWasVisible;
 		}
 		drawFeatures();
 	}
@@ -887,7 +1012,7 @@ export function render(forceDrawFeatures = false)
 		// });
 	}
 
-	if (debug) 
+	if (debug || mapMap) 
 	{
 		renderer.render(scene, camera);
 	}

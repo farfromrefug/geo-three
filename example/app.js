@@ -41734,7 +41734,7 @@ var webapp = (function (exports) {
 
     	start() {
 
-    		this.startTime = now();
+    		this.startTime = now$1();
 
     		this.oldTime = this.startTime;
     		this.elapsedTime = 0;
@@ -41770,7 +41770,7 @@ var webapp = (function (exports) {
 
     		if ( this.running ) {
 
-    			const newTime = now();
+    			const newTime = now$1();
 
     			diff = ( newTime - this.oldTime ) / 1000;
     			this.oldTime = newTime;
@@ -41785,7 +41785,7 @@ var webapp = (function (exports) {
 
     }
 
-    function now() {
+    function now$1() {
 
     	return ( typeof performance === 'undefined' ? Date : performance ).now(); // see #10732
 
@@ -58276,16 +58276,17 @@ var webapp = (function (exports) {
          * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
          */
         loadTexture() {
-            this.isReady = true;
             this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-                const texture = new Texture(image);
-                texture.generateMipmaps = false;
-                texture.format = RGBFormat;
-                texture.magFilter = LinearFilter;
-                texture.minFilter = LinearFilter;
-                texture.needsUpdate = true;
-                // @ts-ignore
-                this.material.emissiveMap = texture;
+                if (image) {
+                    const texture = new Texture(image);
+                    texture.generateMipmaps = false;
+                    texture.format = RGBFormat;
+                    texture.magFilter = LinearFilter;
+                    texture.minFilter = LinearFilter;
+                    texture.needsUpdate = true;
+                    // @ts-ignore
+                    this.material.map = texture;
+                }
             }).finally(() => {
                 this.textureLoaded = true;
                 this.nodeReady();
@@ -62814,6 +62815,7 @@ var webapp = (function (exports) {
         }
     }
 
+    // import { csm} from './app';
     let currentColor = 0xffffff;
     class MaterialHeightShader extends MapHeightNode {
         constructor(parentNode, mapView, location, level, x, y) {
@@ -62825,6 +62827,12 @@ var webapp = (function (exports) {
             });
             material = MaterialHeightShader.prepareMaterial(material, level);
             super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, material);
+            // if (mapView.csm) 
+            // {
+            // mapView.csm.setupMaterial(material);
+            this.castShadow = true;
+            this.receiveShadow = true;
+            // }
             this.frustumCulled = false;
             this.exageration = exports.exageration;
         }
@@ -62848,8 +62856,8 @@ var webapp = (function (exports) {
             material.userData = {
                 heightMap: { value: MaterialHeightShader.EMPTY_TEXTURE },
                 drawNormals: { value: exports.normalsInDebug },
-                computeNormals: { value: exports.normalsInDebug || exports.debug },
-                drawTexture: { value: exports.debug },
+                computeNormals: { value: exports.normalsInDebug || exports.debug || exports.mapMap },
+                drawTexture: { value: exports.debug || exports.mapMap },
                 drawBlack: { value: 0 },
                 zoomlevel: { value: level },
                 exageration: { value: exports.exageration },
@@ -62961,7 +62969,7 @@ var webapp = (function (exports) {
 					v0.z = (e + d + g + h) / 4.0;
 					v1.z = (e + b + a + d) / 4.0;
 					v2.z = (e + h + i + f) / 4.0;
-					vNormal = (normalize(cross(v2 - v0, v1 - v0)));
+					vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
 				}
 
 				vec3 _transformed = position + e * vec3(0,1,0);
@@ -63174,6 +63182,319 @@ var webapp = (function (exports) {
         }
     }
 
+    /* eslint-disable camelcase */
+    class SunLight extends Object3D {
+        constructor(coordinates_, north_, east_, nadir_, sun_distance_ = 1.0) {
+            super();
+            this.type = 'SunLight';
+            this.coordinates = new Vector2();
+            this.coordinates.copy(coordinates_);
+            this.north = new Vector3();
+            this.north.copy(north_);
+            this.east = new Vector3();
+            this.east.copy(east_);
+            this.nadir = new Vector3();
+            this.nadir.copy(nadir_);
+            this.sun_distance = sun_distance_;
+            this.azimuth = 0.0;
+            this.elevation = 0.0;
+            this.localDate = new Date();
+            this.hingeObject = new Object3D();
+            this.add(this.hingeObject);
+            this.directionalLight = new DirectionalLight();
+            // this.directionalLight.castShadow = true;
+            this.hingeObject.add(this.directionalLight);
+            // Add the target of the directional light as a child to this object, so
+            // that it's world matrix gets updated automatically when this object's
+            // position is changed.
+            this.add(this.directionalLight.target);
+        }
+        setPosition(lat, long) {
+            this.coordinates.set(lat, long);
+            this.updateOrientation(false);
+            this.updateDirectionalLight();
+        }
+        setDate(date) {
+            this.localDate = date;
+            this.updateOrientation(false);
+            this.updateDirectionalLight();
+        }
+        // Updates the orientation of the sun using the coordinates and the localDate
+        updateOrientation(update_date_ = true) {
+            // Update the local date if the parameter is true (true by default).
+            if (update_date_) {
+                this.localDate = new Date();
+            }
+            const solarOrientationCalculator = new SolarOrientationCalculator();
+            const sunOrientation = solarOrientationCalculator.getAzEl(this.coordinates.x, this.coordinates.y, this.localDate);
+            this.azimuth = this._degreesToRadians(sunOrientation.azimuth);
+            this.elevation = this._degreesToRadians(sunOrientation.elevation);
+        }
+        // Updates the directional light based on the sun's orientation and the north
+        // vector. This is actually done by rotating the hinge object which is the
+        // parent of the directional light.
+        updateDirectionalLight() {
+            // If the elevation is less than zero, there is no sun light.
+            // Starting from 2 degrees, start fading the light
+            const FADE_OUT_THRESHOLD = 2.0;
+            const elevationDegrees = 180.0 * this.elevation / Math.PI;
+            if (elevationDegrees <= 0.0) {
+                this.directionalLight.intensity = 0.0;
+                return;
+            }
+            else if (elevationDegrees <= FADE_OUT_THRESHOLD) {
+                this.directionalLight.intensity = elevationDegrees / FADE_OUT_THRESHOLD;
+            }
+            else {
+                this.directionalLight.intensity = 1.0;
+            }
+            // Reset the hingeObject's quaternion
+            this.hingeObject.quaternion.copy(new Quaternion());
+            this.directionalLight.position.copy(this.north);
+            this.directionalLight.position.multiplyScalar(this.sun_distance);
+            const rotator = new Quaternion();
+            rotator.setFromAxisAngle(this.east, this.elevation);
+            this.hingeObject.quaternion.premultiply(rotator);
+            rotator.setFromAxisAngle(this.nadir, this.azimuth);
+            this.hingeObject.quaternion.premultiply(rotator);
+        }
+        _degreesToRadians(degrees_) {
+            return degrees_ % 360.0 * Math.PI / 180.0;
+        }
+    }
+    // ---
+    // Methods for calculating the Sun's orientation go below
+    // ---
+    class SolarOrientationCalculator {
+        constructor() {
+            this.a = 'some val';
+        }
+        getAzEl(lat_, lon_, date_ = new Date()) {
+            const jday = this._getJD(date_);
+            const tl = this._getTimeLocal(date_);
+            const tz = date_.getTimezoneOffset() / -60;
+            const total = jday + tl / 1440.0 - tz / 24.0;
+            const T = this._calcTimeJulianCent(total);
+            return this._calcAzEl(false, T, tl, lat_, lon_, tz);
+        }
+        _getJD(date_ = new Date()) {
+            let docmonth = date_.getMonth() + 1;
+            let docday = date_.getDate();
+            let docyear = date_.getFullYear();
+            if (this._isLeapYear(docyear) && docmonth === 2) {
+                if (docday > 29) {
+                    docday = 29;
+                }
+            }
+            else {
+                // 1900 is a known non-leap year
+                if (docday > new Date(1900, docmonth, 0).getDate()) {
+                    docday = new Date(1900, docmonth, 0).getDate();
+                }
+            }
+            if (docmonth <= 2) {
+                docyear -= 1;
+                docmonth += 12;
+            }
+            const A = Math.floor(docyear / 100);
+            const B = 2 - A + Math.floor(A / 4);
+            const JD = Math.floor(365.25 * (docyear + 4716)) +
+                Math.floor(30.6001 * (docmonth + 1)) + docday + B - 1524.5;
+            return JD;
+        }
+        // Returns the current time in minutes without the DST
+        _getTimeLocal(date_ = new Date()) {
+            let totalMinutes = 0.0;
+            totalMinutes += 60.0 * date_.getHours();
+            // TODO
+            // Remove one hour if DST is in effect
+            totalMinutes += date_.getMinutes();
+            totalMinutes += date_.getSeconds() / 60.0;
+            return totalMinutes;
+        }
+        _calcTimeJulianCent(jd) {
+            const T = (jd - 2451545.0) / 36525.0;
+            return T;
+        }
+        _calcAzEl(output, T, localtime, latitude, longitude, zone) {
+            const result = { 'azimuth': 0.0, 'elevation': 0.0 };
+            const eqTime = this._calcEquationOfTime(T);
+            const theta = this._calcSunDeclination(T);
+            const solarTimeFix = eqTime + 4.0 * longitude - 60.0 * zone;
+            this._calcSunRadVector(T);
+            let trueSolarTime = localtime + solarTimeFix;
+            while (trueSolarTime > 1440) {
+                trueSolarTime -= 1440;
+            }
+            let hourAngle = trueSolarTime / 4.0 - 180.0;
+            if (hourAngle < -180) {
+                hourAngle += 360.0;
+            }
+            const haRad = this._degToRad(hourAngle);
+            let csz = Math.sin(this._degToRad(latitude)) *
+                Math.sin(this._degToRad(theta)) + Math.cos(this._degToRad(latitude)) *
+                Math.cos(this._degToRad(theta)) * Math.cos(haRad);
+            if (csz > 1.0) {
+                csz = 1.0;
+            }
+            else if (csz < -1.0) {
+                csz = -1.0;
+            }
+            const zenith = this._radToDeg(Math.acos(csz));
+            const azDenom = Math.cos(this._degToRad(latitude)) *
+                Math.sin(this._degToRad(zenith));
+            if (Math.abs(azDenom) > 0.001) {
+                let azRad = (Math.sin(this._degToRad(latitude)) *
+                    Math.cos(this._degToRad(zenith)) -
+                    Math.sin(this._degToRad(theta))) / azDenom;
+                if (Math.abs(azRad) > 1.0) {
+                    if (azRad < 0) {
+                        azRad = -1.0;
+                    }
+                    else {
+                        azRad = 1.0;
+                    }
+                }
+                var azimuth = 180.0 - this._radToDeg(Math.acos(azRad));
+                if (hourAngle > 0.0) {
+                    azimuth = -azimuth;
+                }
+            }
+            else {
+                if (latitude > 0.0) {
+                    azimuth = 180.0;
+                }
+                else {
+                    azimuth = 0.0;
+                }
+            }
+            if (azimuth < 0.0) {
+                azimuth += 360.0;
+            }
+            const exoatmElevation = 90.0 - zenith;
+            // Atmospheric Refraction correction
+            if (exoatmElevation > 85.0) {
+                var refractionCorrection = 0.0;
+            }
+            else {
+                const te = Math.tan(this._degToRad(exoatmElevation));
+                if (exoatmElevation > 5.0) {
+                    var refractionCorrection = 58.1 / te - 0.07 / (te * te * te) +
+                        0.000086 / (te * te * te * te * te);
+                }
+                else if (exoatmElevation > -0.575) {
+                    var refractionCorrection = 1735.0 + exoatmElevation *
+                        (-518.2 + exoatmElevation * (103.4 + exoatmElevation *
+                            (-12.79 + exoatmElevation * 0.711)));
+                }
+                else {
+                    var refractionCorrection = -20.774 / te;
+                }
+                refractionCorrection = refractionCorrection / 3600.0;
+            }
+            const solarZen = zenith - refractionCorrection;
+            result.azimuth = Math.floor(azimuth * 100 + 0.5) / 100.0;
+            result.elevation = Math.floor((90.0 - solarZen) * 100 + 0.5) / 100.0;
+            return result;
+        }
+        _isLeapYear(yr) {
+            return yr % 4 === 0 && yr % 100 !== 0 || yr % 400 === 0;
+        }
+        _radToDeg(angleRad) {
+            return 180.0 * angleRad / Math.PI;
+        }
+        _degToRad(angleDeg) {
+            return Math.PI * angleDeg / 180.0;
+        }
+        _calcEquationOfTime(t) {
+            const epsilon = this._calcObliquityCorrection(t);
+            const l0 = this._calcGeomMeanLongSun(t);
+            const e = this._calcEccentricityEarthOrbit(t);
+            const m = this._calcGeomMeanAnomalySun(t);
+            let y = Math.tan(this._degToRad(epsilon) / 2.0);
+            y *= y;
+            const sin2l0 = Math.sin(2.0 * this._degToRad(l0));
+            const sinm = Math.sin(this._degToRad(m));
+            const cos2l0 = Math.cos(2.0 * this._degToRad(l0));
+            const sin4l0 = Math.sin(4.0 * this._degToRad(l0));
+            const sin2m = Math.sin(2.0 * this._degToRad(m));
+            const Etime = y * sin2l0 - 2.0 * e * sinm + 4.0 * e * y * sinm * cos2l0 -
+                0.5 * y * y * sin4l0 - 1.25 * e * e * sin2m;
+            return this._radToDeg(Etime) * 4.0; // in minutes of time
+        }
+        _calcSunDeclination(t) {
+            const e = this._calcObliquityCorrection(t);
+            const lambda = this._calcSunApparentLong(t);
+            const sint = Math.sin(this._degToRad(e)) * Math.sin(this._degToRad(lambda));
+            const theta = this._radToDeg(Math.asin(sint));
+            return theta; // in degree
+        }
+        _calcSunRadVector(t) {
+            const v = this._calcSunTrueAnomaly(t);
+            const e = this._calcEccentricityEarthOrbit(t);
+            const R = 1.000001018 * (1 - e * e) /
+                (1 + e * Math.cos(this._degToRad(v)));
+            return R; // in AU
+        }
+        _calcObliquityCorrection(t) {
+            const e0 = this._calcMeanObliquityOfEcliptic(t);
+            const omega = 125.04 - 1934.136 * t;
+            const e = e0 + 0.00256 * Math.cos(this._degToRad(omega));
+            return e; // in degree
+        }
+        _calcSunApparentLong(t) {
+            const o = this._calcSunTrueLong(t);
+            const omega = 125.04 - 1934.136 * t;
+            const lambda = o - 0.00569 - 0.00478 * Math.sin(this._degToRad(omega));
+            return lambda; // in degrees
+        }
+        _calcGeomMeanLongSun(t) {
+            let L0 = 280.46646 + t * (36000.76983 + t * 0.0003032);
+            while (L0 > 360.0) {
+                L0 -= 360.0;
+            }
+            while (L0 < 0.0) {
+                L0 += 360.0;
+            }
+            return L0; // in degrees
+        }
+        _calcEccentricityEarthOrbit(t) {
+            const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+            return e; // unitless
+        }
+        _calcGeomMeanAnomalySun(t) {
+            const M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+            return M; // in degrees
+        }
+        _calcSunTrueAnomaly(t) {
+            const m = this._calcGeomMeanAnomalySun(t);
+            const c = this._calcSunEqOfCenter(t);
+            const v = m + c;
+            return v; // in degrees
+        }
+        _calcMeanObliquityOfEcliptic(t) {
+            const seconds = 21.448 - t * (46.8150 + t * (0.00059 - t * 0.001813));
+            const e0 = 23.0 + (26.0 + seconds / 60.0) / 60.0;
+            return e0; // in degrees
+        }
+        _calcSunTrueLong(t) {
+            const l0 = this._calcGeomMeanLongSun(t);
+            const c = this._calcSunEqOfCenter(t);
+            const O = l0 + c;
+            return O; // in degrees
+        }
+        _calcSunEqOfCenter(t) {
+            const m = this._calcGeomMeanAnomalySun(t);
+            const mrad = this._degToRad(m);
+            const sinm = Math.sin(mrad);
+            const sin2m = Math.sin(mrad + mrad);
+            const sin3m = Math.sin(mrad + mrad + mrad);
+            const C = sinm * (1.914602 - t * (0.004817 + 0.000014 * t)) + sin2m *
+                (0.019993 - 0.000101 * t) + sin3m * 0.000289;
+            return C; // in degrees
+        }
+    }
+
     /* eslint-disable @typescript-eslint/no-unused-expressions */
     // @ts-ignore
     window.THREE = THREE;
@@ -63232,6 +63553,7 @@ var webapp = (function (exports) {
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
     exports.debug = false;
+    exports.mapMap = true;
     exports.debugFeaturePoints = false;
     let debugGPUPicking = false;
     let readFeatures = true;
@@ -63315,7 +63637,7 @@ var webapp = (function (exports) {
             mieDirectionalG: 0.7,
             inclination: 0.48,
             azimuth: 0.25,
-            exposure: 0.5
+            exposure: renderer.toneMappingExposure
         };
         const uniforms = sky.material.uniforms;
         uniforms['turbidity'].value = effectController.turbidity;
@@ -63332,15 +63654,11 @@ var webapp = (function (exports) {
         return sky;
     }
     const scene = new Scene();
-    const ambientLight = new HemisphereLight(0xffeeb1, 0x080820, 0.7);
-    const curSunLight = new SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
+    // const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
+    // const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
     const sky = createSky();
     scene.add(sky);
-    scene.add(ambientLight);
-    // scene.add(directionalLight);
-    sky.visible = exports.debug;
-    ambientLight.visible = exports.debug;
-    curSunLight.visible = exports.debug;
+    sky.visible = exports.debug || exports.mapMap;
     let devicecontrols;
     let listeningForDeviceSensors = false;
     function onSensorUpdate() {
@@ -63395,9 +63713,18 @@ var webapp = (function (exports) {
     }
     function setDebugMode(value) {
         exports.debug = value;
-        sky.visible = exports.debug;
-        ambientLight.visible = exports.debug;
-        curSunLight.visible = exports.debug;
+        sky.visible = exports.debug || exports.mapMap;
+        sunLight.visible = exports.debug || exports.mapMap;
+        // curSunLight.visible = debug || mapMap;
+        createMap();
+        onControlUpdate();
+    }
+    function setMapMode(value) {
+        exports.mapMap = value;
+        sky.visible = exports.debug || exports.mapMap;
+        sunLight.visible = exports.debug || exports.mapMap;
+        // ambientLight.visible = debug || mapMap;
+        // curSunLight.visible = debug || mapMap;
         createMap();
         onControlUpdate();
     }
@@ -63486,7 +63813,10 @@ var webapp = (function (exports) {
     }
     const debugMapCheckBox = document.getElementById('debugMap');
     debugMapCheckBox.onchange = (event) => { return setDebugMode(event.target.checked); };
-    debugMapCheckBox.value = debugMapCheckBox;
+    debugMapCheckBox.value = exports.debug;
+    const mapMapCheckBox = document.getElementById('mapMap');
+    mapMapCheckBox.onchange = (event) => { return setMapMode(event.target.checked); };
+    mapMapCheckBox.value = exports.mapMap;
     const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking');
     debugGPUPickingCheckbox.onchange = (event) => { return setDebugGPUPicking(event.target.checked); };
     debugGPUPickingCheckbox.value = debugGPUPicking;
@@ -63517,6 +63847,14 @@ var webapp = (function (exports) {
     const depthBiaisSlider = document.getElementById('depthBiaisSlider');
     depthBiaisSlider.oninput = (event) => { return setDepthBiais(event.target.value); };
     depthBiaisSlider.value = exports.depthBiais;
+    const now = new Date();
+    const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    console.log('secondsInDay', secondsInDay);
+    const dateSlider = document.getElementById('dateSlider');
+    dateSlider.oninput = (event) => { return setDate(event.target.value); };
+    dateSlider.value = secondsInDay;
+    const datelabel = document.getElementById('dateLabel');
+    datelabel.innerText = new Date().toLocaleString();
     const cameraCheckbox = document.getElementById('camera');
     cameraCheckbox.onchange = (event) => { return toggleCamera(); };
     cameraCheckbox.value = showingCamera;
@@ -63527,6 +63865,10 @@ var webapp = (function (exports) {
     normalsInDebugCheckbox.onchange = (event) => { return toggleNormalsInDebug(); };
     normalsInDebugCheckbox.value = exports.normalsInDebug;
     function onControlUpdate() {
+        // if (map.csm) 
+        // {
+        // 	map.csm.update(camera.matrix);
+        // }
         map.lod.updateLOD(map, camera, renderer, scene);
         render();
     }
@@ -63538,14 +63880,26 @@ var webapp = (function (exports) {
         if (map !== undefined) {
             scene.remove(map);
         }
-        const provider = exports.debug && !exports.normalsInDebug ? new DebugProvider() : new EmptyProvider();
+        let provider;
+        if (exports.mapMap) {
+            provider = new OpenStreetMapsProvider('https://a.tile.openstreetmap.fr/osmfr');
+        }
+        else if (exports.debug && !exports.normalsInDebug) {
+            provider = new DebugProvider();
+        }
+        else {
+            provider = new EmptyProvider();
+        }
         provider.minZoom = 5;
         provider.maxZoom = 11;
         map = new MapView(null, provider, new LocalHeightProvider(), false, render);
         map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
+        // map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
         map.lod = lod;
         map.updateMatrixWorld(true);
         scene.add(map);
+        // renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // renderer.shadowMap.enabled = mapMap;
     }
     createMap();
     const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 100, FAR);
@@ -63562,8 +63916,41 @@ var webapp = (function (exports) {
     controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
     controls.verticalDragToForward = true;
     controls.saveState();
+    const sunLight = new SunLight(new Vector2(45.05, 25.47), new Vector3(0.0, 0.0, -1.0), new Vector3(1.0, 0.0, 0.0), new Vector3(0.0, -1.0, 0.0));
+    camera.add(sunLight);
+    // camera.add( sunLight.directionalLight );
+    // Add an ambient light
+    scene.add(new AmbientLight(0x333333));
+    scene.add(camera);
+    // Adjust the directional light's shadow camera dimensions
+    // sunLight.directionalLight.shadow.camera.right = 30.0;
+    // sunLight.directionalLight.shadow.camera.left = -30.0;
+    // sunLight.directionalLight.shadow.camera.top = 30.0;
+    // sunLight.directionalLight.shadow.camera.bottom = -30.0;
+    // sunLight.directionalLight.shadow.camera.near = camera.near;
+    // sunLight.directionalLight.shadow.camera.far = camera.far;
+    sunLight.directionalLight.shadow.mapSize.width = 512;
+    sunLight.directionalLight.shadow.mapSize.height = 512;
+    sunLight.directionalLight.castShadow = true;
+    const helper1 = new DirectionalLightHelper(sunLight.directionalLight, 500);
+    scene.add(helper1);
+    const helper = new CameraHelper(sunLight.directionalLight.shadow.camera);
+    scene.add(helper);
+    // const axesHelper = new THREE.AxesHelper( 50 );
+    // scene.add( axesHelper );
+    function updateSky() {
+        const phi = Math.PI / 2 - sunLight.elevation;
+        const theta = Math.PI - sunLight.azimuth;
+        const sun = new Vector3();
+        sun.setFromSphericalCoords(1, phi, theta);
+        sky.material.uniforms['sunPosition'].value.copy(sun);
+    }
     function setPosition(coords) {
         currentPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
+        // axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
+        sunLight.setPosition(coords.lat, coords.lon);
+        sunLight.setDate(new Date());
+        updateSky();
         if (coords.altitude) {
             elevation = coords.altitude;
         }
@@ -63598,6 +63985,20 @@ var webapp = (function (exports) {
         outlineEffect.uniforms.get('multiplierParameters').value.set(exports.depthBiais, exports.depthMultiplier);
         render();
     }
+    function setDate(secondsInDay) {
+        let date = new Date();
+        const hours = Math.floor(secondsInDay / 3600);
+        const minutes = Math.floor((secondsInDay - hours * 3600) / 60);
+        const seconds = secondsInDay - hours * 3600 - minutes * 60;
+        date.setHours(hours);
+        date.setMinutes(minutes);
+        date.setSeconds(seconds);
+        console.log('setDate', date);
+        sunLight.setDate(date);
+        datelabel.innerText = date.toLocaleString();
+        updateSky();
+        render();
+    }
     controls.addEventListener('update', () => {
         onControlUpdate();
     });
@@ -63605,6 +64006,14 @@ var webapp = (function (exports) {
         const delta = clock.getDelta();
         controls.update(delta);
     });
+    // export let csm = new CSM({
+    // 	maxFar: camera.far,
+    // 	cascades: 4,
+    // 	shadowMapSize: 1024,
+    // 	lightDirection: new THREE.Vector3(1, -1, 1).normalize(),
+    // 	camera: camera,
+    // 	parent: scene
+    // });
     const composer = new postprocessing.exports.EffectComposer(renderer);
     composer.addPass(new postprocessing.exports.RenderPass(scene, camera));
     const outlineEffect = new CustomOutlineEffect();
@@ -63812,6 +64221,7 @@ var webapp = (function (exports) {
             if (forceDrawFeatures || renderingIndex === 0) {
                 const skyWasVisible = sky.visible;
                 sky.visible = false;
+                sunLight.visible = false;
                 applyOnNodes((node) => {
                     node.material.userData.drawBlack.value = true;
                     node.objectsHolder.visible = true;
@@ -63828,10 +64238,11 @@ var webapp = (function (exports) {
                     node.objectsHolder.visible = exports.debugFeaturePoints;
                 });
                 sky.visible = skyWasVisible;
+                sunLight.visible = skyWasVisible;
             }
             drawFeatures();
         }
-        if (exports.debug) {
+        if (exports.debug || exports.mapMap) {
             renderer.render(scene, camera);
         }
         else {
@@ -63853,6 +64264,7 @@ var webapp = (function (exports) {
     exports.setDrawLines = setDrawLines;
     exports.setElevation = setElevation;
     exports.setExageration = setExageration;
+    exports.setMapMode = setMapMode;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
     exports.setReadFeatures = setReadFeatures;

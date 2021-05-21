@@ -307,7 +307,6 @@ export function toggleNormalsInDebug()
 }
 export function setNormalsInDebug(value) 
 {
-	console.log('setNormalsInDebug', value);
 	normalsInDebug = value;
 	if (map) 
 	{

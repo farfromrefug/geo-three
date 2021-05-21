@@ -57983,6 +57983,7 @@ var webapp = (function (exports) {
             this.objectsHolder.visible = !autoLoad;
             this.add(this.objectsHolder);
             if (autoLoad) {
+                console.log('initialize');
                 this.initialize();
             }
         }

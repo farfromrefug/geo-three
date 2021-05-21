@@ -62826,7 +62826,7 @@ var webapp = (function (exports) {
             material = MaterialHeightShader.prepareMaterial(material, level);
             super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, material);
             this.frustumCulled = false;
-            this.exageration = exageration;
+            this.exageration = exports.exageration;
         }
         static getGeometry(level) {
             let size = MaterialHeightShader.GEOMETRY_SIZE;
@@ -62852,7 +62852,7 @@ var webapp = (function (exports) {
                 drawTexture: { value: exports.debug },
                 drawBlack: { value: 0 },
                 zoomlevel: { value: level },
-                exageration: { value: exageration },
+                exageration: { value: exports.exageration },
                 elevationDecoder: { value: exports.elevationDecoder }
             };
             material.onBeforeCompile = (shader) => {
@@ -63030,8 +63030,6 @@ var webapp = (function (exports) {
                                 result = result.filter((f) => { return f.properties.name && f.properties.class === 'peak'; });
                                 if (result.length > 0) {
                                     const features = [];
-                                    const exageration = this
-                                        .exageration;
                                     var colors = [];
                                     var points = [];
                                     // var sizes = [];
@@ -63055,9 +63053,7 @@ var webapp = (function (exports) {
                                             f.y = this.y;
                                             const color = f.color = currentColor--;
                                             featuresByColor[color] = f;
-                                            f.localCoords.y =
-                                                f.properties.ele *
-                                                    exageration;
+                                            f.localCoords.y = 1;
                                             colors.push((color >> 16 & 255) /
                                                 255, (color >> 8 & 255) /
                                                 255, (color & 255) / 255);
@@ -63071,22 +63067,25 @@ var webapp = (function (exports) {
                                         geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
                                         geometry.setAttribute('elevation', new Float32BufferAttribute(elevations, 1));
                                         var mesh = new Points(geometry, new ShaderMaterial({
+                                            uniforms: { exageration: { value: exports.exageration } },
                                             vertexShader: `
-													attribute float elevation;
-													attribute vec4 color;
-													varying vec4 vColor;
-													void main() {
-														vColor = color;
-														vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-													//  gl_PointSize =  floor(elevation / 1000.0)* 1.0;
-													//  gl_PointSize = gl_Position.z _ ;
-													gl_Position = projectionMatrix * mvPosition;
-													gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
-									}
-												`,
-                                            fragmentShader: `
+												attribute float elevation;
+												attribute vec4 color;
+												uniform float exageration;
 												varying vec4 vColor;
 												void main() {
+													vColor = color;
+													float exagerated  = elevation * exageration;
+													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
+													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
+													//  gl_PointSize = gl_Position.z _ ;
+													gl_Position = projectionMatrix * mvPosition;
+													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+												}
+												`,
+                                            fragmentShader: `
+											varying vec4 vColor;
+											void main() {
 													gl_FragColor = vec4( vColor );
 												}
 												`,
@@ -63209,7 +63208,7 @@ var webapp = (function (exports) {
                 attributes: postprocessing.exports.EffectAttribute.DEPTH,
                 uniforms: new Map([
                     ['outlineColor', new Uniform(new Color(darkTheme ? 0xffffff : 0x000000))],
-                    ['multiplierParameters', new Uniform(new Vector2(0.6, 30))]
+                    ['multiplierParameters', new Uniform(new Vector2(exports.depthBiais, exports.depthMultiplier))]
                     // ['multiplierParameters', new THREE.Uniform(new THREE.Vector2(1, 40))]
                 ])
             });
@@ -63242,7 +63241,9 @@ var webapp = (function (exports) {
     exports.normalsInDebug = false;
     let featuresToShow = [];
     const tempVector = new Vector3(0, 0, 0);
-    const exageration = 1.7;
+    exports.exageration = 1.7;
+    exports.depthBiais = 0.6;
+    exports.depthMultiplier = 30;
     const featuresByColor = {};
     // let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
     exports.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
@@ -63507,6 +63508,15 @@ var webapp = (function (exports) {
     const elevationSlider = document.getElementById('elevationSlider');
     elevationSlider.oninput = (event) => { return setElevation(event.target.value); };
     elevationSlider.value = elevation;
+    const exagerationSlider = document.getElementById('exagerationSlider');
+    exagerationSlider.oninput = (event) => { return setExageration(event.target.value); };
+    exagerationSlider.value = exports.exageration;
+    const depthMultiplierSlider = document.getElementById('depthMultiplierSlider');
+    depthMultiplierSlider.oninput = (event) => { return setDepthMultiplier(event.target.value); };
+    depthMultiplierSlider.value = exports.depthMultiplier;
+    const depthBiaisSlider = document.getElementById('depthBiaisSlider');
+    depthBiaisSlider.oninput = (event) => { return setDepthBiais(event.target.value); };
+    depthBiaisSlider.value = exports.depthBiais;
     const cameraCheckbox = document.getElementById('camera');
     cameraCheckbox.onchange = (event) => { return toggleCamera(); };
     cameraCheckbox.value = showingCamera;
@@ -63557,14 +63567,36 @@ var webapp = (function (exports) {
         if (coords.altitude) {
             elevation = coords.altitude;
         }
-        controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y);
+        controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y);
         controls.update(clock.getDelta());
     }
     function setElevation(newValue) {
         elevation = newValue;
         controls.getTarget(tempVector);
-        controls.moveTo(tempVector.x, elevation * exageration, tempVector.z);
+        controls.moveTo(tempVector.x, elevation * exports.exageration, tempVector.z);
         controls.update(clock.getDelta());
+    }
+    function setExageration(newValue) {
+        exports.exageration = newValue;
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.exageration.value = exports.exageration;
+                if (node.objectsHolder && node.objectsHolder.children.length > 0) {
+                    node.objectsHolder.children[0].material.uniforms.exageration.value = exports.exageration;
+                }
+            });
+        }
+        render();
+    }
+    function setDepthBiais(newValue) {
+        exports.depthBiais = newValue;
+        outlineEffect.uniforms.get('multiplierParameters').value.set(exports.depthBiais, exports.depthMultiplier);
+        render();
+    }
+    function setDepthMultiplier(newValue) {
+        exports.depthMultiplier = newValue;
+        outlineEffect.uniforms.get('multiplierParameters').value.set(exports.depthBiais, exports.depthMultiplier);
+        render();
     }
     controls.addEventListener('update', () => {
         onControlUpdate();
@@ -63658,7 +63690,7 @@ var webapp = (function (exports) {
         const minDistance = 24;
         featuresToShow = featuresToShow.map((f) => {
             const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-            tempVector.set(coords.x, f.properties.ele * exageration, -coords.y);
+            tempVector.set(coords.x, f.properties.ele * exports.exageration, -coords.y);
             const vector = toScreenXY(tempVector);
             return Object.assign(Object.assign({}, f), { x: vector.x, y: vector.y, z: vector.z });
         });
@@ -63809,16 +63841,18 @@ var webapp = (function (exports) {
     }
     setPosition(position);
 
-    exports.exageration = exageration;
     exports.featuresByColor = featuresByColor;
     exports.render = render;
     exports.setDarkMode = setDarkMode;
     exports.setDebugFeaturePoints = setDebugFeaturePoints;
     exports.setDebugGPUPicking = setDebugGPUPicking;
     exports.setDebugMode = setDebugMode;
+    exports.setDepthBiais = setDepthBiais;
+    exports.setDepthMultiplier = setDepthMultiplier;
     exports.setDrawElevations = setDrawElevations;
     exports.setDrawLines = setDrawLines;
     exports.setElevation = setElevation;
+    exports.setExageration = setExageration;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
     exports.setReadFeatures = setReadFeatures;

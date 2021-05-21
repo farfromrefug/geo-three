@@ -55,7 +55,7 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 				attributes: POSTPROCESSING.EffectAttribute.DEPTH,
 				uniforms: new Map([
 					['outlineColor', new THREE.Uniform(new THREE.Color(darkTheme ? 0xffffff : 0x000000))],
-					['multiplierParameters', new THREE.Uniform(new THREE.Vector2(0.6, 30))]
+					['multiplierParameters', new THREE.Uniform(new THREE.Vector2(depthBiais, depthMultiplier))]
 					// ['multiplierParameters', new THREE.Uniform(new THREE.Vector2(1, 40))]
 				])
 			}
@@ -96,7 +96,9 @@ let darkTheme = false;
 export let normalsInDebug = false;
 let featuresToShow = [];
 const tempVector = new THREE.Vector3(0, 0, 0);
-export const exageration = 1.7;
+export let exageration = 1.7;
+export let depthBiais =0.6;
+export let depthMultiplier =30;
 export const featuresByColor = {};
 // let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
@@ -432,6 +434,16 @@ const elevationSlider = document.getElementById('elevationSlider') as HTMLInputE
 elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
 elevationSlider.value = elevation as any;
 
+const exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
+exagerationSlider.oninput = (event: any) => {return setExageration(event.target.value);};
+exagerationSlider.value = exageration as any;
+const depthMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
+depthMultiplierSlider.oninput = (event: any) => {return setDepthMultiplier(event.target.value);};
+depthMultiplierSlider.value = depthMultiplier as any;
+const depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInputElement;
+depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
+depthBiaisSlider.value = depthBiais as any;
+
 const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
 cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
 cameraCheckbox.value = showingCamera as any;
@@ -504,6 +516,35 @@ export function setElevation(newValue)
 	controls.getTarget(tempVector);
 	controls.moveTo(tempVector.x, elevation * exageration, tempVector.z);
 	controls.update(clock.getDelta());
+}
+export function setExageration(newValue) 
+{
+	exageration = newValue;
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.exageration.value = exageration;
+			if (node.objectsHolder && node.objectsHolder.children.length > 0) 
+			{
+				node.objectsHolder.children[0].material.uniforms.exageration.value = exageration;
+
+			}
+		});
+	}
+	render();
+}
+export function setDepthBiais(newValue) 
+{
+	depthBiais = newValue;
+	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier);
+	render();
+}
+export function setDepthMultiplier(newValue) 
+{
+	depthMultiplier = newValue;
+	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier);
+	render();
 }
 controls.addEventListener('update', () => 
 {

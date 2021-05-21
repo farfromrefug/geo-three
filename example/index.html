@@ -2,9 +2,9 @@
 <html>
     <style>
         body {
-            margin: 0; 
-            width: 100%; 
-            height: 100%; 
+            margin: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
         }
         video {
@@ -20,10 +20,43 @@
         #elevationSlider {
             position: absolute;
             top: 40%;
-            right:-10vh;
-            width:30vh;
+            right: -10vh;
+            width: 30vh;
             overflow: hidden;
             transform: rotate(270deg);
+        }
+        #exagerationSlider {
+            position: absolute;
+            bottom: 0px;
+            width: 20vh;
+            overflow: hidden;
+        }
+        #depthMultiplierSlider {
+            position: absolute;
+            bottom: 80px;
+            width: 20vh;
+            overflow: hidden;
+        }
+        #depthBiaisSlider {
+            position: absolute;
+            bottom: 40px;
+            width: 20vh;
+            overflow: hidden;
+        }
+        #exagerationSliderLabel {
+            position: absolute;
+            bottom: 20px;
+            width: 20vh;
+        }
+        #depthMultiplierSliderLabel {
+            position: absolute;
+            bottom: 100px;
+            width: 20vh;
+        }
+        #depthBiaisSliderLabel {
+            position: absolute;
+            bottom: 60px;
+            width: 20vh;
         }
     </style>
     <head>
@@ -39,7 +72,7 @@
         <canvas
             id="canvas"
             style="
-            background-color:transparent;
+                background-color: transparent;
                 position: absolute;
                 top: 0px;
                 left: 0px;
@@ -105,10 +138,16 @@
             <label for="drawElevations"> peaks elevation</label><br />
         </form>
 
-        <input id="elevationSlider" type="range" min="0" max="9000"/>
+        <input id="elevationSlider" type="range" min="0" max="9000" />
+        <label id="exagerationSliderLabel"> exageration</label><br />
+        <input id="exagerationSlider" type="range" min="0" max="4" step="0.01" />
+        <label id="depthMultiplierSliderLabel"> depthMultiplier</label><br />
+        <input id="depthMultiplierSlider" type="range" min="0" max="1000"  step="0.1"/>
+        <label id="depthBiaisSliderLabel"> depthBiais</label><br />
+        <input id="depthBiaisSlider" type="range" min="0" max="10" step="0.01" />
 
         <!-- Code -->
-        
+
         <script type="text/javascript" src="./app.js"></script>
     </body>
 </html>

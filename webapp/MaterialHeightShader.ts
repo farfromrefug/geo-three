@@ -299,8 +299,6 @@ export class MaterialHeightShader extends MapHeightNode
 							if (result.length > 0) 
 							{
 								const features = [];
-								const exageration = this
-									.exageration;
 								var colors = [];
 								var points = [];
 								// var sizes = [];
@@ -337,9 +335,7 @@ export class MaterialHeightShader extends MapHeightNode
 										f.y = this.y;
 										const color = f.color = currentColor--;
 										featuresByColor[color] = f;
-										f.localCoords.y =
-											f.properties.ele *
-											exageration;
+										f.localCoords.y = 1;
 										colors.push(
 											(color >> 16 & 255) /
 											255,
@@ -384,22 +380,25 @@ export class MaterialHeightShader extends MapHeightNode
 									var mesh = new THREE.Points(
 										geometry,
 										new THREE.ShaderMaterial({
+											uniforms: {exageration: {value: exageration}},
 											vertexShader: `
-													attribute float elevation;
-													attribute vec4 color;
-													varying vec4 vColor;
-													void main() {
-														vColor = color;
-														vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-													//  gl_PointSize =  floor(elevation / 1000.0)* 1.0;
-													//  gl_PointSize = gl_Position.z _ ;
-													gl_Position = projectionMatrix * mvPosition;
-													gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
-									}
-												`,
-											fragmentShader: `
+												attribute float elevation;
+												attribute vec4 color;
+												uniform float exageration;
 												varying vec4 vColor;
 												void main() {
+													vColor = color;
+													float exagerated  = elevation * exageration;
+													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
+													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
+													//  gl_PointSize = gl_Position.z _ ;
+													gl_Position = projectionMatrix * mvPosition;
+													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+												}
+												`,
+											fragmentShader: `
+											varying vec4 vColor;
+											void main() {
 													gl_FragColor = vec4( vColor );
 												}
 												`,

@@ -7,20 +7,6 @@ import {nodeResolve} from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 
 export default [{
-	input: 'source/Main.ts',
-	plugins: [
-		typescript()
-	],
-	output: [
-		{
-			globals: {'three': 'THREE'},
-			format: 'umd',
-			name: 'Geo',
-			file: 'build/geo-three.js',
-			indent: '\t'
-		}
-	]
-}, {
 	input: 'webapp/app.ts',
 	plugins: [
 		typescript({tsconfig: 'webapp/tsconfig.json'}),
@@ -30,7 +16,8 @@ export default [{
 			open: true,
 			contentBase: '.',
 			openPage: '/example',
-			host: '0.0.0.0',
+			// host: '0.0.0.0',
+			host: '127.0.0.1',
 			port: 8081,
 			// headers: {'Access-Control-Allow-Origin': '*'},
 			https: {
@@ -39,7 +26,7 @@ export default [{
 				ca: fs.readFileSync(resolve(__dirname, 'cert.csr'))
 			}
 		}),
-		livereload({watch: '.'})
+		livereload('example')
 	],
 	output: [
 		{

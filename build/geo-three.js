@@ -76,7 +76,6 @@
 	    }
 	}
 
-	const autoLod = true;
 	class MapNode extends three.Mesh {
 	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = null, material = null) {
 	        super(geometry, material);
@@ -92,11 +91,15 @@
 	        this.level = level;
 	        this.x = x;
 	        this.y = y;
-	        this.visible = autoLod;
-	        this.isReady = !autoLod;
+	        const autoLoad = mapView.nodeShouldAutoLoad();
+	        this.visible = !autoLoad;
+	        this.isReady = autoLoad;
 	        this.objectsHolder = new three.Group();
-	        this.objectsHolder.visible = autoLod;
+	        this.objectsHolder.visible = !autoLoad;
 	        this.add(this.objectsHolder);
+	        if (autoLoad) {
+	            this.initialize();
+	        }
 	    }
 	    initialize() { }
 	    createChildNodes() { }
@@ -116,15 +119,9 @@
 	                }
 	            });
 	            this.children = this.childrenCache;
-	            {
-	                return this.children;
-	            }
 	        }
 	        else {
 	            this.createChildNodes();
-	            {
-	                return this.children;
-	            }
 	        }
 	    }
 	    simplify() {
@@ -136,9 +133,6 @@
 	        this.subdivided = false;
 	        this.isMesh = true;
 	        this.children = [this.objectsHolder];
-	        {
-	            return this;
-	        }
 	    }
 	    loadTexture() {
 	        this.isReady = true;
@@ -483,19 +477,20 @@
 	        const level = this.level + 1;
 	        const x = this.x * 2;
 	        const y = this.y * 2;
-	        let node = new MapSphereNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+	        var prototype = Object.getPrototypeOf(this);
+	        let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapSphereNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	        node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapSphereNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapSphereNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
@@ -636,7 +631,7 @@
 	}
 
 	class MapView extends three.Mesh {
-	    constructor(root = MapView.PLANAR, provider = new OpenStreetMapsProvider(), heightProvider = null, onNodeReady) {
+	    constructor(root = MapView.PLANAR, provider = new OpenStreetMapsProvider(), heightProvider = null, nodeAutoLoad = false, onNodeReady) {
 	        super(undefined, new three.MeshBasicMaterial({ transparent: true, opacity: 0.0 }));
 	        this.lod = null;
 	        this.provider = null;
@@ -651,10 +646,14 @@
 	        this.lod = new LODRaycast();
 	        this.provider = provider;
 	        this.heightProvider = heightProvider;
+	        this.nodeAutoLoad = nodeAutoLoad;
 	        if (onNodeReady) {
 	            this.onNodeReady = onNodeReady;
 	        }
 	        this.setRoot(root);
+	    }
+	    nodeShouldAutoLoad() {
+	        return this.nodeAutoLoad;
 	    }
 	    setRoot(root) {
 	        if (typeof root === 'number') {
@@ -761,10 +760,11 @@
 	        distance /= Math.pow(2, 20 - node.level);
 	        inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
 	        if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum) {
-	            const subdivded = node.subdivide();
+	            node.subdivide();
+	            const children = node.children;
 	            let allLoading = true;
-	            if (subdivded) {
-	                subdivded.forEach((n) => { return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading; });
+	            if (children) {
+	                children.forEach((n) => { return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading; });
 	                if (!allLoading) {
 	                    node.isMesh = false;
 	                    node.objectsHolder.visible = false;
@@ -773,9 +773,10 @@
 	            return allLoading;
 	        }
 	        else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode) {
-	            const simplified = node.parentNode.simplify();
-	            if (simplified && simplified.level > minZoom) {
-	                this.handleNode(simplified, minZoom, maxZoom);
+	            const parentNode = node.parentNode;
+	            parentNode.simplify();
+	            if (parentNode.level > minZoom) {
+	                this.handleNode(parentNode, minZoom, maxZoom);
 	            }
 	            return true;
 	        }

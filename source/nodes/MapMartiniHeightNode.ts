@@ -132,7 +132,16 @@ export class MapMartiniHeightNode extends MapHeightNode
 				`
 				uniform bool computeNormals;
 				uniform float zoomlevel;
+				uniform float exageration;
 				uniform sampler2D heightMap;
+
+				float getElevation(vec2 coord, float bias) {
+					// Convert encoded elevation value to meters
+					coord = clamp(coord, 0.0, 1.0);
+					vec4 e = texture2D(heightMap,vec2(coord.x, 1.0 -coord.y));
+					return (((e.r * 255.0 * 65536.0 + e.g * 255.0 * 256.0 + e.b * 255.0) * 0.1) - 10000.0) * exageration;
+					// return ((e.r * 255.0 * 256.0 + e.g  * 255.0+ e.b * 255.0 / 256.0) - 32768.0) * exageration;
+				}
 				` + shader.vertexShader;
 			shader.fragmentShader =
 				`

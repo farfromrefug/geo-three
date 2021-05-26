@@ -175,7 +175,7 @@ export function setTerrarium(value: boolean)
 	}
 }
 
-setTerrarium(false);
+setTerrarium(true);
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
 const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;

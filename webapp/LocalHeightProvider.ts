@@ -23,8 +23,8 @@ export class LocalHeightProvider extends MapProvider
 				image.onload = () => { return resolve(image); };
 				image.onerror = () => { return resolve(null); };
 				image.crossOrigin = 'Anonymous';
-				// image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-				image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+				image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+				// image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
 			})
 		]);
 		return result[0] as any;
@@ -34,8 +34,8 @@ export class LocalHeightProvider extends MapProvider
 	{
 		return new CancelablePromise((resolve, reject) => 
 		{
-			// const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-			const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
+			const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
+			// const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
 			try 
 			{
 				XHRUtils.getRaw(

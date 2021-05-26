@@ -57971,6 +57971,350 @@ var webapp = (function (exports) {
      */
     UnitsUtils.EARTH_ORIGIN = UnitsUtils.EARTH_PERIMETER / 2.0;
 
+    /*! *****************************************************************************
+    Copyright (c) Microsoft Corporation.
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+    PERFORMANCE OF THIS SOFTWARE.
+    ***************************************************************************** */
+
+    function __awaiter(thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    }
+
+    var d2r = Math.PI / 180,
+        r2d = 180 / Math.PI;
+
+    /**
+     * Get the bbox of a tile
+     *
+     * @name tileToBBOX
+     * @param {Array<number>} tile
+     * @returns {Array<number>} bbox
+     * @example
+     * var bbox = tileToBBOX([5, 10, 10])
+     * //=bbox
+     */
+    function tileToBBOX(tile) {
+        var e = tile2lon(tile[0] + 1, tile[2]);
+        var w = tile2lon(tile[0], tile[2]);
+        var s = tile2lat(tile[1] + 1, tile[2]);
+        var n = tile2lat(tile[1], tile[2]);
+        return [w, s, e, n];
+    }
+
+    /**
+     * Get a geojson representation of a tile
+     *
+     * @name tileToGeoJSON
+     * @param {Array<number>} tile
+     * @returns {Feature<Polygon>}
+     * @example
+     * var poly = tileToGeoJSON([5, 10, 10])
+     * //=poly
+     */
+    function tileToGeoJSON(tile) {
+        var bbox = tileToBBOX(tile);
+        var poly = {
+            type: 'Polygon',
+            coordinates: [[
+                [bbox[0], bbox[3]],
+                [bbox[0], bbox[1]],
+                [bbox[2], bbox[1]],
+                [bbox[2], bbox[3]],
+                [bbox[0], bbox[3]]
+            ]]
+        };
+        return poly;
+    }
+
+    function tile2lon(x, z) {
+        return x / Math.pow(2, z) * 360 - 180;
+    }
+
+    function tile2lat(y, z) {
+        var n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+        return r2d * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    }
+
+    /**
+     * Get the tile for a point at a specified zoom level
+     *
+     * @name pointToTile
+     * @param {number} lon
+     * @param {number} lat
+     * @param {number} z
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = pointToTile(1, 1, 20)
+     * //=tile
+     */
+    function pointToTile(lon, lat, z) {
+        var tile = pointToTileFraction(lon, lat, z);
+        tile[0] = Math.floor(tile[0]);
+        tile[1] = Math.floor(tile[1]);
+        return tile;
+    }
+
+    /**
+     * Get the 4 tiles one zoom level higher
+     *
+     * @name getChildren
+     * @param {Array<number>} tile
+     * @returns {Array<Array<number>>} tiles
+     * @example
+     * var tiles = getChildren([5, 10, 10])
+     * //=tiles
+     */
+    function getChildren(tile) {
+        return [
+            [tile[0] * 2, tile[1] * 2, tile[2] + 1],
+            [tile[0] * 2 + 1, tile[1] * 2, tile[2 ] + 1],
+            [tile[0] * 2 + 1, tile[1] * 2 + 1, tile[2] + 1],
+            [tile[0] * 2, tile[1] * 2 + 1, tile[2] + 1]
+        ];
+    }
+
+    /**
+     * Get the tile one zoom level lower
+     *
+     * @name getParent
+     * @param {Array<number>} tile
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = getParent([5, 10, 10])
+     * //=tile
+     */
+    function getParent(tile) {
+        return [tile[0] >> 1, tile[1] >> 1, tile[2] - 1];
+    }
+
+    function getSiblings(tile) {
+        return getChildren(getParent(tile));
+    }
+
+    /**
+     * Get the 3 sibling tiles for a tile
+     *
+     * @name getSiblings
+     * @param {Array<number>} tile
+     * @returns {Array<Array<number>>} tiles
+     * @example
+     * var tiles = getSiblings([5, 10, 10])
+     * //=tiles
+     */
+    function hasSiblings(tile, tiles) {
+        var siblings = getSiblings(tile);
+        for (var i = 0; i < siblings.length; i++) {
+            if (!hasTile(tiles, siblings[i])) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Check to see if an array of tiles contains a particular tile
+     *
+     * @name hasTile
+     * @param {Array<Array<number>>} tiles
+     * @param {Array<number>} tile
+     * @returns {boolean}
+     * @example
+     * var tiles = [
+     *     [0, 0, 5],
+     *     [0, 1, 5],
+     *     [1, 1, 5],
+     *     [1, 0, 5]
+     * ]
+     * hasTile(tiles, [0, 0, 5])
+     * //=boolean
+     */
+    function hasTile(tiles, tile) {
+        for (var i = 0; i < tiles.length; i++) {
+            if (tilesEqual(tiles[i], tile)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check to see if two tiles are the same
+     *
+     * @name tilesEqual
+     * @param {Array<number>} tile1
+     * @param {Array<number>} tile2
+     * @returns {boolean}
+     * @example
+     * tilesEqual([0, 1, 5], [0, 0, 5])
+     * //=boolean
+     */
+    function tilesEqual(tile1, tile2) {
+        return (
+            tile1[0] === tile2[0] &&
+            tile1[1] === tile2[1] &&
+            tile1[2] === tile2[2]
+        );
+    }
+
+    /**
+     * Get the quadkey for a tile
+     *
+     * @name tileToQuadkey
+     * @param {Array<number>} tile
+     * @returns {string} quadkey
+     * @example
+     * var quadkey = tileToQuadkey([0, 1, 5])
+     * //=quadkey
+     */
+    function tileToQuadkey(tile) {
+        var index = '';
+        for (var z = tile[2]; z > 0; z--) {
+            var b = 0;
+            var mask = 1 << (z - 1);
+            if ((tile[0] & mask) !== 0) b++;
+            if ((tile[1] & mask) !== 0) b += 2;
+            index += b.toString();
+        }
+        return index;
+    }
+
+    /**
+     * Get the tile for a quadkey
+     *
+     * @name quadkeyToTile
+     * @param {string} quadkey
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = quadkeyToTile('00001033')
+     * //=tile
+     */
+    function quadkeyToTile(quadkey) {
+        var x = 0;
+        var y = 0;
+        var z = quadkey.length;
+
+        for (var i = z; i > 0; i--) {
+            var mask = 1 << (i - 1);
+            var q = +quadkey[z - i];
+            if (q === 1) x |= mask;
+            if (q === 2) y |= mask;
+            if (q === 3) {
+                x |= mask;
+                y |= mask;
+            }
+        }
+        return [x, y, z];
+    }
+
+    /**
+     * Get the smallest tile to cover a bbox
+     *
+     * @name bboxToTile
+     * @param {Array<number>} bbox
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = bboxToTile([ -178, 84, -177, 85 ])
+     * //=tile
+     */
+    function bboxToTile(bboxCoords) {
+        var min = pointToTile(bboxCoords[0], bboxCoords[1], 32);
+        var max = pointToTile(bboxCoords[2], bboxCoords[3], 32);
+        var bbox = [min[0], min[1], max[0], max[1]];
+
+        var z = getBboxZoom(bbox);
+        if (z === 0) return [0, 0, 0];
+        var x = bbox[0] >>> (32 - z);
+        var y = bbox[1] >>> (32 - z);
+        return [x, y, z];
+    }
+
+    function getBboxZoom(bbox) {
+        var MAX_ZOOM = 28;
+        for (var z = 0; z < MAX_ZOOM; z++) {
+            var mask = 1 << (32 - (z + 1));
+            if (((bbox[0] & mask) !== (bbox[2] & mask)) ||
+                ((bbox[1] & mask) !== (bbox[3] & mask))) {
+                return z;
+            }
+        }
+
+        return MAX_ZOOM;
+    }
+
+    /**
+     * Get the precise fractional tile location for a point at a zoom level
+     *
+     * @name pointToTileFraction
+     * @param {number} lon
+     * @param {number} lat
+     * @param {number} z
+     * @returns {Array<number>} tile fraction
+     * var tile = pointToTileFraction(30.5, 50.5, 15)
+     * //=tile
+     */
+    function pointToTileFraction(lon, lat, z) {
+        var sin = Math.sin(lat * d2r),
+            z2 = Math.pow(2, z),
+            x = z2 * (lon / 360 + 0.5),
+            y = z2 * (0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI);
+
+        // Wrap Tile X
+        x = x % z2;
+        if (x < 0) x = x + z2;
+        return [x, y, z];
+    }
+
+    var tilebelt = {
+        tileToGeoJSON: tileToGeoJSON,
+        tileToBBOX: tileToBBOX,
+        getChildren: getChildren,
+        getParent: getParent,
+        getSiblings: getSiblings,
+        hasTile: hasTile,
+        hasSiblings: hasSiblings,
+        tilesEqual: tilesEqual,
+        tileToQuadkey: tileToQuadkey,
+        quadkeyToTile: quadkeyToTile,
+        pointToTile: pointToTile,
+        bboxToTile: bboxToTile,
+        pointToTileFraction: pointToTileFraction
+    };
+
+    function zoomTiles(zoomedTiles, zoom) {
+        if (zoomedTiles[0][2] === zoom) {
+            return zoomedTiles;
+        }
+        else if (zoomedTiles[0][2] < zoom) {
+            var oneIn = [];
+            zoomedTiles.forEach(function (tile) {
+                oneIn = oneIn.concat(tilebelt.getChildren(tile));
+            });
+            return zoomTiles(oneIn, zoom);
+        }
+        else {
+            var zoomedTiles = zoomedTiles.map(function (tile) {
+                const bbox = tilebelt.tileToBBOX(tile);
+                return tilebelt.pointToTile(bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2, zoom);
+            });
+            return zoomedTiles;
+        }
+    }
+    function tilesToZoom(tiles, zoom) {
+        var newTiles = zoomTiles(tiles, zoom);
+        return newTiles;
+    }
     /**
      * A map provider is a object that handles the access to map tiles of a specific service.
      *
@@ -58019,7 +58363,7 @@ var webapp = (function (exports) {
          * @param y - Tile y.
          * @returns Promise with the image obtained for the tile ready to use.
          */
-        fetchTile(zoom, x, y) {
+        fetchImage(zoom, x, y) {
             return null;
         }
         /**
@@ -58028,6 +58372,38 @@ var webapp = (function (exports) {
          * Usually map server have API method to retrieve TileJSON metadata.
          */
         getMetaData() { }
+        fetchTile(zoom, x, y) {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (this.zoomDelta <= 0) {
+                    return this.fetchImage(zoom, x, y);
+                }
+                else {
+                    const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => valA[1] - valB[1] ||
+                        valA[0] - valB[0]);
+                    const images = (yield Promise.all(tiles.map(t => this.fetchImage(t[2], t[0], t[1]))));
+                    const width = images[0].width * Math.floor(this.zoomDelta * 2);
+                    const fullWidth = width / Math.sqrt(images.length);
+                    const canvas = document.createElement('canvas');
+                    var context = canvas.getContext('2d');
+                    context.globalAlpha = 1.0;
+                    canvas.width = width;
+                    canvas.height = width;
+                    let tileY = tiles[0][1];
+                    let ix = 0;
+                    let iy = 0;
+                    images.forEach((image, index) => {
+                        if (tileY !== tiles[index][1]) {
+                            tileY = tiles[index][1];
+                            ix = 0;
+                            iy += 1;
+                        }
+                        context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
+                        ix += 1;
+                    });
+                    return canvas;
+                }
+            });
+        }
     }
 
     /**
@@ -58041,7 +58417,7 @@ var webapp = (function (exports) {
             this.address = address;
             this.format = 'png';
         }
-        fetchTile(zoom, x, y) {
+        fetchImage(zoom, x, y) {
             return new Promise((resolve, reject) => {
                 const image = document.createElement('img');
                 image.onload = function () {
@@ -58054,31 +58430,6 @@ var webapp = (function (exports) {
                 image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
             });
         }
-    }
-
-    /*! *****************************************************************************
-    Copyright (c) Microsoft Corporation.
-
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted.
-
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-    PERFORMANCE OF THIS SOFTWARE.
-    ***************************************************************************** */
-
-    function __awaiter(thisArg, _arguments, P, generator) {
-        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-        return new (P || (P = Promise))(function (resolve, reject) {
-            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-            step((generator = generator.apply(thisArg, _arguments || [])).next());
-        });
     }
 
     /**
@@ -58820,8 +59171,15 @@ var webapp = (function (exports) {
      */
     class MapHeightNodeShader extends MapHeightNode {
         constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
-            const material = MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE }));
-            super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, material);
+            super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE })));
+            /**
+             * Variable used to get correct height map location while using maxOverZoom
+             */
+            this.heightMapLocation = [0, 0, 1, 1];
+            /**
+             * Variable used to get correct height map location while using maxOverZoom
+             */
+            this.overZoomFactor = 1;
             this.frustumCulled = false;
         }
         /**
@@ -58830,7 +59188,9 @@ var webapp = (function (exports) {
          * @param material - Material to be transformed.
          */
         static prepareMaterial(material) {
-            material.userData = { heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE } };
+            material.userData = { heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE },
+                elevationDecoder: { value: MapHeightNodeShader.ELEVATION_DECODER },
+                heightMapLocation: { value: new Vector4() } };
             material.onBeforeCompile = (shader) => {
                 // Pass uniforms from userData to the
                 for (const i in material.userData) {
@@ -58840,14 +59200,23 @@ var webapp = (function (exports) {
                 shader.vertexShader =
                     `
 			uniform sampler2D heightMap;
+			uniform vec4 heightMapLocation;
+			uniform vec4 elevationDecoder;
+			float getPixelElevation(vec4 e) {
+				// Convert encoded elevation value to meters
+				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
+			}
+			float getElevation(vec2 coord) {
+				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+				return getPixelElevation(e);
+			}
 			` + shader.vertexShader;
                 // Vertex depth logic
                 shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
 			#include <fog_vertex>
 	
 			// Calculate height of the title
-			vec4 _theight = texture2D(heightMap, vUv);
-			float _height = ((_theight.r * 255.0 * 65536.0 + _theight.g * 255.0 * 256.0 + _theight.b * 255.0) * 0.1) - 10000.0;
+			float _height = getElevation(vUv);
 			vec3 _transformed = position + _height * normal;
 	
 			// Vertex position based on height
@@ -58868,6 +59237,21 @@ var webapp = (function (exports) {
                 this.material.userData.heightMap.value = texture;
             }
         }
+        handleParentOverZoomTile(resolve) {
+            const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
+            const parent = this.parent;
+            const parentOverZoomFactor = parent.overZoomFactor;
+            const parentTileBox = tilebelt.tileToBBOX([parent.x, parent.y, parent.level]);
+            const width = parentTileBox[2] - parentTileBox[0];
+            const height = parentTileBox[3] - parentTileBox[1];
+            this.overZoomFactor = parentOverZoomFactor * 2;
+            this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10) / 10 / parentOverZoomFactor;
+            this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10) / 10 / parentOverZoomFactor;
+            this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+            this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+            this.onHeightImage(parent.material.userData.heightMap.value);
+            resolve && resolve();
+        }
         /**
          * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
          *
@@ -58884,6 +59268,7 @@ var webapp = (function (exports) {
             return false;
         }
     }
+    MapHeightNodeShader.ELEVATION_DECODER = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
     /**
      * Empty texture used as a placeholder for missing textures.
      */
@@ -59150,7 +59535,7 @@ var webapp = (function (exports) {
              */
             this.resolution = 256;
         }
-        fetchTile(zoom, x, y) {
+        fetchImage(zoom, x, y) {
             const canvas = new OffscreenCanvas(this.resolution, this.resolution);
             const context = canvas.getContext('2d');
             const green = new Color(0x00ff00);
@@ -59319,302 +59704,6 @@ var webapp = (function (exports) {
         }
     }
 
-    var d2r = Math.PI / 180,
-        r2d = 180 / Math.PI;
-
-    /**
-     * Get the bbox of a tile
-     *
-     * @name tileToBBOX
-     * @param {Array<number>} tile
-     * @returns {Array<number>} bbox
-     * @example
-     * var bbox = tileToBBOX([5, 10, 10])
-     * //=bbox
-     */
-    function tileToBBOX(tile) {
-        var e = tile2lon(tile[0] + 1, tile[2]);
-        var w = tile2lon(tile[0], tile[2]);
-        var s = tile2lat(tile[1] + 1, tile[2]);
-        var n = tile2lat(tile[1], tile[2]);
-        return [w, s, e, n];
-    }
-
-    /**
-     * Get a geojson representation of a tile
-     *
-     * @name tileToGeoJSON
-     * @param {Array<number>} tile
-     * @returns {Feature<Polygon>}
-     * @example
-     * var poly = tileToGeoJSON([5, 10, 10])
-     * //=poly
-     */
-    function tileToGeoJSON(tile) {
-        var bbox = tileToBBOX(tile);
-        var poly = {
-            type: 'Polygon',
-            coordinates: [[
-                [bbox[0], bbox[3]],
-                [bbox[0], bbox[1]],
-                [bbox[2], bbox[1]],
-                [bbox[2], bbox[3]],
-                [bbox[0], bbox[3]]
-            ]]
-        };
-        return poly;
-    }
-
-    function tile2lon(x, z) {
-        return x / Math.pow(2, z) * 360 - 180;
-    }
-
-    function tile2lat(y, z) {
-        var n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
-        return r2d * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-    }
-
-    /**
-     * Get the tile for a point at a specified zoom level
-     *
-     * @name pointToTile
-     * @param {number} lon
-     * @param {number} lat
-     * @param {number} z
-     * @returns {Array<number>} tile
-     * @example
-     * var tile = pointToTile(1, 1, 20)
-     * //=tile
-     */
-    function pointToTile(lon, lat, z) {
-        var tile = pointToTileFraction(lon, lat, z);
-        tile[0] = Math.floor(tile[0]);
-        tile[1] = Math.floor(tile[1]);
-        return tile;
-    }
-
-    /**
-     * Get the 4 tiles one zoom level higher
-     *
-     * @name getChildren
-     * @param {Array<number>} tile
-     * @returns {Array<Array<number>>} tiles
-     * @example
-     * var tiles = getChildren([5, 10, 10])
-     * //=tiles
-     */
-    function getChildren(tile) {
-        return [
-            [tile[0] * 2, tile[1] * 2, tile[2] + 1],
-            [tile[0] * 2 + 1, tile[1] * 2, tile[2 ] + 1],
-            [tile[0] * 2 + 1, tile[1] * 2 + 1, tile[2] + 1],
-            [tile[0] * 2, tile[1] * 2 + 1, tile[2] + 1]
-        ];
-    }
-
-    /**
-     * Get the tile one zoom level lower
-     *
-     * @name getParent
-     * @param {Array<number>} tile
-     * @returns {Array<number>} tile
-     * @example
-     * var tile = getParent([5, 10, 10])
-     * //=tile
-     */
-    function getParent(tile) {
-        return [tile[0] >> 1, tile[1] >> 1, tile[2] - 1];
-    }
-
-    function getSiblings(tile) {
-        return getChildren(getParent(tile));
-    }
-
-    /**
-     * Get the 3 sibling tiles for a tile
-     *
-     * @name getSiblings
-     * @param {Array<number>} tile
-     * @returns {Array<Array<number>>} tiles
-     * @example
-     * var tiles = getSiblings([5, 10, 10])
-     * //=tiles
-     */
-    function hasSiblings(tile, tiles) {
-        var siblings = getSiblings(tile);
-        for (var i = 0; i < siblings.length; i++) {
-            if (!hasTile(tiles, siblings[i])) return false;
-        }
-        return true;
-    }
-
-    /**
-     * Check to see if an array of tiles contains a particular tile
-     *
-     * @name hasTile
-     * @param {Array<Array<number>>} tiles
-     * @param {Array<number>} tile
-     * @returns {boolean}
-     * @example
-     * var tiles = [
-     *     [0, 0, 5],
-     *     [0, 1, 5],
-     *     [1, 1, 5],
-     *     [1, 0, 5]
-     * ]
-     * hasTile(tiles, [0, 0, 5])
-     * //=boolean
-     */
-    function hasTile(tiles, tile) {
-        for (var i = 0; i < tiles.length; i++) {
-            if (tilesEqual(tiles[i], tile)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Check to see if two tiles are the same
-     *
-     * @name tilesEqual
-     * @param {Array<number>} tile1
-     * @param {Array<number>} tile2
-     * @returns {boolean}
-     * @example
-     * tilesEqual([0, 1, 5], [0, 0, 5])
-     * //=boolean
-     */
-    function tilesEqual(tile1, tile2) {
-        return (
-            tile1[0] === tile2[0] &&
-            tile1[1] === tile2[1] &&
-            tile1[2] === tile2[2]
-        );
-    }
-
-    /**
-     * Get the quadkey for a tile
-     *
-     * @name tileToQuadkey
-     * @param {Array<number>} tile
-     * @returns {string} quadkey
-     * @example
-     * var quadkey = tileToQuadkey([0, 1, 5])
-     * //=quadkey
-     */
-    function tileToQuadkey(tile) {
-        var index = '';
-        for (var z = tile[2]; z > 0; z--) {
-            var b = 0;
-            var mask = 1 << (z - 1);
-            if ((tile[0] & mask) !== 0) b++;
-            if ((tile[1] & mask) !== 0) b += 2;
-            index += b.toString();
-        }
-        return index;
-    }
-
-    /**
-     * Get the tile for a quadkey
-     *
-     * @name quadkeyToTile
-     * @param {string} quadkey
-     * @returns {Array<number>} tile
-     * @example
-     * var tile = quadkeyToTile('00001033')
-     * //=tile
-     */
-    function quadkeyToTile(quadkey) {
-        var x = 0;
-        var y = 0;
-        var z = quadkey.length;
-
-        for (var i = z; i > 0; i--) {
-            var mask = 1 << (i - 1);
-            var q = +quadkey[z - i];
-            if (q === 1) x |= mask;
-            if (q === 2) y |= mask;
-            if (q === 3) {
-                x |= mask;
-                y |= mask;
-            }
-        }
-        return [x, y, z];
-    }
-
-    /**
-     * Get the smallest tile to cover a bbox
-     *
-     * @name bboxToTile
-     * @param {Array<number>} bbox
-     * @returns {Array<number>} tile
-     * @example
-     * var tile = bboxToTile([ -178, 84, -177, 85 ])
-     * //=tile
-     */
-    function bboxToTile(bboxCoords) {
-        var min = pointToTile(bboxCoords[0], bboxCoords[1], 32);
-        var max = pointToTile(bboxCoords[2], bboxCoords[3], 32);
-        var bbox = [min[0], min[1], max[0], max[1]];
-
-        var z = getBboxZoom(bbox);
-        if (z === 0) return [0, 0, 0];
-        var x = bbox[0] >>> (32 - z);
-        var y = bbox[1] >>> (32 - z);
-        return [x, y, z];
-    }
-
-    function getBboxZoom(bbox) {
-        var MAX_ZOOM = 28;
-        for (var z = 0; z < MAX_ZOOM; z++) {
-            var mask = 1 << (32 - (z + 1));
-            if (((bbox[0] & mask) !== (bbox[2] & mask)) ||
-                ((bbox[1] & mask) !== (bbox[3] & mask))) {
-                return z;
-            }
-        }
-
-        return MAX_ZOOM;
-    }
-
-    /**
-     * Get the precise fractional tile location for a point at a zoom level
-     *
-     * @name pointToTileFraction
-     * @param {number} lon
-     * @param {number} lat
-     * @param {number} z
-     * @returns {Array<number>} tile fraction
-     * var tile = pointToTileFraction(30.5, 50.5, 15)
-     * //=tile
-     */
-    function pointToTileFraction(lon, lat, z) {
-        var sin = Math.sin(lat * d2r),
-            z2 = Math.pow(2, z),
-            x = z2 * (lon / 360 + 0.5),
-            y = z2 * (0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI);
-
-        // Wrap Tile X
-        x = x % z2;
-        if (x < 0) x = x + z2;
-        return [x, y, z];
-    }
-
-    var tilebelt = {
-        tileToGeoJSON: tileToGeoJSON,
-        tileToBBOX: tileToBBOX,
-        getChildren: getChildren,
-        getParent: getParent,
-        getSiblings: getSiblings,
-        hasTile: hasTile,
-        hasSiblings: hasSiblings,
-        tilesEqual: tilesEqual,
-        tileToQuadkey: tileToQuadkey,
-        quadkeyToTile: quadkeyToTile,
-        pointToTile: pointToTile,
-        bboxToTile: bboxToTile,
-        pointToTileFraction: pointToTileFraction
-    };
-
     let currentColor = 0xffffff;
     class MaterialHeightShader extends MapHeightNode {
         constructor(parentNode, mapView, location, level, x, y) {
@@ -59690,7 +59779,7 @@ var webapp = (function (exports) {
 			float getElevation(vec2 coord, float width, float height) {
 				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
 				return getPixelElevation(e);
-				}
+			}
 			float getElevationMean(vec2 coord, float width, float height) {
 				// if (heightMapLocation.z != 1.0) {
 				// 	return  getElevation(coord, width, height);
@@ -59810,7 +59899,6 @@ var webapp = (function (exports) {
                 // @ts-ignore
                 this.material.map = texture;
             }
-            // 1057 735
         }
         onHeightImage(image) {
             return __awaiter(this, void 0, void 0, function* () {
@@ -59908,8 +59996,6 @@ var webapp = (function (exports) {
             });
         }
         handleParentOverZoomTile(resolve) {
-            // @ts-ignore
-            //{w, s, e, n};
             const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
             const parent = this.parent;
             const parentOverZoomFactor = parent.overZoomFactor;
@@ -59922,7 +60008,6 @@ var webapp = (function (exports) {
             this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
             this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
             this.onHeightImage(parent.material.userData.heightMap.value);
-            // console.log('heightMapLocation', this.x, this.y, this.level, this.heightMapLocation);
             resolve && resolve();
         }
         /**
@@ -63676,8 +63761,8 @@ var webapp = (function (exports) {
                         image.onload = () => { return resolve(image); };
                         image.onerror = () => { return resolve(null); };
                         image.crossOrigin = 'Anonymous';
-                        // image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-                        image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+                        image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+                        // image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
                     })
                 ]);
                 return result[0];
@@ -63686,8 +63771,8 @@ var webapp = (function (exports) {
         fetchPeaks(zoom, x, y) {
             return __awaiter(this, void 0, void 0, function* () {
                 return new CancelablePromise((resolve, reject) => {
-                    // const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-                    const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
+                    const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
+                    // const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
                     try {
                         XHRUtils.getRaw(url, (data) => __awaiter(this, void 0, void 0, function* () {
                             let result = yield es5.MVTLoader.parse(data, {
@@ -63712,35 +63797,10 @@ var webapp = (function (exports) {
         }
     }
 
-    function zoomTiles(zoomedTiles, zoom) {
-        if (zoomedTiles[0][2] === zoom) {
-            return zoomedTiles;
-        }
-        else if (zoomedTiles[0][2] < zoom) {
-            var oneIn = [];
-            zoomedTiles.forEach(function (tile) {
-                oneIn = oneIn.concat(tilebelt.getChildren(tile));
-            });
-            return zoomTiles(oneIn, zoom);
-        }
-        else {
-            var zoomedTiles = zoomedTiles.map(function (tile) {
-                const bbox = tilebelt.tileToBBOX(tile);
-                console.log('bbox', tile, zoom, bbox);
-                //[w, s, e, n]
-                return tilebelt.pointToTile(bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2, zoom);
-            });
-            return zoomedTiles;
-        }
-    }
-    function tilesToZoom(tiles, zoom) {
-        var newTiles = zoomTiles(tiles, zoom);
-        return newTiles;
-    }
     class RasterMapProvider extends OpenStreetMapsProvider {
         constructor() {
-            // super('https://a.tile.openstreetmap.fr/osmfr');
-            super('http://localhost:8080/styles/basic');
+            super('https://a.tile.openstreetmap.fr/osmfr');
+            // super('http://localhost:8080/styles/basic');
         }
         fetchImage(zoom, x, y) {
             return new Promise((resolve, reject) => {
@@ -63753,38 +63813,6 @@ var webapp = (function (exports) {
                 };
                 image.crossOrigin = 'Anonymous';
                 image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
-            });
-        }
-        fetchTile(zoom, x, y) {
-            return __awaiter(this, void 0, void 0, function* () {
-                if (this.zoomDelta <= 0) {
-                    return this.fetchImage(zoom, x, y);
-                }
-                else {
-                    const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => valA[1] - valB[1] ||
-                        valA[0] - valB[0]);
-                    const images = (yield Promise.all(tiles.map(t => this.fetchImage(t[2], t[0], t[1]))));
-                    const width = images[0].width * Math.floor(this.zoomDelta * 2);
-                    const fullWidth = width / Math.sqrt(images.length);
-                    const canvas = document.createElement('canvas');
-                    var context = canvas.getContext('2d');
-                    context.globalAlpha = 1.0;
-                    canvas.width = width;
-                    canvas.height = width;
-                    let tileY = tiles[0][1];
-                    let ix = 0;
-                    let iy = 0;
-                    images.forEach((image, index) => {
-                        if (tileY !== tiles[index][1]) {
-                            tileY = tiles[index][1];
-                            ix = 0;
-                            iy += 1;
-                        }
-                        context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
-                        ix += 1;
-                    });
-                    return canvas;
-                }
             });
         }
     }
@@ -64228,7 +64256,7 @@ var webapp = (function (exports) {
             });
         }
     }
-    setTerrarium(false);
+    setTerrarium(true);
     const canvas = document.getElementById('canvas');
     const canvas3 = document.getElementById('canvas3');
     const canvas4 = document.getElementById('canvas4');

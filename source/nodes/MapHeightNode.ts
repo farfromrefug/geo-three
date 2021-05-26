@@ -69,11 +69,10 @@ export class MapHeightNode extends MapNode
 
 	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
-	public initialize(): void 
+	public initialize(): Promise<any>  
 	{
 		super.initialize();
-		this.loadTexture();
-		this.loadHeightGeometry();
+		return Promise.all([this.loadTexture(),this.loadHeightGeometry()]);
 	}
 
 		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => 

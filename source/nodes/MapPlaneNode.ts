@@ -23,9 +23,9 @@ export class MapPlaneNode extends MapNode
 
 	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
-	public initialize(): void
+	public initialize(): Promise<any>
 	{
-		this.loadTexture();
+		return this.loadTexture();
 	}
 
 	public createChildNodes(): void

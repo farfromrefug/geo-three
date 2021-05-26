@@ -30,9 +30,9 @@ export class MapSphereNode extends MapNode
 	 */
 	public static SEGMENTS: number = 80;
 	
-	public initialize(): void
+	public initialize(): Promise<any>
 	{
-		this.loadTexture();
+		return this.loadTexture();
 	}
 
 	/**

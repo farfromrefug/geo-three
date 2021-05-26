@@ -88,39 +88,9 @@ export class MapHeightNodeShader extends MapHeightNode
 		return material;
 	}
 
-	public loadTexture(): void 
+	public onHeightImage(image): void
 	{
-		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => 
-		{
-			const texture = new Texture(image as any);
-			texture.generateMipmaps = false;
-			texture.format = RGBFormat;
-			texture.magFilter = LinearFilter;
-			texture.minFilter = LinearFilter;
-			texture.needsUpdate = true;
-			
-			// @ts-ignore
-			this.material.map = texture;
-		}).catch((err) => 
-		{
-			console.error('GeoThree: Failed to load color node data.', err);
-		}).finally(() =>
-		{
-			this.textureLoaded = true;
-			this.nodeReady();
-		});
-
-		this.loadHeightGeometry();
-	}
-
-	public loadHeightGeometry(): Promise<any> 
-	{
-		if (this.mapView.heightProvider === null) 
-		{
-			throw new Error('GeoThree: MapView.heightProvider provider is null.');
-		}
-
-		return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => 
+		if (image) 
 		{
 			const texture = new Texture(image as any);
 			texture.generateMipmaps = false;
@@ -131,15 +101,7 @@ export class MapHeightNodeShader extends MapHeightNode
 			
 			// @ts-ignore
 			this.material.userData.heightMap.value = texture;
-
-		}).catch((err) =>  
-		{
-			console.error('GeoThree: Failed to load height node data.', err);
-		}).finally(() =>
-		{
-			this.heightLoaded = true;
-			this.nodeReady();
-		});
+		}
 	}
 
 	/**

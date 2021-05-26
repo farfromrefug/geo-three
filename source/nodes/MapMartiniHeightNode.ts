@@ -280,27 +280,4 @@ export class MapMartiniHeightNode extends MapHeightNode
 			this.material.userData.heightMap.value = texture;
 		}
 	}
-	
-	/** 
-	* Load height texture from the server and create a geometry to match it.
-	*
-	*/
-	public loadHeightGeometry(): Promise<any> 
-	{
-		if (this.mapView.heightProvider === null) 
-		{
-			throw new Error('GeoThree: MapView.heightProvider provider is null.');
-		}
-		return this.mapView.heightProvider
-			.fetchTile(this.level, this.x, this.y)
-			.then(async(image) => 
-			{
-				this.onHeightImage(image);
-			})
-			.finally(() => 
-			{
-				this.heightLoaded = true;
-				this.nodeReady();
-			});
-	}
 }

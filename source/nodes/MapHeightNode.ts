@@ -150,48 +150,33 @@ export class MapHeightNode extends MapNode
 	 *
 	 * @returns Returns a promise indicating when the geometry generation has finished.
 	 */
-	public loadHeightGeometry(): Promise<any> 
+	public onHeightImage(image): void
 	{
-		if (this.mapView.heightProvider === null) 
+		const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+		const vertices = geometry.attributes.position.array as number[];
+
+		const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+
+		const context = canvas.getContext('2d');
+		context.imageSmoothingEnabled = false;
+		context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
+
+		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+		const data = imageData.data;
+		for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) 
 		{
-			throw new Error('GeoThree: MapView.heightProvider provider is null.');
+			const r = data[i];
+			const g = data[i + 1];
+			const b = data[i + 2];
+
+			// The value will be composed of the bits RGB
+			const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+
+			vertices[j + 1] = value;
 		}
 
-		return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => 
-		{
-			const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-			const vertices = geometry.attributes.position.array as number[];
-
-			const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
-
-			const context = canvas.getContext('2d');
-			context.imageSmoothingEnabled = false;
-			context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
-
-			const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-			const data = imageData.data;
-			for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) 
-			{
-				const r = data[i];
-				const g = data[i + 1];
-				const b = data[i + 2];
-
-				// The value will be composed of the bits RGB
-				const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-
-				vertices[j + 1] = value;
-			}
-
-			this.geometry = geometry;
-		})
-			.catch(() =>
-			{
-				console.error('GeoThree: Failed to load height node data.', this);
-			}).finally(() =>
-			{
-				this.heightLoaded = true;
-				this.nodeReady();
-			});
+		this.geometry = geometry;
+		
 	}
 
 	/**

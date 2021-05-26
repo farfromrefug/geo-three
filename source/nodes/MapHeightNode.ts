@@ -75,9 +75,8 @@ export class MapHeightNode extends MapNode
 		return Promise.all([this.loadTexture(),this.loadHeightGeometry()]);
 	}
 
-		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => 
-		{
-			if (image) 
+	onTextureImage(image) {
+		if (image) 
 			{
 				const texture = new Texture(image as any);
 				texture.generateMipmaps = false;
@@ -89,8 +88,8 @@ export class MapHeightNode extends MapNode
 				// @ts-ignore
 				this.material.map = texture;
 			}
+	}
 
-		}).finally(() =>
 	/**
 	 * Load tile texture from the server.
 	 *
@@ -102,6 +101,7 @@ export class MapHeightNode extends MapNode
 			return;
 		}
 		this.isTextureReady = true;
+		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => this.onTextureImage(image)).finally(() =>
 		{
 			this.textureLoaded = true;
 			this.nodeReady();

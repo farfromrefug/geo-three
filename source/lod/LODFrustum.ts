@@ -1,6 +1,8 @@
 import {LODRadial} from './LODRadial';
 import {Frustum, Matrix4, Vector3} from 'three';
 import {MapNode} from '../nodes/MapNode';
+import { MapHeightNode } from '../nodes/MapHeightNode';
+import { MapView } from '../MapView';
 
 const projection = new Matrix4();
 const pov = new Vector3();
@@ -39,7 +41,7 @@ export class LODFrustum extends LODRadial
 	public pointOnly: boolean = false;
 
 
-	protected handleNode(node, minZoom, maxZoom, inFrustum = false): boolean
+	protected async handleNode(node, minZoom, maxZoom, inFrustum = false): Promise<boolean>
 	{
 		if (!(node instanceof MapNode)) 
 		{
@@ -55,32 +57,42 @@ export class LODFrustum extends LODRadial
 		{
 			node.subdivide();
 			const children = node.children;
-			let allLoading = true;
+			let loadingCount = 0;
 			if (children) 
 			{
-				children.forEach((n) => {return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading;});
-				if (!allLoading) 
-				{
+				for (let index = 0; index < children.length; index++) {
+					const n = children[index];
+					if (!(n instanceof MapNode)) 
+					{
+						continue;
+					}
+					const result = await this.handleNode(n, minZoom, maxZoom, false);
+					if (result) {
+						loadingCount++;
+					}
+				}
+				// if (loadingCount > 0 && loadingCount < 4) 
+				// {
 					// one not in frustum let still hide ourself
 					node.isMesh = false;
 					node.objectsHolder.visible = false;
-				}
+				// }
 			}
-			return allLoading;
+			return loadingCount > 0;
 		}
-		else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode)
+		else if ((node.level > maxZoom || (minZoom < node.level && distance > this.simplifyDistance))  && node.parentNode)
 		{
 			const parentNode = node.parentNode;
 			parentNode.simplify();
 			if (parentNode.level > minZoom) 
 			{
-				this.handleNode(parentNode, minZoom, maxZoom);
+				await this.handleNode(parentNode, minZoom, maxZoom);
 			}
 			return true;
 		}
 		else if (inFrustum && minZoom <= node.level )
 		{
-			if (!node.isReady) 
+			if (!node.isTextureReady || (node instanceof MapHeightNode && !node.isHeightReady)) 
 			{
 				node.initialize();
 			}
@@ -92,21 +104,22 @@ export class LODFrustum extends LODRadial
 		}
 	}
 
-	public updateLOD(view, camera, renderer, scene): void
+	public updateLOD(view: MapView, camera, renderer, scene): void
 	{
 		projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projection);
 		camera.getWorldPosition(pov);
 		
 		const minZoom = view.provider.minZoom;
-		const maxZoom = view.provider.maxZoom;
+		const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
 		const toHandle = [];
 		view.children[0].traverseVisible((node) => {return toHandle.push(node);});
-		toHandle.forEach((node) =>
+		toHandle.forEach( (node) =>
 		{		
 			if (node.children.length <=1) 
 			{
 				this.handleNode(node, minZoom, maxZoom);
+
 			}
 		});
 

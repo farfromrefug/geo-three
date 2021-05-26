@@ -15,14 +15,20 @@ import {MapView} from '../MapView';
 export class MapHeightNode extends MapNode 
 {
 	/**
-	 * Flag indicating if the tile height data was loaded.
+	 * Flag indicating if the tile height data was loaded (even if failed).
 	 */
 	public heightLoaded: boolean = false;
 
 	/**
-	 * Flag indicating if the tile texture was loaded.
+	 * Flag indicating if the tile texture was loaded (even if failed).
 	 */
 	public textureLoaded: boolean = false;
+
+	/**
+	 * Variable indicating if it ready to be drawn
+	 * which means it has started or loaded its height data
+	 */
+	public isHeightReady: boolean;
 
 	/**
 	 * Map height node constructor.
@@ -40,6 +46,8 @@ export class MapHeightNode extends MapNode
 	{
 		super(parentNode, mapView, location, level, x, y, geometry, material);
 		this.matrixAutoUpdate = false;
+		const autoLoad = mapView.nodeShouldAutoLoad();
+		this.isHeightReady = autoLoad;
 	}
 
 	/**
@@ -68,13 +76,6 @@ export class MapHeightNode extends MapNode
 		this.loadHeightGeometry();
 	}
 
-	/**
-	 * Load tile texture from the server.
-	 *
-	 * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
-	 */
-	public loadTexture(): void 
-	{
 		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => 
 		{
 			if (image) 
@@ -91,6 +92,17 @@ export class MapHeightNode extends MapNode
 			}
 
 		}).finally(() =>
+	/**
+	 * Load tile texture from the server.
+	 *
+	 * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
+	 */
+	public loadTexture(): Promise<any> 
+	{
+		if (this.isTextureReady) {
+			return;
+		}
+		this.isTextureReady = true;
 		{
 			this.textureLoaded = true;
 			this.nodeReady();
@@ -104,7 +116,6 @@ export class MapHeightNode extends MapNode
 			return;
 		}
 
-		this.visible = true;
 
 		super.nodeReady();
 	}
@@ -145,6 +156,27 @@ export class MapHeightNode extends MapNode
 		node.updateMatrixWorld(true);
 	}
 
+	public async loadHeightGeometry(): Promise<any> 
+	{
+		if (this.isHeightReady) {
+			return;
+		}
+		this.isHeightReady = true;
+		const heightProvider = this.mapView.heightProvider;
+		if (heightProvider === null) 
+		{
+			throw new Error('GeoThree: MapView.heightProvider provider is null.');
+		}
+		try {
+				const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
+				this.onHeightImage(image);
+		} finally {
+			this.heightLoaded = true;
+			this.heightListeners.forEach(l=>l());
+			this.heightListeners = [];
+			this.nodeReady();
+		}
+	}
 	/**
 	 * Load height texture from the server and create a geometry to match it.
 	 *

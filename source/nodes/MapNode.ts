@@ -45,9 +45,9 @@ export abstract class MapNode extends Mesh
 
 	/**
 	 * Variable indicating if it ready to be drawn
-	 * which means it has started or loaded its textures
+	 * which means it has started or loaded its texture
 	 */
-	public isReady: boolean;
+	public isTextureReady: boolean;
 
 	/**
 	 * Indicates how many children nodes where loaded.
@@ -151,8 +151,8 @@ export abstract class MapNode extends Mesh
 
 		const autoLoad = mapView.nodeShouldAutoLoad();
 
-		this.visible = !autoLoad;
-		this.isReady = autoLoad;
+		this.isMesh = false;
+		this.isTextureReady = autoLoad;
 
 		this.objectsHolder = new Group();
 		this.objectsHolder.visible = !autoLoad;
@@ -170,7 +170,6 @@ export abstract class MapNode extends Mesh
 	 */
 	public initialize(): void 
 	{
-		this.isReady = true;
 	}
 
 	/**
@@ -241,9 +240,13 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes the existence of a material attribute with a map texture.
 	 */
-	public loadTexture(): void
+	public loadTexture(): Promise<any>
 	{
-		this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
+		if (this.isTextureReady) {
+			return;
+		}
+		this.isTextureReady = true;
+		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
 		{
 			if (image) 
 			{

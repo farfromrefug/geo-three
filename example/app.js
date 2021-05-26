@@ -1270,6 +1270,35 @@ var webapp = (function (exports) {
         return boundingSphere;
     }
 
+    var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
+    function getAugmentedNamespace(n) {
+    	if (n.__esModule) return n;
+    	var a = Object.defineProperty({}, '__esModule', {value: true});
+    	Object.keys(n).forEach(function (k) {
+    		var d = Object.getOwnPropertyDescriptor(n, k);
+    		Object.defineProperty(a, k, d.get ? d : {
+    			enumerable: true,
+    			get: function () {
+    				return n[k];
+    			}
+    		});
+    	});
+    	return a;
+    }
+
+    var stats_min = {exports: {}};
+
+    (function (module, exports) {
+    // stats.js - http://github.com/mrdoob/stats.js
+    (function(f,e){module.exports=e();})(commonjsGlobal,function(){var f=function(){function e(a){c.appendChild(a.dom);return a}function u(a){for(var d=0;d<c.children.length;d++)c.children[d].style.display=d===a?"block":"none";l=a;}var l=0,c=document.createElement("div");c.style.cssText="position:fixed;top:0;left:0;cursor:pointer;opacity:0.9;z-index:10000";c.addEventListener("click",function(a){a.preventDefault();
+    u(++l%c.children.length);},!1);var k=(performance||Date).now(),g=k,a=0,r=e(new f.Panel("FPS","#0ff","#002")),h=e(new f.Panel("MS","#0f0","#020"));if(self.performance&&self.performance.memory)var t=e(new f.Panel("MB","#f08","#201"));u(0);return {REVISION:16,dom:c,addPanel:e,showPanel:u,begin:function(){k=(performance||Date).now();},end:function(){a++;var c=(performance||Date).now();h.update(c-k,200);if(c>g+1E3&&(r.update(1E3*a/(c-g),100),g=c,a=0,t)){var d=performance.memory;t.update(d.usedJSHeapSize/
+    1048576,d.jsHeapSizeLimit/1048576);}return c},update:function(){k=this.end();},domElement:c,setMode:u}};f.Panel=function(e,f,l){var c=Infinity,k=0,g=Math.round,a=g(window.devicePixelRatio||1),r=80*a,h=48*a,t=3*a,v=2*a,d=3*a,m=15*a,n=74*a,p=30*a,q=document.createElement("canvas");q.width=r;q.height=h;q.style.cssText="width:80px;height:48px";var b=q.getContext("2d");b.font="bold "+9*a+"px Helvetica,Arial,sans-serif";b.textBaseline="top";b.fillStyle=l;b.fillRect(0,0,r,h);b.fillStyle=f;b.fillText(e,t,v);
+    b.fillRect(d,m,n,p);b.fillStyle=l;b.globalAlpha=.9;b.fillRect(d,m,n,p);return {dom:q,update:function(h,w){c=Math.min(c,h);k=Math.max(k,h);b.fillStyle=l;b.globalAlpha=1;b.fillRect(0,0,r,m);b.fillStyle=f;b.fillText(g(h)+" "+e+" ("+g(c)+"-"+g(k)+")",t,v);b.drawImage(q,d+a,m,n-a,p,d,m,n-a,p);b.fillRect(d+n-a,m,a,p);b.fillStyle=l;b.globalAlpha=.9;b.fillRect(d+n-a,m,a,g((1-h/w)*p));}}};return f});
+    }(stats_min));
+
+    var Stats = stats_min.exports;
+
     // threejs.org/license
     const REVISION = '125';
     const MOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 };
@@ -41734,7 +41763,7 @@ var webapp = (function (exports) {
 
     	start() {
 
-    		this.startTime = now$1();
+    		this.startTime = now();
 
     		this.oldTime = this.startTime;
     		this.elapsedTime = 0;
@@ -41770,7 +41799,7 @@ var webapp = (function (exports) {
 
     		if ( this.running ) {
 
-    			const newTime = now$1();
+    			const newTime = now();
 
     			diff = ( newTime - this.oldTime ) / 1000;
     			this.oldTime = newTime;
@@ -41785,7 +41814,7 @@ var webapp = (function (exports) {
 
     }
 
-    function now$1() {
+    function now() {
 
     	return ( typeof performance === 'undefined' ? Date : performance ).now(); // see #10732
 
@@ -50778,6 +50807,167 @@ var webapp = (function (exports) {
         sRGBEncoding: sRGBEncoding
     });
 
+    // import FXAAShaderFrag from './shaders/FXAAShaderFrag.glsl';
+    // import FXAAShaderVert from './shaders/FXAAShaderVert.glsl';
+    class Magnify3d {
+        constructor() {
+            this.size = new Vector2();
+            this.magnifyMaterial = new ShaderMaterial({
+                vertexShader: `
+			void main() {
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+			}
+			`,
+                fragmentShader: `
+			#define AA_RANGE 2.0
+			precision mediump float;
+
+			uniform sampler2D zoomedTexture;
+			uniform sampler2D originalTexture;
+			uniform vec2 pos;
+			uniform vec2 resolution;
+			uniform vec2 mag_resolution;
+			uniform float zoom;
+			uniform float exp;
+			uniform float radius;
+			uniform float outlineThickness;
+			uniform vec3 outlineColor;
+
+			void main() {
+				vec2 uv = gl_FragCoord.xy / mag_resolution.xy;
+				vec2 pos_uv = pos.xy / mag_resolution.xy;
+				
+				float dist = distance(gl_FragCoord.xy, pos.xy);
+
+				float z;
+				vec2 p;
+
+				if (dist < radius) {
+					// https://www.wolframalpha.com/input/?i=plot+1.0+-+(pow(x+%2F+r,+e)+*+(1.0+-+(1.0+%2F+(z))))
+					z = 1.0 - (pow(dist / radius, exp) * (1.0 - (1.0 / (zoom))));
+					p = ((uv - pos_uv) / z) + pos_uv;
+					gl_FragColor = vec4(vec3(texture2D(zoomedTexture, p)), 1.0);
+				} else if (dist <= radius + outlineThickness) {
+					float w = outlineThickness / 2.0;
+					float alpha = smoothstep(0.0, AA_RANGE, dist - radius) - smoothstep(outlineThickness - AA_RANGE, outlineThickness, dist - radius);
+					
+					if (dist <= radius + outlineThickness / 2.0) {
+						// Inside outline.
+						gl_FragColor = mix(texture2D(zoomedTexture, uv), vec4(outlineColor, 1.0), alpha);
+					} else {
+						// Outside outline.
+						gl_FragColor = mix(texture2D(originalTexture, gl_FragCoord.xy / resolution.xy), vec4(outlineColor, 1.0), alpha);
+					}
+				} else {
+					gl_FragColor = texture2D(originalTexture, gl_FragCoord.xy / resolution.xy);
+				}
+			}    
+`,
+                uniforms: {
+                    zoomedTexture: { value: new Texture() },
+                    originalTexture: { value: new Texture() },
+                    pos: { value: new Vector2() },
+                    outlineColor: { value: null },
+                    'mag_resolution': { value: null },
+                    resolution: { value: null },
+                    zoom: { value: null },
+                    radius: { value: null },
+                    outlineThickness: { value: null },
+                    exp: { value: null }
+                }
+            });
+            this.magnifyMaterial.transparent = true; // Needed if inputBuffer is undefined.
+            this.magnifyScene = this.createScene(this.magnifyMaterial);
+            this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            // Size is not really matter here. It gets updated inside `render`.
+            this.zoomTarget = new WebGLRenderTarget(0, 0);
+            // Antialiasing shader
+            // this.fxaaMaterial = new THREE.ShaderMaterial({
+            // 	vertexShader: FXAAShaderVert,
+            // 	fragmentShader: FXAAShaderFrag,
+            // 	uniforms: {
+            // 		'tDiffuse': {type: 't'},
+            // 		'resolution': {type: 'v2'}
+            // 	}
+            // });
+            // this.fxaaMaterial.transparent = true; // Needed if inputBuffer is undefined.
+            // this.fxaaScene = this.createScene(this.fxaaMaterial);
+            // this.fxaaTarget = new THREE.WebGLRenderTarget(0, 0);
+            this.outlineColor = new Color();
+        }
+        createScene(material) {
+            const quad = new Mesh(new PlaneGeometry(2, 2), material);
+            const scene = new Scene();
+            scene.add(quad);
+            return scene;
+        }
+        render({ renderer, renderSceneCB, pos = null, zoom = 3.0, exp = 35.0, radius = 100.0, outlineColor = 0xCCCCCC, outlineThickness = 4.0, antialias = true, inputBuffer = undefined, outputBuffer = null }) {
+            if (!renderer) {
+                console.warn('Magnify-3d: No renderer attached!');
+                return;
+            }
+            if (!pos) {
+                // No pos - Just render original scene.
+                renderSceneCB(outputBuffer);
+                return;
+            }
+            const pixelRatio = renderer.getPixelRatio();
+            pos = { x: pos.x * pixelRatio, y: pos.y * pixelRatio };
+            renderer.getSize(this.size);
+            let { width, height } = this.size;
+            width *= pixelRatio;
+            height *= pixelRatio;
+            const maxViewportWidth = renderer.getContext().getParameter(renderer.getContext().MAX_VIEWPORT_DIMS)[0];
+            renderer.getContext().getParameter(renderer.getContext().MAX_VIEWPORT_DIMS)[1];
+            let resWidth = width;
+            let resHeight = height;
+            if (width * zoom > maxViewportWidth) {
+                resWidth = width * (width * zoom / maxViewportWidth);
+                resHeight = height * (width * zoom / maxViewportWidth);
+            }
+            // Set shader uniforms.
+            this.magnifyMaterial.uniforms['zoomedTexture'].value = this.zoomTarget.texture;
+            this.magnifyMaterial.uniforms['originalTexture'].value = inputBuffer && inputBuffer.texture || inputBuffer;
+            this.magnifyMaterial.uniforms['pos'].value = pos;
+            this.magnifyMaterial.uniforms['outlineColor'].value = this.outlineColor.set(outlineColor);
+            this.magnifyMaterial.uniforms['mag_resolution'].value = { x: resWidth, y: resHeight };
+            this.magnifyMaterial.uniforms['resolution'].value = { x: width, y: height };
+            this.magnifyMaterial.uniforms['zoom'].value = zoom;
+            this.magnifyMaterial.uniforms['radius'].value = radius * pixelRatio;
+            this.magnifyMaterial.uniforms['outlineThickness'].value = outlineThickness * pixelRatio;
+            this.magnifyMaterial.uniforms['exp'].value = exp;
+            // Make viewport centered according to pos.
+            const zoomedViewport = [
+                -pos.x * (zoom - 1) * width / resWidth,
+                -pos.y * (zoom - 1) * height / resHeight,
+                width * width / resWidth * zoom,
+                height * height / resHeight * zoom
+            ];
+            this.zoomTarget.setSize(width, height);
+            this.zoomTarget.viewport.set(...zoomedViewport);
+            const autoClearBackup = renderer.autoClear;
+            renderer.autoClear = true; // Make sure autoClear is set.
+            renderSceneCB(this.zoomTarget);
+            // if (antialias) 
+            // {
+            // 	this.fxaaMaterial.uniforms['tDiffuse'].value = this.fxaaTarget.texture;
+            // 	this.fxaaMaterial.uniforms['resolution'].value = {x: 1 / width, y: 1 / height};
+            // 	this.fxaaTarget.setSize(width, height);
+            // 	renderer.setRenderTarget(outputBuffer);
+            // 	// renderer.render(this.magnifyScene, this.camera, this.fxaaTarget); // Render magnify pass to fxaaTarget.
+            // 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
+            // 	renderer.setRenderTarget(null);
+            // }
+            // else 
+            // {
+            renderer.setRenderTarget(outputBuffer);
+            renderer.render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
+            renderer.setRenderTarget(null);
+            // }
+            renderer.autoClear = autoClearBackup;
+        }
+    }
+
     /**
      * W3C Device Orientation control (http://w3c.github.io/deviceorientation/spec-source-orientation.html)
      */
@@ -51134,21 +51324,6 @@ var webapp = (function (exports) {
     	].join( '\n' )
 
     };
-
-    function getAugmentedNamespace(n) {
-    	if (n.__esModule) return n;
-    	var a = Object.defineProperty({}, '__esModule', {value: true});
-    	Object.keys(n).forEach(function (k) {
-    		var d = Object.getOwnPropertyDescriptor(n, k);
-    		Object.defineProperty(a, k, d.get ? d : {
-    			enumerable: true,
-    			get: function () {
-    				return n[k];
-    			}
-    		});
-    	});
-    	return a;
-    }
 
     var postprocessing = {exports: {}};
 
@@ -57818,6 +57993,14 @@ var webapp = (function (exports) {
              */
             this.maxZoom = 20;
             /**
+             * Allowed overMaxZoom.
+             */
+            this.maxOverZoom = 0;
+            /**
+             * factor used to create bitmaps based on higher zooms
+             */
+            this.zoomDelta = 0;
+            /**
              * Map bounds.
              */
             this.bounds = [];
@@ -57871,6 +58054,31 @@ var webapp = (function (exports) {
                 image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
             });
         }
+    }
+
+    /*! *****************************************************************************
+    Copyright (c) Microsoft Corporation.
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+    PERFORMANCE OF THIS SOFTWARE.
+    ***************************************************************************** */
+
+    function __awaiter(thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
     }
 
     /**
@@ -57977,8 +58185,8 @@ var webapp = (function (exports) {
             this.x = x;
             this.y = y;
             const autoLoad = mapView.nodeShouldAutoLoad();
-            this.visible = !autoLoad;
-            this.isReady = autoLoad;
+            this.isMesh = false;
+            this.isTextureReady = autoLoad;
             this.objectsHolder = new Group();
             this.objectsHolder.visible = !autoLoad;
             this.add(this.objectsHolder);
@@ -57992,7 +58200,6 @@ var webapp = (function (exports) {
          * Called automatically by the constructor for child nodes and MapView when a root node is attached to it.
          */
         initialize() {
-            this.isReady = true;
         }
         /**
          * Create the child nodes to represent the next tree level.
@@ -58006,7 +58213,8 @@ var webapp = (function (exports) {
          * Uses the createChildNodes() method to actually create the child nodes that represent the next tree level.
          */
         subdivide() {
-            const maxZoom = Math.min(this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
+            const mapView = this.mapView;
+            const maxZoom = Math.min(mapView.provider.maxZoom + mapView.provider.maxOverZoom, mapView.heightProvider.maxZoom + mapView.heightProvider.maxOverZoom);
             if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) {
                 return;
             }
@@ -58049,7 +58257,11 @@ var webapp = (function (exports) {
          * This base method assumes the existence of a material attribute with a map texture.
          */
         loadTexture() {
-            this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
+            if (this.isTextureReady) {
+                return;
+            }
+            this.isTextureReady = true;
+            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
                 if (image) {
                     const texture = new Texture(image);
                     texture.generateMipmaps = false;
@@ -58184,7 +58396,7 @@ var webapp = (function (exports) {
             this.matrixAutoUpdate = false;
         }
         initialize() {
-            this.loadTexture();
+            return this.loadTexture();
         }
         createChildNodes() {
             const level = this.level + 1;
@@ -58256,19 +58468,33 @@ var webapp = (function (exports) {
         constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = MapHeightNode.GEOMETRY, material = new MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
             super(parentNode, mapView, location, level, x, y, geometry, material);
             /**
-             * Flag indicating if the tile height data was loaded.
+             * Flag indicating if the tile height data was loaded (even if failed).
              */
             this.heightLoaded = false;
             /**
-             * Flag indicating if the tile texture was loaded.
+             * Flag indicating if the tile texture was loaded (even if failed).
              */
             this.textureLoaded = false;
+            this.heightListeners = [];
             this.matrixAutoUpdate = false;
+            const autoLoad = mapView.nodeShouldAutoLoad();
+            this.isHeightReady = autoLoad;
         }
         initialize() {
             super.initialize();
-            this.loadTexture();
-            this.loadHeightGeometry();
+            return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
+        }
+        onTextureImage(image) {
+            if (image) {
+                const texture = new Texture(image);
+                texture.generateMipmaps = false;
+                texture.format = RGBFormat;
+                texture.magFilter = LinearFilter;
+                texture.minFilter = LinearFilter;
+                texture.needsUpdate = true;
+                // @ts-ignore
+                this.material.map = texture;
+            }
         }
         /**
          * Load tile texture from the server.
@@ -58276,18 +58502,11 @@ var webapp = (function (exports) {
          * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
          */
         loadTexture() {
-            this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-                if (image) {
-                    const texture = new Texture(image);
-                    texture.generateMipmaps = false;
-                    texture.format = RGBFormat;
-                    texture.magFilter = LinearFilter;
-                    texture.minFilter = LinearFilter;
-                    texture.needsUpdate = true;
-                    // @ts-ignore
-                    this.material.map = texture;
-                }
-            }).finally(() => {
+            if (this.isTextureReady) {
+                return;
+            }
+            this.isTextureReady = true;
+            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => this.onTextureImage(image)).finally(() => {
                 this.textureLoaded = true;
                 this.nodeReady();
             });
@@ -58296,7 +58515,6 @@ var webapp = (function (exports) {
             if (!this.heightLoaded || !this.textureLoaded) {
                 return;
             }
-            this.visible = true;
             super.nodeReady();
         }
         createChildNodes() {
@@ -58329,40 +58547,73 @@ var webapp = (function (exports) {
             node.updateMatrix();
             node.updateMatrixWorld(true);
         }
+        handleParentOverZoomTile(resolve) {
+            throw new Error('not implemented');
+        }
+        loadHeightGeometry() {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (this.isHeightReady) {
+                    return;
+                }
+                this.isHeightReady = true;
+                const heightProvider = this.mapView.heightProvider;
+                if (heightProvider === null) {
+                    throw new Error('GeoThree: MapView.heightProvider provider is null.');
+                }
+                try {
+                    const zoom = this.level;
+                    if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+                        const parent = this.parent;
+                        if (parent.heightLoaded) {
+                            this.handleParentOverZoomTile();
+                        }
+                        else {
+                            const promise = new Promise(resolve => {
+                                parent.heightListeners.push(() => this.handleParentOverZoomTile(resolve));
+                            });
+                            if (!parent.isHeightReady) {
+                                // ensure parent is loaded first
+                                parent.loadHeightGeometry();
+                            }
+                            yield promise;
+                        }
+                    }
+                    else {
+                        const image = yield this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
+                        this.onHeightImage(image);
+                    }
+                }
+                finally {
+                    this.heightLoaded = true;
+                    this.heightListeners.forEach(l => l());
+                    this.heightListeners = [];
+                    this.nodeReady();
+                }
+            });
+        }
         /**
          * Load height texture from the server and create a geometry to match it.
          *
          * @returns Returns a promise indicating when the geometry generation has finished.
          */
-        loadHeightGeometry() {
-            if (this.mapView.heightProvider === null) {
-                throw new Error('GeoThree: MapView.heightProvider provider is null.');
+        onHeightImage(image) {
+            const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+            const vertices = geometry.attributes.position.array;
+            const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+            const context = canvas.getContext('2d');
+            context.imageSmoothingEnabled = false;
+            context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // The value will be composed of the bits RGB
+                const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+                vertices[j + 1] = value;
             }
-            return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => {
-                const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-                const vertices = geometry.attributes.position.array;
-                const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
-                const context = canvas.getContext('2d');
-                context.imageSmoothingEnabled = false;
-                context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
-                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    // The value will be composed of the bits RGB
-                    const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-                    vertices[j + 1] = value;
-                }
-                this.geometry = geometry;
-            })
-                .catch(() => {
-                console.error('GeoThree: Failed to load height node data.', this);
-            }).finally(() => {
-                this.heightLoaded = true;
-                this.nodeReady();
-            });
+            this.geometry = geometry;
         }
         /**
          * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
@@ -58468,7 +58719,7 @@ var webapp = (function (exports) {
             this.matrixAutoUpdate = false;
         }
         initialize() {
-            this.loadTexture();
+            return this.loadTexture();
         }
         /**
          * Create a geometry for a sphere map node.
@@ -58605,29 +58856,8 @@ var webapp = (function (exports) {
             };
             return material;
         }
-        loadTexture() {
-            this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-                const texture = new Texture(image);
-                texture.generateMipmaps = false;
-                texture.format = RGBFormat;
-                texture.magFilter = LinearFilter;
-                texture.minFilter = LinearFilter;
-                texture.needsUpdate = true;
-                // @ts-ignore
-                this.material.map = texture;
-            }).catch((err) => {
-                console.error('GeoThree: Failed to load color node data.', err);
-            }).finally(() => {
-                this.textureLoaded = true;
-                this.nodeReady();
-            });
-            this.loadHeightGeometry();
-        }
-        loadHeightGeometry() {
-            if (this.mapView.heightProvider === null) {
-                throw new Error('GeoThree: MapView.heightProvider provider is null.');
-            }
-            return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => {
+        onHeightImage(image) {
+            if (image) {
                 const texture = new Texture(image);
                 texture.generateMipmaps = false;
                 texture.format = RGBFormat;
@@ -58636,12 +58866,7 @@ var webapp = (function (exports) {
                 texture.needsUpdate = true;
                 // @ts-ignore
                 this.material.userData.heightMap.value = texture;
-            }).catch((err) => {
-                console.error('GeoThree: Failed to load height node data.', err);
-            }).finally(() => {
-                this.heightLoaded = true;
-                this.nodeReady();
-            });
+            }
         }
         /**
          * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
@@ -59011,51 +59236,63 @@ var webapp = (function (exports) {
             this.pointOnly = false;
         }
         handleNode(node, minZoom, maxZoom, inFrustum = false) {
-            if (!(node instanceof MapNode)) {
-                return true;
-            }
-            node.getWorldPosition(position$1);
-            var distance = pov.distanceTo(position$1);
-            distance /= Math.pow(2, 20 - node.level);
-            inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position$1) : frustum.intersectsObject(node));
-            if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum) {
-                node.subdivide();
-                const children = node.children;
-                let allLoading = true;
-                if (children) {
-                    children.forEach((n) => { return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading; });
-                    if (!allLoading) {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (!(node instanceof MapNode)) {
+                    return true;
+                }
+                node.getWorldPosition(position$1);
+                var distance = pov.distanceTo(position$1);
+                distance /= Math.pow(2, 20 - node.level);
+                inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position$1) : frustum.intersectsObject(node));
+                if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum) {
+                    node.subdivide();
+                    const children = node.children;
+                    let loadingCount = 0;
+                    if (children) {
+                        for (let index = 0; index < children.length; index++) {
+                            const n = children[index];
+                            if (!(n instanceof MapNode)) {
+                                continue;
+                            }
+                            const result = yield this.handleNode(n, minZoom, maxZoom, false);
+                            if (result) {
+                                loadingCount++;
+                            }
+                        }
+                        // if (loadingCount > 0 && loadingCount < 4) 
+                        // {
                         // one not in frustum let still hide ourself
                         node.isMesh = false;
                         node.objectsHolder.visible = false;
+                        // }
                     }
+                    return loadingCount > 0;
                 }
-                return allLoading;
-            }
-            else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode) {
-                const parentNode = node.parentNode;
-                parentNode.simplify();
-                if (parentNode.level > minZoom) {
-                    this.handleNode(parentNode, minZoom, maxZoom);
+                else if ((node.level > maxZoom || (minZoom < node.level && distance > this.simplifyDistance)) && node.parentNode) {
+                    const parentNode = node.parentNode;
+                    parentNode.simplify();
+                    if (parentNode.level > minZoom) {
+                        yield this.handleNode(parentNode, minZoom, maxZoom);
+                    }
+                    return true;
                 }
-                return true;
-            }
-            else if (inFrustum && minZoom <= node.level) {
-                if (!node.isReady) {
-                    node.initialize();
+                else if (inFrustum && minZoom <= node.level) {
+                    if (!node.isTextureReady || (node instanceof MapHeightNode && !node.isHeightReady)) {
+                        node.initialize();
+                    }
+                    return true;
                 }
-                return true;
-            }
-            else {
-                return node.isReady;
-            }
+                else {
+                    return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
+                }
+            });
         }
         updateLOD(view, camera, renderer, scene) {
             projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
             frustum.setFromProjectionMatrix(projection);
             camera.getWorldPosition(pov);
             const minZoom = view.provider.minZoom;
-            const maxZoom = view.provider.maxZoom;
+            const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
             const toHandle = [];
             view.children[0].traverseVisible((node) => { return toHandle.push(node); });
             toHandle.forEach((node) => {
@@ -59082,29 +59319,871 @@ var webapp = (function (exports) {
         }
     }
 
-    /*! *****************************************************************************
-    Copyright (c) Microsoft Corporation.
+    var d2r = Math.PI / 180,
+        r2d = 180 / Math.PI;
 
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted.
+    /**
+     * Get the bbox of a tile
+     *
+     * @name tileToBBOX
+     * @param {Array<number>} tile
+     * @returns {Array<number>} bbox
+     * @example
+     * var bbox = tileToBBOX([5, 10, 10])
+     * //=bbox
+     */
+    function tileToBBOX(tile) {
+        var e = tile2lon(tile[0] + 1, tile[2]);
+        var w = tile2lon(tile[0], tile[2]);
+        var s = tile2lat(tile[1] + 1, tile[2]);
+        var n = tile2lat(tile[1], tile[2]);
+        return [w, s, e, n];
+    }
 
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-    PERFORMANCE OF THIS SOFTWARE.
-    ***************************************************************************** */
+    /**
+     * Get a geojson representation of a tile
+     *
+     * @name tileToGeoJSON
+     * @param {Array<number>} tile
+     * @returns {Feature<Polygon>}
+     * @example
+     * var poly = tileToGeoJSON([5, 10, 10])
+     * //=poly
+     */
+    function tileToGeoJSON(tile) {
+        var bbox = tileToBBOX(tile);
+        var poly = {
+            type: 'Polygon',
+            coordinates: [[
+                [bbox[0], bbox[3]],
+                [bbox[0], bbox[1]],
+                [bbox[2], bbox[1]],
+                [bbox[2], bbox[3]],
+                [bbox[0], bbox[3]]
+            ]]
+        };
+        return poly;
+    }
 
-    function __awaiter(thisArg, _arguments, P, generator) {
-        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-        return new (P || (P = Promise))(function (resolve, reject) {
-            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-            step((generator = generator.apply(thisArg, _arguments || [])).next());
-        });
+    function tile2lon(x, z) {
+        return x / Math.pow(2, z) * 360 - 180;
+    }
+
+    function tile2lat(y, z) {
+        var n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+        return r2d * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    }
+
+    /**
+     * Get the tile for a point at a specified zoom level
+     *
+     * @name pointToTile
+     * @param {number} lon
+     * @param {number} lat
+     * @param {number} z
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = pointToTile(1, 1, 20)
+     * //=tile
+     */
+    function pointToTile(lon, lat, z) {
+        var tile = pointToTileFraction(lon, lat, z);
+        tile[0] = Math.floor(tile[0]);
+        tile[1] = Math.floor(tile[1]);
+        return tile;
+    }
+
+    /**
+     * Get the 4 tiles one zoom level higher
+     *
+     * @name getChildren
+     * @param {Array<number>} tile
+     * @returns {Array<Array<number>>} tiles
+     * @example
+     * var tiles = getChildren([5, 10, 10])
+     * //=tiles
+     */
+    function getChildren(tile) {
+        return [
+            [tile[0] * 2, tile[1] * 2, tile[2] + 1],
+            [tile[0] * 2 + 1, tile[1] * 2, tile[2 ] + 1],
+            [tile[0] * 2 + 1, tile[1] * 2 + 1, tile[2] + 1],
+            [tile[0] * 2, tile[1] * 2 + 1, tile[2] + 1]
+        ];
+    }
+
+    /**
+     * Get the tile one zoom level lower
+     *
+     * @name getParent
+     * @param {Array<number>} tile
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = getParent([5, 10, 10])
+     * //=tile
+     */
+    function getParent(tile) {
+        return [tile[0] >> 1, tile[1] >> 1, tile[2] - 1];
+    }
+
+    function getSiblings(tile) {
+        return getChildren(getParent(tile));
+    }
+
+    /**
+     * Get the 3 sibling tiles for a tile
+     *
+     * @name getSiblings
+     * @param {Array<number>} tile
+     * @returns {Array<Array<number>>} tiles
+     * @example
+     * var tiles = getSiblings([5, 10, 10])
+     * //=tiles
+     */
+    function hasSiblings(tile, tiles) {
+        var siblings = getSiblings(tile);
+        for (var i = 0; i < siblings.length; i++) {
+            if (!hasTile(tiles, siblings[i])) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Check to see if an array of tiles contains a particular tile
+     *
+     * @name hasTile
+     * @param {Array<Array<number>>} tiles
+     * @param {Array<number>} tile
+     * @returns {boolean}
+     * @example
+     * var tiles = [
+     *     [0, 0, 5],
+     *     [0, 1, 5],
+     *     [1, 1, 5],
+     *     [1, 0, 5]
+     * ]
+     * hasTile(tiles, [0, 0, 5])
+     * //=boolean
+     */
+    function hasTile(tiles, tile) {
+        for (var i = 0; i < tiles.length; i++) {
+            if (tilesEqual(tiles[i], tile)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check to see if two tiles are the same
+     *
+     * @name tilesEqual
+     * @param {Array<number>} tile1
+     * @param {Array<number>} tile2
+     * @returns {boolean}
+     * @example
+     * tilesEqual([0, 1, 5], [0, 0, 5])
+     * //=boolean
+     */
+    function tilesEqual(tile1, tile2) {
+        return (
+            tile1[0] === tile2[0] &&
+            tile1[1] === tile2[1] &&
+            tile1[2] === tile2[2]
+        );
+    }
+
+    /**
+     * Get the quadkey for a tile
+     *
+     * @name tileToQuadkey
+     * @param {Array<number>} tile
+     * @returns {string} quadkey
+     * @example
+     * var quadkey = tileToQuadkey([0, 1, 5])
+     * //=quadkey
+     */
+    function tileToQuadkey(tile) {
+        var index = '';
+        for (var z = tile[2]; z > 0; z--) {
+            var b = 0;
+            var mask = 1 << (z - 1);
+            if ((tile[0] & mask) !== 0) b++;
+            if ((tile[1] & mask) !== 0) b += 2;
+            index += b.toString();
+        }
+        return index;
+    }
+
+    /**
+     * Get the tile for a quadkey
+     *
+     * @name quadkeyToTile
+     * @param {string} quadkey
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = quadkeyToTile('00001033')
+     * //=tile
+     */
+    function quadkeyToTile(quadkey) {
+        var x = 0;
+        var y = 0;
+        var z = quadkey.length;
+
+        for (var i = z; i > 0; i--) {
+            var mask = 1 << (i - 1);
+            var q = +quadkey[z - i];
+            if (q === 1) x |= mask;
+            if (q === 2) y |= mask;
+            if (q === 3) {
+                x |= mask;
+                y |= mask;
+            }
+        }
+        return [x, y, z];
+    }
+
+    /**
+     * Get the smallest tile to cover a bbox
+     *
+     * @name bboxToTile
+     * @param {Array<number>} bbox
+     * @returns {Array<number>} tile
+     * @example
+     * var tile = bboxToTile([ -178, 84, -177, 85 ])
+     * //=tile
+     */
+    function bboxToTile(bboxCoords) {
+        var min = pointToTile(bboxCoords[0], bboxCoords[1], 32);
+        var max = pointToTile(bboxCoords[2], bboxCoords[3], 32);
+        var bbox = [min[0], min[1], max[0], max[1]];
+
+        var z = getBboxZoom(bbox);
+        if (z === 0) return [0, 0, 0];
+        var x = bbox[0] >>> (32 - z);
+        var y = bbox[1] >>> (32 - z);
+        return [x, y, z];
+    }
+
+    function getBboxZoom(bbox) {
+        var MAX_ZOOM = 28;
+        for (var z = 0; z < MAX_ZOOM; z++) {
+            var mask = 1 << (32 - (z + 1));
+            if (((bbox[0] & mask) !== (bbox[2] & mask)) ||
+                ((bbox[1] & mask) !== (bbox[3] & mask))) {
+                return z;
+            }
+        }
+
+        return MAX_ZOOM;
+    }
+
+    /**
+     * Get the precise fractional tile location for a point at a zoom level
+     *
+     * @name pointToTileFraction
+     * @param {number} lon
+     * @param {number} lat
+     * @param {number} z
+     * @returns {Array<number>} tile fraction
+     * var tile = pointToTileFraction(30.5, 50.5, 15)
+     * //=tile
+     */
+    function pointToTileFraction(lon, lat, z) {
+        var sin = Math.sin(lat * d2r),
+            z2 = Math.pow(2, z),
+            x = z2 * (lon / 360 + 0.5),
+            y = z2 * (0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI);
+
+        // Wrap Tile X
+        x = x % z2;
+        if (x < 0) x = x + z2;
+        return [x, y, z];
+    }
+
+    var tilebelt = {
+        tileToGeoJSON: tileToGeoJSON,
+        tileToBBOX: tileToBBOX,
+        getChildren: getChildren,
+        getParent: getParent,
+        getSiblings: getSiblings,
+        hasTile: hasTile,
+        hasSiblings: hasSiblings,
+        tilesEqual: tilesEqual,
+        tileToQuadkey: tileToQuadkey,
+        quadkeyToTile: quadkeyToTile,
+        pointToTile: pointToTile,
+        bboxToTile: bboxToTile,
+        pointToTileFraction: pointToTileFraction
+    };
+
+    let currentColor = 0xffffff;
+    class MaterialHeightShader extends MapHeightNode {
+        constructor(parentNode, mapView, location, level, x, y) {
+            super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
+                map: MaterialHeightShader.EMPTY_TEXTURE,
+                color: 0xffffff,
+                wireframe: exports.wireframe,
+                shininess: 0,
+                side: DoubleSide
+            }), level));
+            this.heightMapLocation = [0, 0, 1, 1];
+            this.overZoomFactor = 1;
+            // this.castShadow = true;
+            // this.receiveShadow = true;
+            this.material.emissiveIntensity = 0;
+            this.frustumCulled = false;
+            this.exageration = exports.exageration;
+            this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+            // this.material.flatShading =  mapMap && !computeNormals;
+        }
+        static getGeometry(level) {
+            let size = MaterialHeightShader.GEOMETRY_SIZE;
+            if (level < 11) {
+                // size /= Math.pow(2, 11 - level);
+                size /= 11 - level;
+                size = Math.max(16, size);
+            }
+            else if (level > 11) {
+                size /= Math.pow(2, (level - 11));
+                size = Math.max(16, size);
+            }
+            let geo = MaterialHeightShader.geometries[size];
+            if (!MaterialHeightShader.geometries[size]) {
+                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size);
+            }
+            return geo;
+        }
+        static getSoftGeometry(level) {
+            return MaterialHeightShader.getGeometry(level - 1);
+        }
+        static prepareMaterial(material, level) {
+            material.precision = 'highp';
+            material.userData = {
+                heightMap: { value: MaterialHeightShader.EMPTY_TEXTURE },
+                drawNormals: { value: exports.drawNormals },
+                computeNormals: { value: shouldComputeNormals() },
+                drawTexture: { value: (exports.debug || exports.mapMap) && exports.drawTexture },
+                drawBlack: { value: 0 },
+                zoomlevel: { value: level },
+                exageration: { value: exports.exageration },
+                elevationDecoder: { value: exports.elevationDecoder },
+                heightMapLocation: { value: new Vector4() }
+            };
+            material.onBeforeCompile = (shader) => {
+                // Pass uniforms from userData to the
+                for (const i in material.userData) {
+                    shader.uniforms[i] = material.userData[i];
+                }
+                // Vertex variables
+                shader.vertexShader =
+                    `
+			uniform bool computeNormals;
+			uniform float exageration;
+			uniform float zoomlevel;
+			uniform sampler2D heightMap;
+			uniform vec4 elevationDecoder;
+			uniform vec4 heightMapLocation;
+
+			float getPixelElevation(vec4 e) {
+				// Convert encoded elevation value to meters
+				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
+			}
+			float getElevation(vec2 coord, float width, float height) {
+				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+				return getPixelElevation(e);
+				}
+			float getElevationMean(vec2 coord, float width, float height) {
+				// if (heightMapLocation.z != 1.0) {
+				// 	return  getElevation(coord, width, height);
+				// }
+				float x0 = coord.x;
+				float x1= coord.x;
+				float y0 = coord.y;
+				float y1= coord.y;
+				if (x0 <= 0.0) {
+					x1 = 1.0 / width;
+				}
+				if (x0 >= 1.0) {
+					x1 = 1.0 - 1.0 / width;
+				}
+				if (y0 <= 0.0) {
+					y1 = 1.0 / height;
+				}
+				if (y0 >= 1.0) {
+					y1 = 1.0 - 1.0 / height;
+				}
+				if (x0 == x1 && y0 == y1) {
+					return getElevation(coord, width, height);
+				} else {
+					return 2.0 * getElevation(vec2(x0,y0), width, height) -  getElevation(vec2(x1,y1), width, height);
+				}
+			}
+			` + shader.vertexShader;
+                shader.fragmentShader =
+                    `
+			uniform bool drawNormals;
+			uniform bool drawTexture;
+			uniform bool drawBlack;
+			` + shader.fragmentShader;
+                // Vertex depth logic
+                shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
+				#include <dithering_fragment>
+				if(drawBlack) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
+				} else if(drawNormals) {
+				#ifndef FLAT_SHADED
+					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+				#else 
+					gl_FragColor = vec4( ( 0.5 * normal + 0.5 ), 1.0 );
+				#endif
+				} else if (!drawTexture) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
+				}
+					`);
+                shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
+				#include <fog_vertex>
+
+				// queried pixels:
+				// +-----------+
+				// |   |   |   |
+				// | a | b | c |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | d | e | f |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | g | h | i |
+				// |   |   |   |
+				// +-----------+
+
+				ivec2 size = textureSize(heightMap, 0);
+				float width = float(size.x) * heightMapLocation.z;
+				float height = float(size.y) * heightMapLocation.w;
+				float e = getElevationMean(vUv, width,height);
+				#ifndef FLAT_SHADED
+					if (computeNormals) {
+						float offset = 1.0 / width;
+						float a = getElevation(vUv + vec2(-offset, -offset), width,height);
+						float b = getElevation(vUv + vec2(0, -offset), width,height);
+						float c = getElevation(vUv + vec2(offset, -offset), width,height);
+						float d = getElevation(vUv + vec2(-offset, 0), width,height);
+						float f = getElevation(vUv + vec2(offset, 0), width,height);
+						float g = getElevation(vUv + vec2(-offset, offset), width,height);
+						float h = getElevation(vUv + vec2(0, offset), width,height);
+						float i = getElevation(vUv + vec2(offset,offset), width,height);
+
+						float NormalLength = 500.0 / zoomlevel;
+
+						vec3 v0 = vec3(0.0, 0.0, 0.0);
+						vec3 v1 = vec3(0.0, NormalLength, 0.0);
+						vec3 v2 = vec3(NormalLength, 0.0, 0.0);
+						v0.z = (e + d + g + h) / 4.0;
+						v1.z = (e + b + a + d) / 4.0;
+						v2.z = (e + h + i + f) / 4.0;
+						vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
+					}
+				#endif
+
+				vec3 _transformed = position + e * vec3(0,1,0);
+				vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
+				`);
+            };
+            return material;
+        }
+        nodeReady() {
+            if (!this.textureLoaded) {
+                return;
+            }
+            MapNode.prototype.nodeReady.call(this);
+        }
+        onTextureImage(image) {
+            if (image) {
+                const texture = new Texture(image);
+                texture.generateMipmaps = false;
+                texture.format = RGBFormat;
+                texture.magFilter = LinearFilter;
+                texture.minFilter = LinearFilter;
+                texture.needsUpdate = true;
+                // @ts-ignore
+                this.material.map = texture;
+            }
+            // 1057 735
+        }
+        onHeightImage(image) {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (image) {
+                    if (image instanceof Texture) {
+                        this.material.userData.heightMap.value = image;
+                    }
+                    else {
+                        var texture = new Texture(image);
+                        texture.generateMipmaps = false;
+                        texture.format = RGBFormat;
+                        texture.magFilter = LinearFilter;
+                        texture.minFilter = LinearFilter;
+                        // texture.wrapS = ClampToEdgeWrapping;
+                        // texture.wrapT = ClampToEdgeWrapping;
+                        texture.needsUpdate = true;
+                        this.material.userData.heightMap.value = texture;
+                    }
+                    this.geometry = MaterialHeightShader.getGeometry(this.level);
+                    this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result) => {
+                        result = result.filter((f) => { return f.properties.name && f.properties.class === 'peak'; });
+                        if (result.length > 0) {
+                            const features = [];
+                            var colors = [];
+                            var points = [];
+                            // var sizes = [];
+                            var elevations = [];
+                            const vec = new Vector3(0, 0, 0);
+                            result.forEach((f, index) => {
+                                var coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                                vec.set(coords.x, 0, -coords.y);
+                                f.localCoords = this.worldToLocal(vec);
+                                if (Math.abs(f.localCoords.x) <=
+                                    0.5 &&
+                                    Math.abs(f.localCoords.z) <=
+                                        0.5) {
+                                    const id = f.geometry.coordinates.join(',');
+                                    f.id = id;
+                                    f.pointIndex =
+                                        features.length;
+                                    features.push(f);
+                                    f.level = this.level;
+                                    f.x = this.x;
+                                    f.y = this.y;
+                                    const color = f.color = currentColor--;
+                                    featuresByColor[color] = f;
+                                    f.localCoords.y = 1;
+                                    colors.push((color >> 16 & 255) /
+                                        255, (color >> 8 & 255) /
+                                        255, (color & 255) / 255);
+                                    points.push(f.localCoords.x, f.localCoords.y, f.localCoords.z);
+                                    elevations.push(f.properties.ele);
+                                }
+                            });
+                            if (points.length > 0) {
+                                const geometry = new BufferGeometry();
+                                geometry.setAttribute('position', new Float32BufferAttribute(points, 3));
+                                geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+                                geometry.setAttribute('elevation', new Float32BufferAttribute(elevations, 1));
+                                var mesh = new Points(geometry, new ShaderMaterial({
+                                    uniforms: { exageration: { value: exports.exageration } },
+                                    vertexShader: `
+												attribute float elevation;
+												attribute vec4 color;
+												uniform float exageration;
+												varying vec4 vColor;
+												void main() {
+													vColor = color;
+													float exagerated  = elevation * exageration;
+													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
+													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
+													//  gl_PointSize = gl_Position.z _ ;
+													gl_Position = projectionMatrix * mvPosition;
+													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+												}
+												`,
+                                    fragmentShader: `
+											varying vec4 vColor;
+											void main() {
+													gl_FragColor = vec4( vColor );
+												}
+												`,
+                                    transparent: true
+                                }));
+                                mesh.features = features;
+                                mesh.updateMatrix();
+                                mesh.updateMatrixWorld(true);
+                                this.objectsHolder.visible = exports.debugFeaturePoints;
+                                this.objectsHolder.add(mesh);
+                            }
+                        }
+                        render();
+                    });
+                }
+            });
+        }
+        handleParentOverZoomTile(resolve) {
+            // @ts-ignore
+            //{w, s, e, n};
+            const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
+            const parent = this.parent;
+            const parentOverZoomFactor = parent.overZoomFactor;
+            const parentTileBox = tilebelt.tileToBBOX([parent.x, parent.y, parent.level]);
+            const width = parentTileBox[2] - parentTileBox[0];
+            const height = parentTileBox[3] - parentTileBox[1];
+            this.overZoomFactor = parentOverZoomFactor * 2;
+            this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10) / 10 / parentOverZoomFactor;
+            this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10) / 10 / parentOverZoomFactor;
+            this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+            this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+            this.onHeightImage(parent.material.userData.heightMap.value);
+            // console.log('heightMapLocation', this.x, this.y, this.level, this.heightMapLocation);
+            resolve && resolve();
+        }
+        /**
+        * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
+        *
+        * Switches the geometry for a simpler one for faster raycasting.
+        */
+        raycast(raycaster, intersects) {
+            if (this.isMesh === true) {
+                const oldGeometry = this.geometry;
+                this.geometry = MapPlaneNode.GEOMETRY;
+                const result = Mesh.prototype.raycast.call(this, raycaster, intersects);
+                this.geometry = oldGeometry;
+                return result;
+            }
+            return false;
+        }
+    }
+    MaterialHeightShader.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
+    MaterialHeightShader.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+    /**
+    * Empty texture used as a placeholder for missing textures.
+    */
+    MaterialHeightShader.EMPTY_TEXTURE = new Texture();
+    /**
+    * Size of the grid of the geometry displayed on the scene for each tile.
+    */
+    MaterialHeightShader.GEOMETRY_SIZE = 200;
+    MaterialHeightShader.geometries = {};
+
+    /**
+     * Cancelable promises extend base promises and provide a cancel functionality than can be used to cancel the execution or task of the promise.
+     *
+     * These type of promises can be used to prevent additional processing when the data is not longer required (e.g. HTTP request for data that is not longer necessary)
+     */
+    class CancelablePromise {
+        constructor(executor) {
+            this.fulfilled = false;
+            this.rejected = false;
+            this.called = false;
+            const resolve = (v) => {
+                this.fulfilled = true;
+                this.value = v;
+                if (typeof this.onResolve === 'function') {
+                    this.onResolve(this.value);
+                    this.called = true;
+                }
+            };
+            const reject = (reason) => {
+                this.rejected = true;
+                this.value = reason;
+                if (typeof this.onReject === 'function') {
+                    this.onReject(this.value);
+                    this.called = true;
+                }
+            };
+            try {
+                executor(resolve, reject);
+            }
+            catch (error) {
+                reject(error);
+            }
+        }
+        /**
+         * Request to cancel the promise execution.
+         *
+         * @returns True if the promise is canceled successfully, false otherwise.
+         */
+        cancel() {
+            // TODO <ADD CODE HERE>
+            return false;
+        }
+        /**
+         * Executed after the promise is fulfilled.
+         *
+         * @param callback - Callback to receive the value.
+         * @returns Promise for chainning.
+         */
+        then(callback) {
+            this.onResolve = callback;
+            if (this.fulfilled && !this.called) {
+                this.called = true;
+                this.onResolve(this.value);
+            }
+            return this;
+        }
+        /**
+         * Catch any error that occurs in the promise.
+         *
+         * @param callback - Method to catch errors.
+         * @returns Promise for chainning.
+         */
+        catch(callback) {
+            this.onReject = callback;
+            if (this.rejected && !this.called) {
+                this.called = true;
+                this.onReject(this.value);
+            }
+            return this;
+        }
+        /**
+         * Finally callback
+         *
+         * @param callback - Method to be called.
+         * @returns Promise for chainning.
+         */
+        finally(callback) {
+            // TODO: not implemented
+            return this;
+        }
+        /**
+         * Create a resolved promise.
+         *
+         * @param val - Value to pass.
+         * @returns Promise created with resolve value.
+         */
+        static resolve(val) {
+            return new CancelablePromise(function executor(resolve, _reject) {
+                resolve(val);
+            });
+        }
+        /**
+         * Create a rejected promise.
+         *
+         * @param reason - Reason to reject the promise.
+         * @returns Promise created with rejection reason.
+         */
+        static reject(reason) {
+            return new CancelablePromise(function executor(resolve, reject) {
+                reject(reason);
+            });
+        }
+        /**
+         * Wait for a set of promises to finish, creates a promise that waits for all running promises.
+         *
+         * If any of the promises fail it will reject altough some of them may have been completed with success.
+         *
+         * @param promises - List of promisses to syncronize.
+         * @returns Promise that will resolve when all of the running promises are fullfilled.
+         */
+        static all(promises) {
+            const fulfilledPromises = [];
+            const result = [];
+            function executor(resolve, reject) {
+                promises.forEach((promise, index) => {
+                    return promise
+                        .then((val) => {
+                        fulfilledPromises.push(true);
+                        result[index] = val;
+                        if (fulfilledPromises.length === promises.length) {
+                            return resolve(result);
+                        }
+                    })
+                        .catch((error) => { return reject(error); });
+                });
+            }
+            return new CancelablePromise(executor);
+        }
+    }
+
+    /**
+     * XHR utils contains public static methods to allow easy access to services via XHR.
+     */
+    class XHRUtils {
+        /**
+         * Get file data from URL as text, using a XHR call.
+         *
+         * @param url - Target for the request.
+         * @param onLoad - On load callback.
+         * @param onError - On progress callback.
+         */
+        static get(url, onLoad, onError) {
+            const xhr = new XMLHttpRequest();
+            xhr.overrideMimeType('text/plain');
+            xhr.open('GET', url, true);
+            if (onLoad !== undefined) {
+                xhr.onload = function () {
+                    onLoad(xhr.response);
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            xhr.send(null);
+            return xhr;
+        }
+        /**
+         * Get raw file data from URL, using a XHR call.
+         *
+         * @param url - Target for the request.
+         * @param onLoad - On load callback.
+         * @param onError - On progress callback.
+         */
+        static getRaw(url, onLoad, onError) {
+            var xhr = new XMLHttpRequest();
+            xhr.responseType = 'arraybuffer';
+            xhr.open('GET', url, true);
+            if (onLoad !== undefined) {
+                xhr.onload = function () {
+                    onLoad(xhr.response);
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            xhr.send(null);
+            return xhr;
+        }
+        /**
+         * Perform a request with the specified configuration.
+         *
+         * Syncronous request should be avoided unless they are strictly necessary.
+         *
+         * @param url - Target for the request.
+         * @param type - Resquest type (POST, GET, ...)
+         * @param header - Object with data to be added to the request header.
+         * @param body - Data to be sent in the resquest.
+         * @param onLoad - On load callback, receives data (String or Object) and XHR as arguments.
+         * @param onError - XHR onError callback.
+         */
+        static request(url, type, header, body, onLoad, onError, onProgress) {
+            function parseResponse(response) {
+                try {
+                    return JSON.parse(response);
+                }
+                catch (e) {
+                    return response;
+                }
+            }
+            const xhr = new XMLHttpRequest();
+            xhr.overrideMimeType('text/plain');
+            xhr.open(type, url, true);
+            // Fill header data from Object
+            if (header !== null && header !== undefined) {
+                for (const i in header) {
+                    xhr.setRequestHeader(i, header[i]);
+                }
+            }
+            if (onLoad !== undefined) {
+                xhr.onload = function (event) {
+                    onLoad(parseResponse(xhr.response), xhr);
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            if (onProgress !== undefined) {
+                // @ts-ignore
+                xhr.onprogress = onProgress;
+            }
+            if (body !== undefined) {
+                xhr.send(body);
+            }
+            else {
+                xhr.send(null);
+            }
+            return xhr;
+        }
     }
 
     var es5 = {};
@@ -62582,577 +63661,6 @@ var webapp = (function (exports) {
     //# sourceMappingURL=index.js.map
     }(es5));
 
-    /**
-     * Cancelable promises extend base promises and provide a cancel functionality than can be used to cancel the execution or task of the promise.
-     *
-     * These type of promises can be used to prevent additional processing when the data is not longer required (e.g. HTTP request for data that is not longer necessary)
-     */
-    class CancelablePromise {
-        constructor(executor) {
-            this.fulfilled = false;
-            this.rejected = false;
-            this.called = false;
-            const resolve = (v) => {
-                this.fulfilled = true;
-                this.value = v;
-                if (typeof this.onResolve === 'function') {
-                    this.onResolve(this.value);
-                    this.called = true;
-                }
-            };
-            const reject = (reason) => {
-                this.rejected = true;
-                this.value = reason;
-                if (typeof this.onReject === 'function') {
-                    this.onReject(this.value);
-                    this.called = true;
-                }
-            };
-            try {
-                executor(resolve, reject);
-            }
-            catch (error) {
-                reject(error);
-            }
-        }
-        /**
-         * Request to cancel the promise execution.
-         *
-         * @returns True if the promise is canceled successfully, false otherwise.
-         */
-        cancel() {
-            // TODO <ADD CODE HERE>
-            return false;
-        }
-        /**
-         * Executed after the promise is fulfilled.
-         *
-         * @param callback - Callback to receive the value.
-         * @returns Promise for chainning.
-         */
-        then(callback) {
-            this.onResolve = callback;
-            if (this.fulfilled && !this.called) {
-                this.called = true;
-                this.onResolve(this.value);
-            }
-            return this;
-        }
-        /**
-         * Catch any error that occurs in the promise.
-         *
-         * @param callback - Method to catch errors.
-         * @returns Promise for chainning.
-         */
-        catch(callback) {
-            this.onReject = callback;
-            if (this.rejected && !this.called) {
-                this.called = true;
-                this.onReject(this.value);
-            }
-            return this;
-        }
-        /**
-         * Finally callback
-         *
-         * @param callback - Method to be called.
-         * @returns Promise for chainning.
-         */
-        finally(callback) {
-            // TODO: not implemented
-            return this;
-        }
-        /**
-         * Create a resolved promise.
-         *
-         * @param val - Value to pass.
-         * @returns Promise created with resolve value.
-         */
-        static resolve(val) {
-            return new CancelablePromise(function executor(resolve, _reject) {
-                resolve(val);
-            });
-        }
-        /**
-         * Create a rejected promise.
-         *
-         * @param reason - Reason to reject the promise.
-         * @returns Promise created with rejection reason.
-         */
-        static reject(reason) {
-            return new CancelablePromise(function executor(resolve, reject) {
-                reject(reason);
-            });
-        }
-        /**
-         * Wait for a set of promises to finish, creates a promise that waits for all running promises.
-         *
-         * If any of the promises fail it will reject altough some of them may have been completed with success.
-         *
-         * @param promises - List of promisses to syncronize.
-         * @returns Promise that will resolve when all of the running promises are fullfilled.
-         */
-        static all(promises) {
-            const fulfilledPromises = [];
-            const result = [];
-            function executor(resolve, reject) {
-                promises.forEach((promise, index) => {
-                    return promise
-                        .then((val) => {
-                        fulfilledPromises.push(true);
-                        result[index] = val;
-                        if (fulfilledPromises.length === promises.length) {
-                            return resolve(result);
-                        }
-                    })
-                        .catch((error) => { return reject(error); });
-                });
-            }
-            return new CancelablePromise(executor);
-        }
-    }
-
-    /**
-     * XHR utils contains public static methods to allow easy access to services via XHR.
-     */
-    class XHRUtils {
-        /**
-         * Get file data from URL as text, using a XHR call.
-         *
-         * @param url - Target for the request.
-         * @param onLoad - On load callback.
-         * @param onError - On progress callback.
-         */
-        static get(url, onLoad, onError) {
-            const xhr = new XMLHttpRequest();
-            xhr.overrideMimeType('text/plain');
-            xhr.open('GET', url, true);
-            if (onLoad !== undefined) {
-                xhr.onload = function () {
-                    onLoad(xhr.response);
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            xhr.send(null);
-            return xhr;
-        }
-        /**
-         * Get raw file data from URL, using a XHR call.
-         *
-         * @param url - Target for the request.
-         * @param onLoad - On load callback.
-         * @param onError - On progress callback.
-         */
-        static getRaw(url, onLoad, onError) {
-            var xhr = new XMLHttpRequest();
-            xhr.responseType = 'arraybuffer';
-            xhr.open('GET', url, true);
-            if (onLoad !== undefined) {
-                xhr.onload = function () {
-                    onLoad(xhr.response);
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            xhr.send(null);
-            return xhr;
-        }
-        /**
-         * Perform a request with the specified configuration.
-         *
-         * Syncronous request should be avoided unless they are strictly necessary.
-         *
-         * @param url - Target for the request.
-         * @param type - Resquest type (POST, GET, ...)
-         * @param header - Object with data to be added to the request header.
-         * @param body - Data to be sent in the resquest.
-         * @param onLoad - On load callback, receives data (String or Object) and XHR as arguments.
-         * @param onError - XHR onError callback.
-         */
-        static request(url, type, header, body, onLoad, onError, onProgress) {
-            function parseResponse(response) {
-                try {
-                    return JSON.parse(response);
-                }
-                catch (e) {
-                    return response;
-                }
-            }
-            const xhr = new XMLHttpRequest();
-            xhr.overrideMimeType('text/plain');
-            xhr.open(type, url, true);
-            // Fill header data from Object
-            if (header !== null && header !== undefined) {
-                for (const i in header) {
-                    xhr.setRequestHeader(i, header[i]);
-                }
-            }
-            if (onLoad !== undefined) {
-                xhr.onload = function (event) {
-                    onLoad(parseResponse(xhr.response), xhr);
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            if (onProgress !== undefined) {
-                // @ts-ignore
-                xhr.onprogress = onProgress;
-            }
-            if (body !== undefined) {
-                xhr.send(body);
-            }
-            else {
-                xhr.send(null);
-            }
-            return xhr;
-        }
-    }
-
-    // import { csm} from './app';
-    let currentColor = 0xffffff;
-    class MaterialHeightShader extends MapHeightNode {
-        constructor(parentNode, mapView, location, level, x, y) {
-            let material = new MeshPhongMaterial({
-                map: MaterialHeightShader.EMPTY_TEXTURE,
-                color: 0xffffff,
-                wireframe: false,
-                side: DoubleSide
-            });
-            material = MaterialHeightShader.prepareMaterial(material, level);
-            super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, material);
-            // if (mapView.csm) 
-            // {
-            // mapView.csm.setupMaterial(material);
-            this.castShadow = true;
-            this.receiveShadow = true;
-            // }
-            this.frustumCulled = false;
-            this.exageration = exports.exageration;
-        }
-        static getGeometry(level) {
-            let size = MaterialHeightShader.GEOMETRY_SIZE;
-            if (level < 11) {
-                // size /= Math.pow(2, 11 - level);
-                size /= 11 - level;
-                size = Math.max(16, size);
-            }
-            let geo = MaterialHeightShader.geometries[size];
-            if (!MaterialHeightShader.geometries[size]) {
-                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size);
-            }
-            return geo;
-        }
-        static getSoftGeometry(level) {
-            return MaterialHeightShader.getGeometry(level - 1);
-        }
-        static prepareMaterial(material, level) {
-            material.userData = {
-                heightMap: { value: MaterialHeightShader.EMPTY_TEXTURE },
-                drawNormals: { value: exports.normalsInDebug },
-                computeNormals: { value: exports.normalsInDebug || exports.debug || exports.mapMap },
-                drawTexture: { value: exports.debug || exports.mapMap },
-                drawBlack: { value: 0 },
-                zoomlevel: { value: level },
-                exageration: { value: exports.exageration },
-                elevationDecoder: { value: exports.elevationDecoder }
-            };
-            material.onBeforeCompile = (shader) => {
-                // Pass uniforms from userData to the
-                for (const i in material.userData) {
-                    shader.uniforms[i] = material.userData[i];
-                }
-                // Vertex variables
-                shader.vertexShader =
-                    `
-			uniform bool computeNormals;
-			uniform float exageration;
-			uniform float zoomlevel;
-			uniform sampler2D heightMap;
-			uniform vec4 elevationDecoder;
-
-			float getPixelElevation(vec4 e) {
-				// Convert encoded elevation value to meters
-				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
-			}
-			float getElevation(vec2 coord, float width, float height) {
-				vec4 e = texture2D(heightMap, coord);
-				return getPixelElevation(e);
-				}
-				float getElevationMean(vec2 coord, float width, float height) {
-				float x0 = coord.x;
-				float x1= coord.x;
-				float y0 = coord.y;
-				float y1= coord.y;
-				if (x0 <= 0.0) {
-					x1 = 1.0 / width;
-				}
-				if (x0 >= 1.0) {
-					x1 = 1.0 - 1.0 / width;
-				}
-				if (y0 <= 0.0) {
-					y1 = 1.0 / height;
-				}
-				if (y0 >= 1.0) {
-					y1 = 1.0 - 1.0 / height;
-				}
-				if (x0 == x1 && y0 == y1) {
-						vec4 e = texture2D(heightMap, coord);
-					return getPixelElevation(e);
-				} else {
-					vec4 e1 = texture2D(heightMap, vec2(x0,y0));
-					vec4 e2 = texture2D(heightMap, vec2(x1,y1));
-					return 2.0 * getPixelElevation(e1) -  getPixelElevation(e2);
-				}
-			}
-			` + shader.vertexShader;
-                shader.fragmentShader =
-                    `
-			uniform bool drawNormals;
-			uniform bool drawTexture;
-			uniform bool drawBlack;
-			` + shader.fragmentShader;
-                // Vertex depth logic
-                shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
-				if(drawBlack) {
-					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
-				} else if(drawNormals) {
-					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
-				} else if (!drawTexture) {
-					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
-				}
-					`);
-                shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
-				#include <fog_vertex>
-
-				// queried pixels:
-				// +-----------+
-				// |   |   |   |
-				// | a | b | c |
-				// |   |   |   |
-				// +-----------+
-				// |   |   |   |
-				// | d | e | f |
-				// |   |   |   |
-				// +-----------+
-				// |   |   |   |
-				// | g | h | i |
-				// |   |   |   |
-				// +-----------+
-
-				ivec2 size = textureSize(heightMap, 0);
-				float width = float(size.x);
-				float height = float(size.y);
-				float e = getElevationMean(vUv, width,height);
-				if (computeNormals) {
-					float offset = 1.0 / width;
-					float a = getElevation(vUv + vec2(-offset, -offset), width,height);
-					float b = getElevation(vUv + vec2(0, -offset), width,height);
-					float c = getElevation(vUv + vec2(offset, -offset), width,height);
-					float d = getElevation(vUv + vec2(-offset, 0), width,height);
-					float f = getElevation(vUv + vec2(offset, 0), width,height);
-					float g = getElevation(vUv + vec2(-offset, offset), width,height);
-					float h = getElevation(vUv + vec2(0, offset), width,height);
-					float i = getElevation(vUv + vec2(offset,offset), width,height);
-
-					float NormalLength = 500.0 / zoomlevel;
-
-					vec3 v0 = vec3(0.0, 0.0, 0.0);
-					vec3 v1 = vec3(0.0, NormalLength, 0.0);
-					vec3 v2 = vec3(NormalLength, 0.0, 0.0);
-					v0.z = (e + d + g + h) / 4.0;
-					v1.z = (e + b + a + d) / 4.0;
-					v2.z = (e + h + i + f) / 4.0;
-					vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
-				}
-
-				vec3 _transformed = position + e * vec3(0,1,0);
-				vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-
-				gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
-				`);
-            };
-            return material;
-        }
-        loadTexture() {
-            this.mapView
-                .provider.fetchTile(this.level, this.x, this.y)
-                .then((image) => {
-                if (image) {
-                    const texture = new Texture(image);
-                    texture.generateMipmaps = false;
-                    texture.format = RGBFormat;
-                    texture.magFilter = LinearFilter;
-                    texture.minFilter = LinearFilter;
-                    texture.needsUpdate = true;
-                    this.material.map = texture;
-                }
-                this.textureLoaded = true;
-                this.nodeReady();
-            })
-                .catch((err) => {
-                console.error('GeoThree: Failed to load color node data.', err);
-                this.textureLoaded = true;
-                this.nodeReady();
-            });
-        }
-        loadHeightGeometry() {
-            if (this.mapView.heightProvider === null) {
-                throw new Error('GeoThree: MapView.heightProvider provider is null.');
-            }
-            this.geometry = MaterialHeightShader.getGeometry(this.level);
-            return this.mapView.heightProvider
-                .fetchTile(this.level, this.x, this.y)
-                .then((image) => __awaiter(this, void 0, void 0, function* () {
-                this.onHeightImage(image);
-            }))
-                .finally(() => {
-                this.heightLoaded = true;
-                this.nodeReady();
-            });
-        }
-        onHeightImage(image) {
-            return __awaiter(this, void 0, void 0, function* () {
-                if (image) {
-                    new CancelablePromise((resolve, reject) => {
-                        const url = `https://api.maptiler.com/tiles/v3/${this.level}/${this.x}/${this.y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-                        try {
-                            XHRUtils.getRaw(url, (data) => __awaiter(this, void 0, void 0, function* () {
-                                let result = yield es5.MVTLoader.parse(data, {
-                                    mvt: {
-                                        tileIndex: {
-                                            x: this.x,
-                                            y: this.y,
-                                            z: this.level
-                                        },
-                                        coordinates: 'wgs84',
-                                        layers: ['mountain_peak']
-                                    }
-                                });
-                                result = result.filter((f) => { return f.properties.name && f.properties.class === 'peak'; });
-                                if (result.length > 0) {
-                                    const features = [];
-                                    var colors = [];
-                                    var points = [];
-                                    // var sizes = [];
-                                    var elevations = [];
-                                    const vec = new Vector3(0, 0, 0);
-                                    result.forEach((f, index) => {
-                                        var coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-                                        vec.set(coords.x, 0, -coords.y);
-                                        f.localCoords = this.worldToLocal(vec);
-                                        if (Math.abs(f.localCoords.x) <=
-                                            0.5 &&
-                                            Math.abs(f.localCoords.z) <=
-                                                0.5) {
-                                            const id = f.geometry.coordinates.join(',');
-                                            f.id = id;
-                                            f.pointIndex =
-                                                features.length;
-                                            features.push(f);
-                                            f.level = this.level;
-                                            f.x = this.x;
-                                            f.y = this.y;
-                                            const color = f.color = currentColor--;
-                                            featuresByColor[color] = f;
-                                            f.localCoords.y = 1;
-                                            colors.push((color >> 16 & 255) /
-                                                255, (color >> 8 & 255) /
-                                                255, (color & 255) / 255);
-                                            points.push(f.localCoords.x, f.localCoords.y, f.localCoords.z);
-                                            elevations.push(f.properties.ele);
-                                        }
-                                    });
-                                    if (points.length > 0) {
-                                        const geometry = new BufferGeometry();
-                                        geometry.setAttribute('position', new Float32BufferAttribute(points, 3));
-                                        geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
-                                        geometry.setAttribute('elevation', new Float32BufferAttribute(elevations, 1));
-                                        var mesh = new Points(geometry, new ShaderMaterial({
-                                            uniforms: { exageration: { value: exports.exageration } },
-                                            vertexShader: `
-												attribute float elevation;
-												attribute vec4 color;
-												uniform float exageration;
-												varying vec4 vColor;
-												void main() {
-													vColor = color;
-													float exagerated  = elevation * exageration;
-													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
-													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
-													//  gl_PointSize = gl_Position.z _ ;
-													gl_Position = projectionMatrix * mvPosition;
-													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
-												}
-												`,
-                                            fragmentShader: `
-											varying vec4 vColor;
-											void main() {
-													gl_FragColor = vec4( vColor );
-												}
-												`,
-                                            transparent: true
-                                        }));
-                                        mesh.features = features;
-                                        mesh.updateMatrix();
-                                        mesh.updateMatrixWorld(true);
-                                        this.objectsHolder.visible = exports.debugFeaturePoints;
-                                        this.objectsHolder.add(mesh);
-                                    }
-                                }
-                                render();
-                            }), resolve);
-                        }
-                        catch (err) {
-                            console.error(err);
-                        }
-                    });
-                }
-                if (image) {
-                    var texture = new Texture(image);
-                    texture.generateMipmaps = false;
-                    texture.format = RGBFormat;
-                    texture.magFilter = NearestFilter;
-                    texture.minFilter = NearestFilter;
-                    texture.needsUpdate = true;
-                    this.material.userData.heightMap.value = texture;
-                }
-            });
-        }
-        /**
-        * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
-        *
-        * Switches the geometry for a simpler one for faster raycasting.
-        */
-        raycast(raycaster, intersects) {
-            if (this.isMesh === true) {
-                const oldGeometry = this.geometry;
-                this.geometry = MapPlaneNode.GEOMETRY;
-                const result = Mesh.prototype.raycast.call(this, raycaster, intersects);
-                this.geometry = oldGeometry;
-                return result;
-            }
-            return false;
-        }
-    }
-    MaterialHeightShader.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
-    MaterialHeightShader.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
-    /**
-    * Empty texture used as a placeholder for missing textures.
-    */
-    MaterialHeightShader.EMPTY_TEXTURE = new Texture();
-    /**
-    * Size of the grid of the geometry displayed on the scene for each tile.
-    */
-    MaterialHeightShader.GEOMETRY_SIZE = 200;
-    MaterialHeightShader.geometries = {};
-
     class LocalHeightProvider extends MapProvider {
         constructor() {
             super();
@@ -63168,16 +63676,115 @@ var webapp = (function (exports) {
                         image.onload = () => { return resolve(image); };
                         image.onerror = () => { return resolve(null); };
                         image.crossOrigin = 'Anonymous';
-                        image.src = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/' +
-                            zoom +
-                            '/' +
-                            x +
-                            '/' +
-                            y +
-                            '.png';
+                        // image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+                        image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
                     })
                 ]);
                 return result[0];
+            });
+        }
+        fetchPeaks(zoom, x, y) {
+            return __awaiter(this, void 0, void 0, function* () {
+                return new CancelablePromise((resolve, reject) => {
+                    // const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
+                    const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
+                    try {
+                        XHRUtils.getRaw(url, (data) => __awaiter(this, void 0, void 0, function* () {
+                            let result = yield es5.MVTLoader.parse(data, {
+                                mvt: {
+                                    tileIndex: {
+                                        x: x,
+                                        y: y,
+                                        z: zoom
+                                    },
+                                    coordinates: 'wgs84',
+                                    layers: ['mountain_peak']
+                                }
+                            });
+                            resolve(result);
+                        }));
+                    }
+                    catch (err) {
+                        reject(err);
+                    }
+                });
+            });
+        }
+    }
+
+    function zoomTiles(zoomedTiles, zoom) {
+        if (zoomedTiles[0][2] === zoom) {
+            return zoomedTiles;
+        }
+        else if (zoomedTiles[0][2] < zoom) {
+            var oneIn = [];
+            zoomedTiles.forEach(function (tile) {
+                oneIn = oneIn.concat(tilebelt.getChildren(tile));
+            });
+            return zoomTiles(oneIn, zoom);
+        }
+        else {
+            var zoomedTiles = zoomedTiles.map(function (tile) {
+                const bbox = tilebelt.tileToBBOX(tile);
+                console.log('bbox', tile, zoom, bbox);
+                //[w, s, e, n]
+                return tilebelt.pointToTile(bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2, zoom);
+            });
+            return zoomedTiles;
+        }
+    }
+    function tilesToZoom(tiles, zoom) {
+        var newTiles = zoomTiles(tiles, zoom);
+        return newTiles;
+    }
+    class RasterMapProvider extends OpenStreetMapsProvider {
+        constructor() {
+            // super('https://a.tile.openstreetmap.fr/osmfr');
+            super('http://localhost:8080/styles/basic');
+        }
+        fetchImage(zoom, x, y) {
+            return new Promise((resolve, reject) => {
+                const image = document.createElement('img');
+                image.onload = function () {
+                    resolve(image);
+                };
+                image.onerror = function () {
+                    reject();
+                };
+                image.crossOrigin = 'Anonymous';
+                image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
+            });
+        }
+        fetchTile(zoom, x, y) {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (this.zoomDelta <= 0) {
+                    return this.fetchImage(zoom, x, y);
+                }
+                else {
+                    const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => valA[1] - valB[1] ||
+                        valA[0] - valB[0]);
+                    const images = (yield Promise.all(tiles.map(t => this.fetchImage(t[2], t[0], t[1]))));
+                    const width = images[0].width * Math.floor(this.zoomDelta * 2);
+                    const fullWidth = width / Math.sqrt(images.length);
+                    const canvas = document.createElement('canvas');
+                    var context = canvas.getContext('2d');
+                    context.globalAlpha = 1.0;
+                    canvas.width = width;
+                    canvas.height = width;
+                    let tileY = tiles[0][1];
+                    let ix = 0;
+                    let iy = 0;
+                    images.forEach((image, index) => {
+                        if (tileY !== tiles[index][1]) {
+                            tileY = tiles[index][1];
+                            ix = 0;
+                            iy += 1;
+                        }
+                        context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
+                        ix += 1;
+                    });
+                    return canvas;
+                }
             });
         }
     }
@@ -63201,7 +63808,7 @@ var webapp = (function (exports) {
             this.localDate = new Date();
             this.hingeObject = new Object3D();
             this.add(this.hingeObject);
-            this.directionalLight = new DirectionalLight();
+            this.directionalLight = new DirectionalLight(0xdddddd);
             // this.directionalLight.castShadow = true;
             this.hingeObject.add(this.directionalLight);
             // Add the target of the directional light as a child to this object, so
@@ -63537,9 +64144,21 @@ var webapp = (function (exports) {
     }
     CameraControls.install({ THREE: THREE });
     // @ts-ignore
-    // const stats = new Stats();
-    // stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-    // document.body.appendChild(stats.dom);
+    const stats = new Stats();
+    stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+    document.body.appendChild(stats.dom);
+    function throttle(callback, limit) {
+        var waiting = false; // Initially, we're not waiting
+        return function () {
+            if (!waiting) { // If we're not waiting
+                callback.apply(this, arguments); // Execute users function
+                waiting = true; // Prevent future invocations
+                setTimeout(function () {
+                    waiting = false; // And allow future invocations
+                }, limit);
+            }
+        };
+    }
     function ArraySortOn(array, key) {
         return array.sort(function (a, b) {
             if (a[key] < b[key]) {
@@ -63553,35 +64172,49 @@ var webapp = (function (exports) {
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
     exports.debug = false;
-    exports.mapMap = true;
+    exports.mapMap = false;
+    exports.drawTexture = true;
+    exports.computeNormals = true;
     exports.debugFeaturePoints = false;
+    exports.wireframe = false;
+    exports.dayNightCycle = false;
     let debugGPUPicking = false;
     let readFeatures = true;
     let drawLines = true;
     let drawElevations = false;
     let darkTheme = false;
-    exports.normalsInDebug = false;
+    exports.drawNormals = false;
     let featuresToShow = [];
     const tempVector = new Vector3(0, 0, 0);
     exports.exageration = 1.7;
     exports.depthBiais = 0.6;
     exports.depthMultiplier = 30;
     const featuresByColor = {};
-    // let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
+    // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
     exports.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
     const FAR = 200000;
     const TEXT_HEIGHT = 180;
     let currentPosition;
     let elevation = 1000;
     const clock = new Clock();
-    let renderingIndex = -1;
     const position = { lat: 45.19177, lon: 5.72831 };
+    let map;
     // updSunPos(45.16667, 5.71667);
     const EPS = 1e-5;
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     let pixelsBuffer;
     const AA = devicePixelRatio <= 1;
     let showingCamera = false;
+    new Vector2();
+    function shouldComputeNormals() {
+        return exports.drawNormals || ((exports.debug || exports.mapMap) && (exports.computeNormals && exports.dayNightCycle));
+    }
+    function shouldRenderSy() {
+        return ((exports.debug || exports.mapMap) && exports.dayNightCycle);
+    }
+    function needsLights() {
+        return (exports.debug || exports.mapMap);
+    }
     function setTerrarium(value) {
         if (value) {
             exports.elevationDecoder = [256 * 255, 1 * 255, 1 / 256 * 255, -32768];
@@ -63595,6 +64228,7 @@ var webapp = (function (exports) {
             });
         }
     }
+    setTerrarium(false);
     const canvas = document.getElementById('canvas');
     const canvas3 = document.getElementById('canvas3');
     const canvas4 = document.getElementById('canvas4');
@@ -63610,6 +64244,8 @@ var webapp = (function (exports) {
         // depth: false
         // precision: isMobile ? 'mediump' : 'highp'
     });
+    new Magnify3d();
+    const magnify3dTarget = new WebGLRenderTarget(0, 0);
     renderer.setClearColor(0x000000, 0);
     const rendereroff = new WebGLRenderer({
         canvas: canvas3,
@@ -63654,11 +64290,8 @@ var webapp = (function (exports) {
         return sky;
     }
     const scene = new Scene();
-    // const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
-    // const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
     const sky = createSky();
     scene.add(sky);
-    sky.visible = exports.debug || exports.mapMap;
     let devicecontrols;
     let listeningForDeviceSensors = false;
     function onSensorUpdate() {
@@ -63713,40 +64346,100 @@ var webapp = (function (exports) {
     }
     function setDebugMode(value) {
         exports.debug = value;
-        sky.visible = exports.debug || exports.mapMap;
-        sunLight.visible = exports.debug || exports.mapMap;
-        // curSunLight.visible = debug || mapMap;
-        createMap();
-        onControlUpdate();
-    }
-    function setMapMode(value) {
-        exports.mapMap = value;
-        sky.visible = exports.debug || exports.mapMap;
-        sunLight.visible = exports.debug || exports.mapMap;
-        // ambientLight.visible = debug || mapMap;
-        // curSunLight.visible = debug || mapMap;
-        createMap();
-        onControlUpdate();
+        setupLOD();
+        sky.visible = sunLight.visible = shouldRenderSy();
+        ambientLight.visible = needsLights();
+        if (map) {
+            map.provider = createProvider();
+            applyOnNodes((node) => {
+                node.isTextureReady = !exports.debug;
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+                node.material.userData.drawTexture.value = (exports.debug || exports.mapMap) && exports.drawTexture;
+                // node.material.flatShading = (mapMap && !mapMapNormal);
+            });
+            onControlUpdate();
+        }
     }
     function toggleDebugMode() {
         setDebugMode(!exports.debug);
     }
+    function setMapMode(value) {
+        exports.mapMap = value;
+        sky.visible = sunLight.visible = shouldRenderSy();
+        ambientLight.visible = needsLights();
+        setupLOD();
+        if (map) {
+            map.provider = createProvider();
+            applyOnNodes((node) => {
+                node.isTextureReady = false;
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+                node.material.userData.drawTexture.value = (exports.debug || exports.mapMap) && exports.drawTexture;
+                // node.material.flatShading = (mapMap && !mapMapNormal);
+            });
+            onControlUpdate();
+        }
+        // createMap();
+        // onControlUpdate();
+    }
+    function toggleMapMode() {
+        setMapMode(!exports.mapMap);
+    }
+    function setMapModeNormals(value) {
+        exports.computeNormals = value;
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+                // node.material.flatShading = newVal;
+                // node.material.needsUpdate = newVal !== oldVal;
+            });
+        }
+        render();
+    }
+    function toggleMapModeNormals() {
+        setMapModeNormals(!exports.computeNormals);
+    }
+    function setDrawTexture(value) {
+        exports.drawTexture = value;
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.drawTexture.value = (exports.debug || exports.mapMap) && exports.drawTexture;
+            });
+        }
+        render();
+    }
+    function toggleDrawTexture() {
+        setDrawTexture(!exports.drawTexture);
+    }
+    function toggleNormalsInDebug() {
+        setNormalsInDebug(!exports.drawNormals);
+    }
+    function setNormalsInDebug(value) {
+        exports.drawNormals = value;
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+                node.material.userData.drawNormals.value = exports.drawNormals;
+            });
+        }
+        render();
+    }
+    function setDayNightCycle(value) {
+        exports.dayNightCycle = value;
+        sky.visible = sunLight.visible = shouldRenderSy();
+        ambientLight.intensity = value ? 0.1875 : 1;
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+            });
+        }
+        render();
+    }
+    function toggleDayNightCycle() {
+        setDayNightCycle(!exports.dayNightCycle);
+    }
     function setDebugGPUPicking(value) {
         debugGPUPicking = value;
         canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
-        render();
-    }
-    function toggleNormalsInDebug() {
-        setNormalsInDebug(!exports.normalsInDebug);
-    }
-    function setNormalsInDebug(value) {
-        exports.normalsInDebug = value;
-        if (map) {
-            applyOnNodes((node) => {
-                node.material.userData.computeNormals.value = exports.normalsInDebug || exports.debug;
-                node.material.userData.drawNormals.value = exports.normalsInDebug;
-            });
-        }
         render();
     }
     function toggleDebugGPUPicking() {
@@ -63783,11 +64476,21 @@ var webapp = (function (exports) {
     function setDarkMode(value) {
         darkTheme = value;
         outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
-        document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
+        document.body.style.backgroundColor = (darkTheme) ? 'black' : 'white';
         render();
     }
     function toggleDarkMode() {
         setDarkMode(!darkTheme);
+    }
+    function setWireFrame(value) {
+        exports.wireframe = value;
+        applyOnNodes((node) => {
+            node.material.wireframe = exports.wireframe;
+        });
+        render();
+    }
+    function toggleWireFrame() {
+        setWireFrame(!exports.wireframe);
     }
     function setDrawElevations(value) {
         drawElevations = value;
@@ -63811,88 +64514,111 @@ var webapp = (function (exports) {
             startCam();
         }
     }
-    const debugMapCheckBox = document.getElementById('debugMap');
-    debugMapCheckBox.onchange = (event) => { return setDebugMode(event.target.checked); };
-    debugMapCheckBox.value = exports.debug;
-    const mapMapCheckBox = document.getElementById('mapMap');
-    mapMapCheckBox.onchange = (event) => { return setMapMode(event.target.checked); };
-    mapMapCheckBox.value = exports.mapMap;
-    const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking');
-    debugGPUPickingCheckbox.onchange = (event) => { return setDebugGPUPicking(event.target.checked); };
-    debugGPUPickingCheckbox.value = debugGPUPicking;
-    canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
-    const readFeaturesCheckbox = document.getElementById('readFeatures');
-    readFeaturesCheckbox.onchange = (event) => { return setReadFeatures(event.target.checked); };
-    readFeaturesCheckbox.value = readFeatures;
-    canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-    const drawLinesCheckbox = document.getElementById('drawLines');
-    drawLinesCheckbox.onchange = (event) => { return setDrawLines(event.target.checked); };
-    drawLinesCheckbox.value = drawLines;
-    canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-    const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints');
-    debugFeaturePointsCheckbox.onchange = (event) => { return setDebugFeaturePoints(event.target.checked); };
-    debugFeaturePointsCheckbox.value = exports.debugFeaturePoints;
-    const darkmodeCheckbox = document.getElementById('darkmode');
-    darkmodeCheckbox.onchange = (event) => { return setDarkMode(event.target.checked); };
-    darkmodeCheckbox.value = darkTheme;
-    const elevationSlider = document.getElementById('elevationSlider');
-    elevationSlider.oninput = (event) => { return setElevation(event.target.value); };
-    elevationSlider.value = elevation;
-    const exagerationSlider = document.getElementById('exagerationSlider');
-    exagerationSlider.oninput = (event) => { return setExageration(event.target.value); };
-    exagerationSlider.value = exports.exageration;
-    const depthMultiplierSlider = document.getElementById('depthMultiplierSlider');
-    depthMultiplierSlider.oninput = (event) => { return setDepthMultiplier(event.target.value); };
-    depthMultiplierSlider.value = exports.depthMultiplier;
-    const depthBiaisSlider = document.getElementById('depthBiaisSlider');
-    depthBiaisSlider.oninput = (event) => { return setDepthBiais(event.target.value); };
-    depthBiaisSlider.value = exports.depthBiais;
-    const now = new Date();
-    const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    console.log('secondsInDay', secondsInDay);
-    const dateSlider = document.getElementById('dateSlider');
-    dateSlider.oninput = (event) => { return setDate(event.target.value); };
-    dateSlider.value = secondsInDay;
-    const datelabel = document.getElementById('dateLabel');
-    datelabel.innerText = new Date().toLocaleString();
-    const cameraCheckbox = document.getElementById('camera');
-    cameraCheckbox.onchange = (event) => { return toggleCamera(); };
-    cameraCheckbox.value = showingCamera;
-    const drawElevationsCheckbox = document.getElementById('drawElevations');
-    drawElevationsCheckbox.onchange = (event) => { return toggleDrawElevations(); };
-    drawElevationsCheckbox.value = drawElevations;
-    const normalsInDebugCheckbox = document.getElementById('normalsInDebug');
-    normalsInDebugCheckbox.onchange = (event) => { return toggleNormalsInDebug(); };
-    normalsInDebugCheckbox.value = exports.normalsInDebug;
+    let datelabel;
+    try {
+        document.body.style.backgroundColor = (darkTheme || exports.mapMap) ? 'black' : 'white';
+        const debugMapCheckBox = document.getElementById('debugMap');
+        debugMapCheckBox.onchange = (event) => { return setDebugMode(event.target.checked); };
+        debugMapCheckBox.value = exports.debug;
+        const mapMapCheckBox = document.getElementById('mapMap');
+        mapMapCheckBox.onchange = (event) => { return setMapMode(event.target.checked); };
+        mapMapCheckBox.checked = exports.mapMap;
+        const mapModeNormalsCheckBox = document.getElementById('mapModeNormals');
+        mapModeNormalsCheckBox.onchange = (event) => { return setMapModeNormals(event.target.checked); };
+        mapModeNormalsCheckBox.checked = exports.computeNormals;
+        const dayNightCycleCheckBox = document.getElementById('dayNightCycle');
+        dayNightCycleCheckBox.onchange = (event) => { return setDayNightCycle(event.target.checked); };
+        dayNightCycleCheckBox.checked = exports.dayNightCycle;
+        const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking');
+        debugGPUPickingCheckbox.onchange = (event) => { return setDebugGPUPicking(event.target.checked); };
+        debugGPUPickingCheckbox.checked = debugGPUPicking;
+        canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+        const readFeaturesCheckbox = document.getElementById('readFeatures');
+        readFeaturesCheckbox.onchange = (event) => { return setReadFeatures(event.target.checked); };
+        readFeaturesCheckbox.checked = readFeatures;
+        canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+        const drawLinesCheckbox = document.getElementById('drawLines');
+        drawLinesCheckbox.onchange = (event) => { return setDrawLines(event.target.checked); };
+        drawLinesCheckbox.checked = drawLines;
+        canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+        const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints');
+        debugFeaturePointsCheckbox.onchange = (event) => { return setDebugFeaturePoints(event.target.checked); };
+        debugFeaturePointsCheckbox.checked = exports.debugFeaturePoints;
+        const darkmodeCheckbox = document.getElementById('darkmode');
+        darkmodeCheckbox.onchange = (event) => { return setDarkMode(event.target.checked); };
+        darkmodeCheckbox.checked = darkTheme;
+        const wireframeCheckbox = document.getElementById('wireframe');
+        wireframeCheckbox.onchange = (event) => { return setWireFrame(event.target.checked); };
+        wireframeCheckbox.checked = exports.wireframe;
+        const elevationSlider = document.getElementById('elevationSlider');
+        elevationSlider.oninput = (event) => { return setElevation(event.target.value); };
+        elevationSlider.value = elevation;
+        const exagerationSlider = document.getElementById('exagerationSlider');
+        exagerationSlider.oninput = (event) => { return setExageration(event.target.value); };
+        exagerationSlider.value = exports.exageration;
+        const depthMultiplierSlider = document.getElementById('depthMultiplierSlider');
+        depthMultiplierSlider.oninput = (event) => { return setDepthMultiplier(event.target.value); };
+        depthMultiplierSlider.value = exports.depthMultiplier;
+        const depthBiaisSlider = document.getElementById('depthBiaisSlider');
+        depthBiaisSlider.oninput = (event) => { return setDepthBiais(event.target.value); };
+        depthBiaisSlider.value = exports.depthBiais;
+        const now = new Date();
+        const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        const dateSlider = document.getElementById('dateSlider');
+        dateSlider.oninput = (event) => { return setDate(event.target.value); };
+        dateSlider.value = secondsInDay;
+        datelabel = document.getElementById('dateLabel');
+        datelabel.innerText = new Date().toLocaleString();
+        const cameraCheckbox = document.getElementById('camera');
+        cameraCheckbox.onchange = (event) => { return toggleCamera(); };
+        cameraCheckbox.value = showingCamera;
+        const drawElevationsCheckbox = document.getElementById('drawElevations');
+        drawElevationsCheckbox.onchange = (event) => { return toggleDrawElevations(); };
+        drawElevationsCheckbox.value = drawElevations;
+        const normalsInDebugCheckbox = document.getElementById('normalsInDebug');
+        normalsInDebugCheckbox.onchange = (event) => { return toggleNormalsInDebug(); };
+        normalsInDebugCheckbox.value = exports.drawNormals;
+    }
+    catch (err) { }
+    const heightProvider = new LocalHeightProvider();
     function onControlUpdate() {
-        // if (map.csm) 
-        // {
-        // 	map.csm.update(camera.matrix);
-        // }
         map.lod.updateLOD(map, camera, renderer, scene);
         render();
     }
+    function setupLOD() {
+        heightProvider.maxOverZoom = exports.debug || exports.mapMap ? 1 : 0;
+        // if (debug || mapMap){
+        // 	lod.subdivideDistance = 100;
+        // 	lod.simplifyDistance = 230;
+        // } else {
+        lod.subdivideDistance = 40;
+        lod.simplifyDistance = 140;
+        // }
+    }
     const lod = new LODFrustum();
-    lod.subdivideDistance = 40;
-    lod.simplifyDistance = 140;
-    let map;
-    function createMap() {
-        if (map !== undefined) {
-            scene.remove(map);
-        }
+    setupLOD();
+    function createProvider() {
         let provider;
         if (exports.mapMap) {
-            provider = new OpenStreetMapsProvider('https://a.tile.openstreetmap.fr/osmfr');
+            provider = new RasterMapProvider();
         }
-        else if (exports.debug && !exports.normalsInDebug) {
+        else if (exports.debug && !exports.drawNormals) {
             provider = new DebugProvider();
         }
         else {
             provider = new EmptyProvider();
         }
         provider.minZoom = 5;
-        provider.maxZoom = 11;
-        map = new MapView(null, provider, new LocalHeightProvider(), false, render);
+        provider.maxZoom = 11 + heightProvider.maxOverZoom;
+        provider.zoomDelta = 2;
+        return provider;
+    }
+    function createMap() {
+        if (map !== undefined) {
+            scene.remove(map);
+        }
+        const provider = createProvider();
+        map = new MapView(null, provider, heightProvider, false, render);
         map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
         // map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
         map.lod = lod;
@@ -63916,12 +64642,15 @@ var webapp = (function (exports) {
     controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
     controls.verticalDragToForward = true;
     controls.saveState();
-    const sunLight = new SunLight(new Vector2(45.05, 25.47), new Vector3(0.0, 0.0, -1.0), new Vector3(1.0, 0.0, 0.0), new Vector3(0.0, -1.0, 0.0));
+    const sunLight = new SunLight(new Vector2(45.05, 25.47), new Vector3(0.0, 0.0, -1.0), new Vector3(1.0, 0.0, 0.0), new Vector3(0.0, -1.0, 0.0), 0.001);
     camera.add(sunLight);
     // camera.add( sunLight.directionalLight );
     // Add an ambient light
-    scene.add(new AmbientLight(0x333333));
+    const ambientLight = new AmbientLight(0xffffff, 1);
+    scene.add(ambientLight);
     scene.add(camera);
+    sky.visible = sunLight.visible = shouldRenderSy();
+    ambientLight.visible = needsLights();
     // Adjust the directional light's shadow camera dimensions
     // sunLight.directionalLight.shadow.camera.right = 30.0;
     // sunLight.directionalLight.shadow.camera.left = -30.0;
@@ -63929,13 +64658,9 @@ var webapp = (function (exports) {
     // sunLight.directionalLight.shadow.camera.bottom = -30.0;
     // sunLight.directionalLight.shadow.camera.near = camera.near;
     // sunLight.directionalLight.shadow.camera.far = camera.far;
-    sunLight.directionalLight.shadow.mapSize.width = 512;
-    sunLight.directionalLight.shadow.mapSize.height = 512;
-    sunLight.directionalLight.castShadow = true;
-    const helper1 = new DirectionalLightHelper(sunLight.directionalLight, 500);
-    scene.add(helper1);
-    const helper = new CameraHelper(sunLight.directionalLight.shadow.camera);
-    scene.add(helper);
+    // sunLight.directionalLight.shadow.mapSize.width = 512;
+    // sunLight.directionalLight.shadow.mapSize.height = 512;
+    // sunLight.directionalLight.castShadow = true;
     // const axesHelper = new THREE.AxesHelper( 50 );
     // scene.add( axesHelper );
     function updateSky() {
@@ -63993,7 +64718,6 @@ var webapp = (function (exports) {
         date.setHours(hours);
         date.setMinutes(minutes);
         date.setSeconds(seconds);
-        console.log('setDate', date);
         sunLight.setDate(date);
         datelabel.innerText = date.toLocaleString();
         updateSky();
@@ -64006,19 +64730,35 @@ var webapp = (function (exports) {
         const delta = clock.getDelta();
         controls.update(delta);
     });
-    // export let csm = new CSM({
-    // 	maxFar: camera.far,
-    // 	cascades: 4,
-    // 	shadowMapSize: 1024,
-    // 	lightDirection: new THREE.Vector3(1, -1, 1).normalize(),
-    // 	camera: camera,
-    // 	parent: scene
-    // });
     const composer = new postprocessing.exports.EffectComposer(renderer);
     composer.addPass(new postprocessing.exports.RenderPass(scene, camera));
     const outlineEffect = new CustomOutlineEffect();
     composer.addPass(new postprocessing.exports.EffectPass(camera, outlineEffect));
     let minYPx = 0;
+    const computeFeatures = throttle(function () {
+        sky.visible = false;
+        sunLight.visible = false;
+        ambientLight.visible = false;
+        applyOnNodes((node) => {
+            node.material.userData.drawBlack.value = true;
+            node.material.userData.computeNormals.value = false;
+            node.objectsHolder.visible = true;
+        });
+        if (debugGPUPicking) {
+            rendereroff.setRenderTarget(null);
+            rendereroff.render(scene, camera);
+        }
+        rendereroff.setRenderTarget(pointBufferTarget);
+        rendereroff.render(scene, camera);
+        readShownFeatures();
+        applyOnNodes((node) => {
+            node.material.userData.drawBlack.value = false;
+            node.material.userData.computeNormals.value = shouldComputeNormals();
+            node.objectsHolder.visible = exports.debugFeaturePoints;
+        });
+        sky.visible = sunLight.visible = shouldRenderSy();
+        ambientLight.visible = needsLights();
+    }, 100);
     document.body.onresize = function () {
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -64039,7 +64779,7 @@ var webapp = (function (exports) {
         const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
         renderer.setSize(width, height);
         renderer.setPixelRatio(rendererScaleRatio);
-        // renderTarget.setSize(width, height);
+        magnify3dTarget.setSize(width * devicePixelRatio, height * devicePixelRatio);
         pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
         rendereroff.setSize(offWidth, offHeight);
         rendereroff.setPixelRatio(1);
@@ -64064,10 +64804,16 @@ var webapp = (function (exports) {
         return pos;
     }
     function applyOnNode(node, cb) {
-        if (node.isMesh) {
-            cb(node);
-        }
+        // if (node.isMesh) 
+        // {
+        cb(node);
+        // }
         node.children.forEach((n) => {
+            if (n !== node.objectsHolder) {
+                applyOnNode(n, cb);
+            }
+        });
+        node.childrenCache && node.childrenCache.forEach((n) => {
             if (n !== node.objectsHolder) {
                 applyOnNode(n, cb);
             }
@@ -64212,35 +64958,19 @@ var webapp = (function (exports) {
         }
         featuresToShow = rFeatures;
     }
-    function render(forceDrawFeatures = false) {
-        if (!renderer || !composer) {
-            return;
-        }
+    // window.addEventListener('mousedown', onMouseDown);
+    // window.addEventListener('touchstart', onMouseDown, {passive: true});
+    function actualRender(forceDrawFeatures) {
         if (readFeatures && pixelsBuffer) {
-            renderingIndex = (renderingIndex + 1) % (listeningForDeviceSensors ? 10 : 5);
-            if (forceDrawFeatures || renderingIndex === 0) {
-                const skyWasVisible = sky.visible;
-                sky.visible = false;
-                sunLight.visible = false;
-                applyOnNodes((node) => {
-                    node.material.userData.drawBlack.value = true;
-                    node.objectsHolder.visible = true;
-                });
-                if (debugGPUPicking) {
-                    rendereroff.setRenderTarget(null);
-                    rendereroff.render(scene, camera);
-                }
-                rendereroff.setRenderTarget(pointBufferTarget);
-                rendereroff.render(scene, camera);
-                readShownFeatures();
-                applyOnNodes((node) => {
-                    node.material.userData.drawBlack.value = false;
-                    node.objectsHolder.visible = exports.debugFeaturePoints;
-                });
-                sky.visible = skyWasVisible;
-                sunLight.visible = skyWasVisible;
-            }
+            computeFeatures();
             drawFeatures();
+        }
+        else {
+            applyOnNodes((node) => {
+                // node.material.userData.drawBlack.value = false;
+                // node.material.userData.drawNormals.value = false;
+                node.objectsHolder.visible = exports.debugFeaturePoints;
+            });
         }
         if (exports.debug || exports.mapMap) {
             renderer.render(scene, camera);
@@ -64248,13 +64978,23 @@ var webapp = (function (exports) {
         else {
             composer.render(clock.getDelta());
         }
-        // stats.end();
+    }
+    function render(forceDrawFeatures = false) {
+        if (!renderer || !composer) {
+            return;
+        }
+        {
+            actualRender();
+        }
+        stats.end();
     }
     setPosition(position);
 
     exports.featuresByColor = featuresByColor;
+    exports.needsLights = needsLights;
     exports.render = render;
     exports.setDarkMode = setDarkMode;
+    exports.setDayNightCycle = setDayNightCycle;
     exports.setDebugFeaturePoints = setDebugFeaturePoints;
     exports.setDebugGPUPicking = setDebugGPUPicking;
     exports.setDebugMode = setDebugMode;
@@ -64262,24 +65002,34 @@ var webapp = (function (exports) {
     exports.setDepthMultiplier = setDepthMultiplier;
     exports.setDrawElevations = setDrawElevations;
     exports.setDrawLines = setDrawLines;
+    exports.setDrawTexture = setDrawTexture;
     exports.setElevation = setElevation;
     exports.setExageration = setExageration;
     exports.setMapMode = setMapMode;
+    exports.setMapModeNormals = setMapModeNormals;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
     exports.setReadFeatures = setReadFeatures;
     exports.setTerrarium = setTerrarium;
+    exports.setWireFrame = setWireFrame;
+    exports.shouldComputeNormals = shouldComputeNormals;
+    exports.shouldRenderSy = shouldRenderSy;
     exports.startCam = startCam;
     exports.toggleCamera = toggleCamera;
     exports.toggleDarkMode = toggleDarkMode;
+    exports.toggleDayNightCycle = toggleDayNightCycle;
     exports.toggleDebugFeaturePoints = toggleDebugFeaturePoints;
     exports.toggleDebugGPUPicking = toggleDebugGPUPicking;
     exports.toggleDebugMode = toggleDebugMode;
     exports.toggleDeviceSensors = toggleDeviceSensors;
     exports.toggleDrawElevations = toggleDrawElevations;
     exports.toggleDrawLines = toggleDrawLines;
+    exports.toggleDrawTexture = toggleDrawTexture;
+    exports.toggleMapMode = toggleMapMode;
+    exports.toggleMapModeNormals = toggleMapModeNormals;
     exports.toggleNormalsInDebug = toggleNormalsInDebug;
     exports.toggleReadFeatures = toggleReadFeatures;
+    exports.toggleWireFrame = toggleWireFrame;
 
     return exports;
 

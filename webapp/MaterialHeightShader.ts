@@ -1,13 +1,13 @@
-import * as THREE from 'three';
-import {MVTLoader} from '@loaders.gl/mvt';
+import { BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Texture, Vector3, Vector4 } from 'three';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {CancelablePromise} from '../source/utils/CancelablePromise';
-import {XHRUtils} from '../source/utils/XHRUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {exageration, mapMap, normalsInDebug, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render} from './app';
-// import { csm} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals} from './app';
+
+import {tileToBBOX} from '@mapbox/tilebelt';
+import { MapView } from '../source/MapView';
+import { MapNode } from '../source/nodes/MapNode';
 
 export let currentColor = 0xffffff;
 
@@ -16,12 +16,12 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public static BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
 
-	public static BASE_SCALE: THREE.Vector3 = new THREE.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
 	/**
 	* Empty texture used as a placeholder for missing textures.
 	*/
-	public static EMPTY_TEXTURE = new THREE.Texture();
+	public static EMPTY_TEXTURE = new Texture();
 
 	/**
 	* Size of the grid of the geometry displayed on the scene for each tile.
@@ -30,17 +30,23 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public static geometries = {};
 
-	public frustumCulled;
+	public frustumCulled: boolean;
 
-	public exageration;
+	public exageration: number;
 
-	public static getGeometry(level): MapNodeGeometry
+	public heightMapLocation = [0, 0, 1, 1]
+	public overZoomFactor = 1;
+
+	public static getGeometry(level: number): MapNodeGeometry
 	{
 		let size = MaterialHeightShader.GEOMETRY_SIZE;
 		if (level < 11) 
 		{
 			// size /= Math.pow(2, 11 - level);
 			size /= 11 - level;
+			size = Math.max(16, size);
+		} else if (level > 11) {
+			size /= Math.pow(2, (level - 11));
 			size = Math.max(16, size);
 		}
 		let geo = MaterialHeightShader.geometries[size];
@@ -51,46 +57,46 @@ export class MaterialHeightShader extends MapHeightNode
 		return geo;
 	}
 
-	public static getSoftGeometry(level): MapNodeGeometry
+	public static getSoftGeometry(level: number): MapNodeGeometry
 	{
 		return MaterialHeightShader.getGeometry(level - 1);
 	}
 
-	public constructor(parentNode, mapView, location, level, x, y) 
+	public constructor(parentNode: MapHeightNode, mapView: MapView, location: number, level: number, x: number, y: number) 
 	{
-		let material = new THREE.MeshPhongMaterial({
+		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
 			map: MaterialHeightShader.EMPTY_TEXTURE,
 			color: 0xffffff,
-			wireframe: false,
-			side: THREE.DoubleSide
-		});
-		material = MaterialHeightShader.prepareMaterial(material, level);
-		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, material);
+			wireframe: wireframe,
+			shininess:0,
+			side: DoubleSide
+		}), level));
 
-		// if (mapView.csm) 
-		// {
-		// mapView.csm.setupMaterial(material);
-		this.castShadow = true;
-		this.receiveShadow = true;
-		// }
+		// this.castShadow = true;
+		// this.receiveShadow = true;
+		this.material.emissiveIntensity = 0;
 		this.frustumCulled = false;
 		this.exageration = exageration;
+		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+		// this.material.flatShading =  mapMap && !computeNormals;
 	}
 
-	public static prepareMaterial(material, level): THREE.MeshPhongMaterial 
+	public static prepareMaterial(material: MeshPhongMaterial, level: any): MeshPhongMaterial 
 	{
+		material.precision = 'highp';
 		material.userData = {
 			heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
-			drawNormals: {value: normalsInDebug},
-			computeNormals: {value: normalsInDebug || debug || mapMap},
-			drawTexture: {value: debug || mapMap},
+			drawNormals: {value: drawNormals},
+			computeNormals: {value: shouldComputeNormals()},
+			drawTexture: {value: (debug || mapMap) && drawTexture},
 			drawBlack: {value: 0},
 			zoomlevel: {value: level},
 			exageration: {value: exageration},
-			elevationDecoder: {value: elevationDecoder}
+			elevationDecoder: {value: elevationDecoder},
+			heightMapLocation: {value: new Vector4() }
 		};
 
-		material.onBeforeCompile = (shader) => 
+		material.onBeforeCompile = (shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }) => 
 		{
 			// Pass uniforms from userData to the
 			for (const i in material.userData) 
@@ -105,16 +111,20 @@ export class MaterialHeightShader extends MapHeightNode
 			uniform float zoomlevel;
 			uniform sampler2D heightMap;
 			uniform vec4 elevationDecoder;
+			uniform vec4 heightMapLocation;
 
 			float getPixelElevation(vec4 e) {
 				// Convert encoded elevation value to meters
 				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
 			}
 			float getElevation(vec2 coord, float width, float height) {
-				vec4 e = texture2D(heightMap, coord);
+				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
 				return getPixelElevation(e);
 				}
-				float getElevationMean(vec2 coord, float width, float height) {
+			float getElevationMean(vec2 coord, float width, float height) {
+				// if (heightMapLocation.z != 1.0) {
+				// 	return  getElevation(coord, width, height);
+				// }
 				float x0 = coord.x;
 				float x1= coord.x;
 				float y0 = coord.y;
@@ -132,12 +142,9 @@ export class MaterialHeightShader extends MapHeightNode
 					y1 = 1.0 - 1.0 / height;
 				}
 				if (x0 == x1 && y0 == y1) {
-						vec4 e = texture2D(heightMap, coord);
-					return getPixelElevation(e);
+					return getElevation(coord, width, height);
 				} else {
-					vec4 e1 = texture2D(heightMap, vec2(x0,y0));
-					vec4 e2 = texture2D(heightMap, vec2(x1,y1));
-					return 2.0 * getPixelElevation(e1) -  getPixelElevation(e2);
+					return 2.0 * getElevation(vec2(x0,y0), width, height) -  getElevation(vec2(x1,y1), width, height);
 				}
 			}
 			` + shader.vertexShader;
@@ -152,10 +159,15 @@ export class MaterialHeightShader extends MapHeightNode
 			shader.fragmentShader = shader.fragmentShader.replace(
 				'#include <dithering_fragment>',
 				`
+				#include <dithering_fragment>
 				if(drawBlack) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
 				} else if(drawNormals) {
+				#ifndef FLAT_SHADED
 					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+				#else 
+					gl_FragColor = vec4( ( 0.5 * normal + 0.5 ), 1.0 );
+				#endif
 				} else if (!drawTexture) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
 				}
@@ -182,30 +194,32 @@ export class MaterialHeightShader extends MapHeightNode
 				// +-----------+
 
 				ivec2 size = textureSize(heightMap, 0);
-				float width = float(size.x);
-				float height = float(size.y);
+				float width = float(size.x) * heightMapLocation.z;
+				float height = float(size.y) * heightMapLocation.w;
 				float e = getElevationMean(vUv, width,height);
-				if (computeNormals) {
-					float offset = 1.0 / width;
-					float a = getElevation(vUv + vec2(-offset, -offset), width,height);
-					float b = getElevation(vUv + vec2(0, -offset), width,height);
-					float c = getElevation(vUv + vec2(offset, -offset), width,height);
-					float d = getElevation(vUv + vec2(-offset, 0), width,height);
-					float f = getElevation(vUv + vec2(offset, 0), width,height);
-					float g = getElevation(vUv + vec2(-offset, offset), width,height);
-					float h = getElevation(vUv + vec2(0, offset), width,height);
-					float i = getElevation(vUv + vec2(offset,offset), width,height);
+				#ifndef FLAT_SHADED
+					if (computeNormals) {
+						float offset = 1.0 / width;
+						float a = getElevation(vUv + vec2(-offset, -offset), width,height);
+						float b = getElevation(vUv + vec2(0, -offset), width,height);
+						float c = getElevation(vUv + vec2(offset, -offset), width,height);
+						float d = getElevation(vUv + vec2(-offset, 0), width,height);
+						float f = getElevation(vUv + vec2(offset, 0), width,height);
+						float g = getElevation(vUv + vec2(-offset, offset), width,height);
+						float h = getElevation(vUv + vec2(0, offset), width,height);
+						float i = getElevation(vUv + vec2(offset,offset), width,height);
 
-					float NormalLength = 500.0 / zoomlevel;
+						float NormalLength = 500.0 / zoomlevel;
 
-					vec3 v0 = vec3(0.0, 0.0, 0.0);
-					vec3 v1 = vec3(0.0, NormalLength, 0.0);
-					vec3 v2 = vec3(NormalLength, 0.0, 0.0);
-					v0.z = (e + d + g + h) / 4.0;
-					v1.z = (e + b + a + d) / 4.0;
-					v2.z = (e + h + i + f) / 4.0;
-					vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
-				}
+						vec3 v0 = vec3(0.0, 0.0, 0.0);
+						vec3 v1 = vec3(0.0, NormalLength, 0.0);
+						vec3 v2 = vec3(NormalLength, 0.0, 0.0);
+						v0.z = (e + d + g + h) / 4.0;
+						v1.z = (e + b + a + d) / 4.0;
+						v2.z = (e + h + i + f) / 4.0;
+						vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
+					}
+				#endif
 
 				vec3 _transformed = position + e * vec3(0,1,0);
 				vec3 worldNormal = normalize ( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
@@ -218,176 +232,145 @@ export class MaterialHeightShader extends MapHeightNode
 	}
 
 	// @ts-ignore
-	public material: THREE.MeshPhongMaterial;
+	public material: MeshPhongMaterial;
 
-	public geometry;
+	public geometry: BufferGeometry;
 
-	public loadTexture(): void 
+	public nodeReady(): void 
 	{
-		this.mapView
-			.provider.fetchTile(this.level, this.x, this.y)
-			.then((image) => 
-			{
-				if (image) 
-				{
-					const texture = new THREE.Texture(image as any);
-					texture.generateMipmaps = false;
-					texture.format = THREE.RGBFormat;
-					texture.magFilter = THREE.LinearFilter;
-					texture.minFilter = THREE.LinearFilter;
-					texture.needsUpdate = true;
-
-					this.material.map = texture;
-				}
-
-				this.textureLoaded = true;
-				this.nodeReady();
-			})
-			.catch((err) => 
-			{
-				console.error('GeoThree: Failed to load color node data.', err);
-				this.textureLoaded = true;
-				this.nodeReady();
-			});
-
-	}
-
-	public loadHeightGeometry(): Promise<any> 
-	{
-		if (this.mapView.heightProvider === null) 
-		{
-			throw new Error('GeoThree: MapView.heightProvider provider is null.');
+		if (!this.textureLoaded) {
+			return;
 		}
-		this.geometry = MaterialHeightShader.getGeometry(this.level);
-		return this.mapView.heightProvider
-			.fetchTile(this.level, this.x, this.y)
-			.then(async(image) => 
-			{
-				this.onHeightImage(image);
-			})
-			.finally(() => 
-			{
-				this.heightLoaded = true;
-				this.nodeReady();
-			});
+		MapNode.prototype.nodeReady.call(this);
 	}
 
-	public async onHeightImage(image): Promise<void>
+	onTextureImage(image) {
+		if (image) 
+			{
+				const texture = new Texture(image as any);
+				texture.generateMipmaps = false;
+				texture.format = RGBFormat;
+				texture.magFilter = LinearFilter;
+				texture.minFilter = LinearFilter;
+				texture.needsUpdate = true;
+	
+				// @ts-ignore
+				this.material.map = texture;
+			}
+			// 1057 735
+	}
+
+	public async onHeightImage(image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement): Promise<void>
 	{
 		if (image) 
 		{
-			new CancelablePromise((resolve, reject) => 
+			if (image instanceof Texture) {
+				this.material.userData.heightMap.value = image;
+			} else {
+				var texture = new Texture(image);
+				texture.generateMipmaps = false;
+				texture.format = RGBFormat;
+				texture.magFilter = LinearFilter;
+				texture.minFilter = LinearFilter;
+				// texture.wrapS = ClampToEdgeWrapping;
+				// texture.wrapT = ClampToEdgeWrapping;
+				texture.needsUpdate = true;
+	
+				this.material.userData.heightMap.value = texture;
+			}
+			this.geometry = MaterialHeightShader.getGeometry(this.level);
+			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
-				const url = `https://api.maptiler.com/tiles/v3/${this.level}/${this.x}/${this.y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-				try 
+
+				result = result.filter(
+					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name && f.properties.class === 'peak'; }
+				);
+				if (result.length > 0) 
 				{
-					XHRUtils.getRaw(
-						url,
-						async(data) => 
-						{
-							let result = await MVTLoader.parse(
-								data,
-								{
-									mvt: {
-										tileIndex: {
-											x: this.x,
-											y: this.y,
-											z: this.level
-										},
-										coordinates: 'wgs84',
-										layers: ['mountain_peak']
-									}
-								}
-							);
-							result = result.filter(
-								(f) => { return f.properties.name && f.properties.class === 'peak'; }
-							);
-							if (result.length > 0) 
-							{
-								const features = [];
-								var colors = [];
-								var points = [];
-								// var sizes = [];
-								var elevations = [];
-								const vec = new THREE.Vector3(
-									0,
-									0,
-									0
-								);
-								result.forEach((f, index) => 
-								{
-									var coords = UnitsUtils.datumsToSpherical(
-										f.geometry.coordinates[1],
-										f.geometry.coordinates[0]
-									);
-									vec.set(coords.x, 0, -coords.y);
-									f.localCoords = this.worldToLocal(
-										vec
-									);
-									if (Math.abs(f.localCoords.x) <=
+					const features = [];
+					var colors = [];
+					var points = [];
+					// var sizes = [];
+					var elevations = [];
+					const vec = new Vector3(
+						0,
+						0,
+						0
+					);
+					result.forEach((f: { geometry: { coordinates: any[]; }; localCoords: Vector3; id: any; pointIndex: number; level: number; x: number; y: number; color: number; properties: { ele: any; }; }, index: any) => 
+					{
+						var coords = UnitsUtils.datumsToSpherical(
+							f.geometry.coordinates[1],
+							f.geometry.coordinates[0]
+						);
+						vec.set(coords.x, 0, -coords.y);
+						f.localCoords = this.worldToLocal(
+							vec
+						);
+						if (Math.abs(f.localCoords.x) <=
 										0.5 &&
 										Math.abs(f.localCoords.z) <=
 										0.5) 
-									{
-										const id = f.geometry.coordinates.join(
-											','
-										);
-										f.id = id;
-										f.pointIndex =
+						{
+							const id = f.geometry.coordinates.join(
+								','
+							);
+							f.id = id;
+							f.pointIndex =
 											features.length;
-										features.push(f);
-										f.level = this.level;
-										f.x = this.x;
-										f.y = this.y;
-										const color = f.color = currentColor--;
-										featuresByColor[color] = f;
-										f.localCoords.y = 1;
-										colors.push(
-											(color >> 16 & 255) /
+							features.push(f);
+							f.level = this.level;
+							f.x = this.x;
+							f.y = this.y;
+							const color = f.color = currentColor--;
+							featuresByColor[color] = f;
+							f.localCoords.y = 1;
+							colors.push(
+								(color >> 16 & 255) /
 											255,
-											(color >> 8 & 255) /
+								(color >> 8 & 255) /
 											255,
-											(color & 255) / 255
-										);
-										points.push(
-											f.localCoords.x,
-											f.localCoords.y,
-											f.localCoords.z
-										);
-										elevations.push(
-											f.properties.ele
-										);
-									}
-								});
-								if (points.length > 0) 
-								{
-									const geometry = new THREE.BufferGeometry();
-									geometry.setAttribute(
-										'position',
-										new THREE.Float32BufferAttribute(
-											points,
-											3
-										)
-									);
-									geometry.setAttribute(
-										'color',
-										new THREE.Float32BufferAttribute(
-											colors,
-											3
-										)
-									);
-									geometry.setAttribute(
-										'elevation',
-										new THREE.Float32BufferAttribute(
-											elevations,
-											1
-										)
-									);
-									var mesh = new THREE.Points(
-										geometry,
-										new THREE.ShaderMaterial({
-											uniforms: {exageration: {value: exageration}},
-											vertexShader: `
+								(color & 255) / 255
+							);
+							points.push(
+								f.localCoords.x,
+								f.localCoords.y,
+								f.localCoords.z
+							);
+							elevations.push(
+								f.properties.ele
+							);
+						}
+					});
+					if (points.length > 0) 
+					{
+						const geometry = new BufferGeometry();
+						geometry.setAttribute(
+							'position',
+							new Float32BufferAttribute(
+								points,
+								3
+							)
+						);
+						geometry.setAttribute(
+							'color',
+							new Float32BufferAttribute(
+								colors,
+								3
+							)
+						);
+						geometry.setAttribute(
+							'elevation',
+							new Float32BufferAttribute(
+								elevations,
+								1
+							)
+						);
+						var mesh = new Points(
+							geometry,
+							new ShaderMaterial({
+								uniforms: {exageration: {value: exageration}},
+								vertexShader: `
 												attribute float elevation;
 												attribute vec4 color;
 												uniform float exageration;
@@ -402,62 +385,63 @@ export class MaterialHeightShader extends MapHeightNode
 													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
 												}
 												`,
-											fragmentShader: `
+								fragmentShader: `
 											varying vec4 vColor;
 											void main() {
 													gl_FragColor = vec4( vColor );
 												}
 												`,
-											transparent: true
-										})
-									);
-									mesh.features = features;
+								transparent: true
+							})
+						);
+						mesh.features = features;
 
-									mesh.updateMatrix();
-									mesh.updateMatrixWorld(true);
-									this.objectsHolder.visible = debugFeaturePoints;
-									this.objectsHolder.add(mesh);
-								}
-							}
+						mesh.updateMatrix();
+						mesh.updateMatrixWorld(true);
+						this.objectsHolder.visible = debugFeaturePoints;
+						this.objectsHolder.add(mesh);
+					}
+				}
 
-							render();
-						},
-						resolve
-					);
-				}
-				catch (err) 
-				{
-					console.error(err);
-				}
+				render();
 			});
-		}
-		if (image) 
-		{
-			var texture = new THREE.Texture(image);
-			texture.generateMipmaps = false;
-			texture.format = THREE.RGBFormat;
-			texture.magFilter = THREE.NearestFilter;
-			texture.minFilter = THREE.NearestFilter;
-			texture.needsUpdate = true;
-
-			this.material.userData.heightMap.value = texture;
+			
 		}
 	}
+	protected handleParentOverZoomTile(resolve?) {
+			// @ts-ignore
+			//{w, s, e, n};
+			const tileBox = tileToBBOX([this.x, this.y, this.level]);
+			const parent = this.parent as MaterialHeightShader;
+			const parentOverZoomFactor = parent.overZoomFactor;
+			const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
+			const width = parentTileBox[2] - parentTileBox[0];
+			const height = parentTileBox[3] - parentTileBox[1];
+			this.overZoomFactor = parentOverZoomFactor * 2;
+			this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
+			this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
+			this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
 
+			this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+			this.onHeightImage(parent.material.userData.heightMap.value);
+			// console.log('heightMapLocation', this.x, this.y, this.level, this.heightMapLocation);
+
+			resolve && resolve();
+		}
 
 	/**
 	* Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
 	*
 	* Switches the geometry for a simpler one for faster raycasting.
 	*/
-	public raycast(raycaster, intersects): boolean
+	public raycast(raycaster: Raycaster, intersects: Intersection[]): boolean
 	{
 		if (this.isMesh === true) 
 		{
 			const oldGeometry = this.geometry;
 			this.geometry = MapPlaneNode.GEOMETRY;
 
-			const result = THREE.Mesh.prototype.raycast.call(this, raycaster, intersects);
+			const result = Mesh.prototype.raycast.call(this, raycaster, intersects);
 
 			this.geometry = oldGeometry;
 

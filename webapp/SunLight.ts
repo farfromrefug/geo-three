@@ -70,7 +70,7 @@ export class SunLight extends Object3D
 		this.hingeObject = new Object3D();
 		this.add( this.hingeObject );
 
-		this.directionalLight = new DirectionalLight(); 
+		this.directionalLight = new DirectionalLight(0xdddddd); 
 		// this.directionalLight.castShadow = true;
 		this.hingeObject.add( this.directionalLight );
 

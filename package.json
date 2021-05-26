@@ -33,6 +33,7 @@
 	},
 	"devDependencies": {
 		"@loaders.gl/mvt": "^2.3.13",
+		"@mapbox/tilebelt": "^1.0.2",
 		"@rollup/plugin-commonjs": "^19.0.0",
 		"@rollup/plugin-node-resolve": "^13.0.0",
 		"@rollup/plugin-strip": "^2.0.1",
@@ -45,6 +46,7 @@
 		"eslint-plugin-import": "~2.22.1",
 		"eslint-plugin-tsdoc": "^0.2.11",
 		"eslint-plugin-typescript": "~0.14.0",
+		"magnify-3d": "^1.0.4",
 		"postprocessing": "^6.21.5",
 		"rollup": "^2.48.0",
 		"rollup-plugin-livereload": "^2.0.0",

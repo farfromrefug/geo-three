@@ -2,10 +2,11 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
 import CameraControls from 'camera-controls';
-// import * as  Stats from 'stats.js';
+import Stats from 'stats.js';
 
 import * as THREE from 'three';
-import CSM from 'three-csm';
+import Magnify3d from './Magnify3d';
+
 // @ts-ignore
 window.THREE = THREE;
 
@@ -21,6 +22,7 @@ import {LODFrustum} from '../source/lod/LODFrustum';
 import {EmptyProvider} from './EmptyProvider';
 import {MaterialHeightShader} from './MaterialHeightShader';
 import {LocalHeightProvider} from './LocalHeightProvider';
+import RasterMapProvider from './RasterMapProvider';
 import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider';
 import {SunLight} from './SunLight';
 
@@ -71,10 +73,22 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 
 CameraControls.install({THREE: THREE});
 // @ts-ignore
-// const stats = new Stats();
-// stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-// document.body.appendChild(stats.dom);
+const stats = new Stats();
+stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+document.body.appendChild(stats.dom);
 
+function throttle (callback, limit) {
+    var waiting = false;                      // Initially, we're not waiting
+    return function () {                      // We return a throttled function
+        if (!waiting) {                       // If we're not waiting
+            callback.apply(this, arguments);  // Execute users function
+            waiting = true;                   // Prevent future invocations
+            setTimeout(function () {          // After a period of time
+                waiting = false;              // And allow future invocations
+            }, limit);
+        }
+    }
+}
 function ArraySortOn(array, key) 
 {
 	return array.sort(function(a, b) 
@@ -93,21 +107,25 @@ function ArraySortOn(array, key)
 const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
 
 export let debug = false;
-export let mapMap = true;
+export let mapMap = false;
+export let drawTexture = true;
+export let computeNormals = true;
 export let debugFeaturePoints = false;
+export let wireframe = false;
+export let dayNightCycle = false;
 let debugGPUPicking = false;
 let readFeatures = true;
 let drawLines = true;
 let drawElevations = false;
 let darkTheme = false;
-export let normalsInDebug = false;
+export let drawNormals = false;
 let featuresToShow = [];
 const tempVector = new THREE.Vector3(0, 0, 0);
 export let exageration = 1.7;
 export let depthBiais =0.6;
 export let depthMultiplier =30;
 export const featuresByColor = {};
-// let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
+// export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
 const FAR = 200000;
 const TEXT_HEIGHT = 180;
@@ -116,12 +134,27 @@ let elevation = 1000;
 const clock = new THREE.Clock();
 let renderingIndex = -1;
 const position = {lat: 45.19177, lon: 5.72831};
+let map;
 // updSunPos(45.16667, 5.71667);
 const EPS = 1e-5;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 let pixelsBuffer;
 const AA = devicePixelRatio <= 1;
 let showingCamera = false;
+let showMagnify = false;
+let mousePosition = new THREE.Vector2();
+
+export function shouldComputeNormals() {
+	return  drawNormals || ((debug || mapMap) && (computeNormals && dayNightCycle));
+}
+
+export function shouldRenderSy() {
+	return  ((debug || mapMap) && dayNightCycle);
+}
+
+export function needsLights() {
+	return  (debug || mapMap);
+}
 
 export function setTerrarium(value: boolean) 
 {
@@ -141,6 +174,8 @@ export function setTerrarium(value: boolean)
 		});
 	}
 }
+
+setTerrarium(false);
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
 const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
@@ -157,6 +192,8 @@ const renderer = new THREE.WebGLRenderer({
 	// depth: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
+const magnify3d = new Magnify3d();
+const magnify3dTarget = new THREE.WebGLRenderTarget(0, 0); 
 
 renderer.setClearColor(0x000000, 0);
 const rendereroff = new THREE.WebGLRenderer({
@@ -210,11 +247,8 @@ function createSky()
 }
 
 const scene = new THREE.Scene();
-// const ambientLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.7);
-// const curSunLight = new THREE.SpotLight(0xffffff, 200, 100, 0.7, 1, 1);
 const sky = createSky();
 scene.add(sky);
-sky.visible = debug || mapMap;
 let devicecontrols;
 let listeningForDeviceSensors = false;
 
@@ -288,49 +322,131 @@ export function startCam()
 export function setDebugMode(value) 
 {
 	debug = value;
+	setupLOD();
 
-	sky.visible = debug || mapMap;
-	sunLight.visible = debug || mapMap;
-	// curSunLight.visible = debug || mapMap;
-	createMap();
-	onControlUpdate();
+	sky.visible = sunLight.visible = shouldRenderSy();
+	ambientLight.visible = needsLights();
+	if (map) {
+		map.provider = createProvider();
+		applyOnNodes((node) => 
+		{
+			node.isTextureReady = !debug;
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+			// node.material.flatShading = (mapMap && !mapMapNormal);
+		});
+		onControlUpdate();
+	}
+}
+
+export function toggleDebugMode() 
+{
+	setDebugMode(!debug);
 }
 export function setMapMode(value) 
 {
 	mapMap = value;
-
-	sky.visible = debug || mapMap;
-	sunLight.visible = debug || mapMap;
-	// ambientLight.visible = debug || mapMap;
-	// curSunLight.visible = debug || mapMap;
-	createMap();
-	onControlUpdate();
+	
+	sky.visible = sunLight.visible = shouldRenderSy();
+	ambientLight.visible = needsLights();
+	setupLOD();
+	if (map) {
+		map.provider = createProvider();
+		applyOnNodes((node) => 
+		{
+			node.isTextureReady = false;
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+			// node.material.flatShading = (mapMap && !mapMapNormal);
+		});
+		onControlUpdate();
+	}
+	// createMap();
+	// onControlUpdate();
 }
-export function toggleDebugMode() 
+
+export function toggleMapMode() 
 {
-	setDebugMode(!debug);
+	setMapMode(!mapMap);
+}
+export function setMapModeNormals(value) 
+{
+	let oldVal = mapMap && !computeNormals;
+	computeNormals = value;
+	if (map) 
+	{
+		let newVal = mapMap && !computeNormals;
+		applyOnNodes((node) => 
+		{
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			// node.material.flatShading = newVal;
+			// node.material.needsUpdate = newVal !== oldVal;
+			
+		});
+	}
+	render();
+}
+
+export function toggleMapModeNormals() 
+{
+	setMapModeNormals(!computeNormals);
+}
+export function setDrawTexture(value) 
+{
+	drawTexture = value;
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+		});
+	}
+	render();
+}
+
+export function toggleDrawTexture() 
+{
+	setDrawTexture(!drawTexture);
+}
+export function toggleNormalsInDebug() 
+{
+	setNormalsInDebug(!drawNormals);
+}
+export function setNormalsInDebug(value) 
+{
+	drawNormals = value;
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.material.userData.drawNormals.value = drawNormals;
+		});
+	}
+	render();
+}
+export function setDayNightCycle(value) 
+{
+	dayNightCycle = value;
+	sky.visible = sunLight.visible = shouldRenderSy();
+	ambientLight.intensity = value ? 0.1875 : 1;
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+		});
+	}
+	render();
+}
+export function toggleDayNightCycle() 
+{
+	setDayNightCycle(!dayNightCycle);
 }
 export function setDebugGPUPicking(value) 
 {
 	debugGPUPicking = value;
 	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
-	render();
-}
-export function toggleNormalsInDebug() 
-{
-	setNormalsInDebug(!normalsInDebug);
-}
-export function setNormalsInDebug(value) 
-{
-	normalsInDebug = value;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.material.userData.computeNormals.value = normalsInDebug || debug;
-			node.material.userData.drawNormals.value = normalsInDebug;
-		});
-	}
 	render();
 }
 export function toggleDebugGPUPicking() 
@@ -377,12 +493,25 @@ export function setDarkMode(value)
 {
 	darkTheme = value;
 	outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
-	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
+	document.body.style.backgroundColor = (darkTheme) ? 'black' : 'white';
 	render();
 }
 export function toggleDarkMode() 
 {
 	setDarkMode(!darkTheme);
+}
+export function setWireFrame(value) 
+{
+	wireframe = value;
+	applyOnNodes((node) => 
+		{
+			node.material.wireframe = wireframe;
+		});
+	render();
+}
+export function toggleWireFrame() 
+{
+	setWireFrame(!wireframe);
 }
 
 export function setDrawElevations(value) 
@@ -416,101 +545,116 @@ export function toggleCamera()
 	}
 }
 
-const debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
-debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
-debugMapCheckBox.value = debug as any;
+let datelabel;
+try 
+{
+	document.body.style.backgroundColor = (darkTheme || mapMap) ? 'black' : 'white';
+	const debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
+	debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
+	debugMapCheckBox.value = debug as any;
+	
+	
+	const mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
+	mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
+	mapMapCheckBox.checked = mapMap as any;
 
+	const mapModeNormalsCheckBox = document.getElementById('mapModeNormals') as HTMLInputElement;
+	mapModeNormalsCheckBox.onchange = (event: any) => {return setMapModeNormals(event.target.checked);};
+	mapModeNormalsCheckBox.checked = computeNormals as any;
+	
+	const dayNightCycleCheckBox = document.getElementById('dayNightCycle') as HTMLInputElement;
+	dayNightCycleCheckBox.onchange = (event: any) => {return setDayNightCycle(event.target.checked);};
+	dayNightCycleCheckBox.checked = dayNightCycle as any;
+	
+	const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
+	debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
+	debugGPUPickingCheckbox.checked = debugGPUPicking as any;
+	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+	
+	const readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
+	readFeaturesCheckbox.onchange = (event: any) => {return setReadFeatures(event.target.checked);};
+	readFeaturesCheckbox.checked = readFeatures as any;
+	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+	
+	const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
+	drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
+	drawLinesCheckbox.checked = drawLines as any;
+	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+	
+	const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints') as HTMLInputElement;
+	debugFeaturePointsCheckbox.onchange = (event: any) => {return setDebugFeaturePoints(event.target.checked);};
+	debugFeaturePointsCheckbox.checked = debugFeaturePoints as any;
+	
+	const darkmodeCheckbox = document.getElementById('darkmode') as HTMLInputElement;
+	darkmodeCheckbox.onchange = (event: any) => {return setDarkMode(event.target.checked);};
+	darkmodeCheckbox.checked = darkTheme as any;
+	const wireframeCheckbox = document.getElementById('wireframe') as HTMLInputElement;
+	wireframeCheckbox.onchange = (event: any) => {return setWireFrame(event.target.checked);};
+	wireframeCheckbox.checked = wireframe as any;
+	
+	const elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
+	elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
+	elevationSlider.value = elevation as any;
+	
+	const exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
+	exagerationSlider.oninput = (event: any) => {return setExageration(event.target.value);};
+	exagerationSlider.value = exageration as any;
+	const depthMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
+	depthMultiplierSlider.oninput = (event: any) => {return setDepthMultiplier(event.target.value);};
+	depthMultiplierSlider.value = depthMultiplier as any;
+	const depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInputElement;
+	depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
+	depthBiaisSlider.value = depthBiais as any;
+	
+	const now = new Date();
+	const secondsInDay = now.getHours() * 3600 + now.getMinutes()* 60 + now.getSeconds();
+	
+	const dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
+	dateSlider.oninput = (event: any) => {return setDate(event.target.value);};
+	dateSlider.value = secondsInDay as any;
+	datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
+	datelabel.innerText = new Date().toLocaleString();
+	
+	const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
+	cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
+	cameraCheckbox.value = showingCamera as any;
+	
+	const drawElevationsCheckbox = document.getElementById('drawElevations') as HTMLInputElement;
+	drawElevationsCheckbox.onchange = (event: any) => {return toggleDrawElevations();};
+	drawElevationsCheckbox.value = drawElevations as any;
+	
+	const normalsInDebugCheckbox = document.getElementById('normalsInDebug') as HTMLInputElement;
+	normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
+	normalsInDebugCheckbox.value = drawNormals as any;
+}
+catch (err) {}
 
-const mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
-mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
-mapMapCheckBox.value = mapMap as any;
-
-const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
-debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
-debugGPUPickingCheckbox.value = debugGPUPicking as any;
-canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
-
-const readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
-readFeaturesCheckbox.onchange = (event: any) => {return setReadFeatures(event.target.checked);};
-readFeaturesCheckbox.value = readFeatures as any;
-canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-
-const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
-drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
-drawLinesCheckbox.value = drawLines as any;
-canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-
-const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints') as HTMLInputElement;
-debugFeaturePointsCheckbox.onchange = (event: any) => {return setDebugFeaturePoints(event.target.checked);};
-debugFeaturePointsCheckbox.value = debugFeaturePoints as any;
-
-const darkmodeCheckbox = document.getElementById('darkmode') as HTMLInputElement;
-darkmodeCheckbox.onchange = (event: any) => {return setDarkMode(event.target.checked);};
-darkmodeCheckbox.value = darkTheme as any;
-
-const elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
-elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
-elevationSlider.value = elevation as any;
-
-const exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
-exagerationSlider.oninput = (event: any) => {return setExageration(event.target.value);};
-exagerationSlider.value = exageration as any;
-const depthMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
-depthMultiplierSlider.oninput = (event: any) => {return setDepthMultiplier(event.target.value);};
-depthMultiplierSlider.value = depthMultiplier as any;
-const depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInputElement;
-depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
-depthBiaisSlider.value = depthBiais as any;
-
-const now = new Date();
-const secondsInDay = now.getHours() * 3600 + now.getMinutes()* 60 + now.getSeconds();
-console.log('secondsInDay', secondsInDay);
-
-
-const dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
-dateSlider.oninput = (event: any) => {return setDate(event.target.value);};
-dateSlider.value = secondsInDay as any;
-const datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
-datelabel.innerText = new Date().toLocaleString();
-
-const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
-cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
-cameraCheckbox.value = showingCamera as any;
-
-const drawElevationsCheckbox = document.getElementById('drawElevations') as HTMLInputElement;
-drawElevationsCheckbox.onchange = (event: any) => {return toggleDrawElevations();};
-drawElevationsCheckbox.value = drawElevations as any;
-
-const normalsInDebugCheckbox = document.getElementById('normalsInDebug') as HTMLInputElement;
-normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
-normalsInDebugCheckbox.value = normalsInDebug as any;
+const heightProvider = new LocalHeightProvider();
 
 function onControlUpdate() 
 {	
-	// if (map.csm) 
-	// {
-	// 	map.csm.update(camera.matrix);
-	// }
 	map.lod.updateLOD(map, camera, renderer, scene);
 	render();
 }
+function setupLOD() {
+	heightProvider.maxOverZoom = debug || mapMap ? 1: 0;
+	// if (debug || mapMap){
+	// 	lod.subdivideDistance = 100;
+	// 	lod.simplifyDistance = 230;
+	// } else {
+		lod.subdivideDistance = 40;
+		lod.simplifyDistance = 140;
+	// }
+}
 const lod = new LODFrustum();
-lod.subdivideDistance = 40;
-lod.simplifyDistance = 140;
-let map;
-
-function createMap() 
-{
-	if (map !== undefined)
-	{
-		scene.remove(map);
-	}
+setupLOD();
+function createProvider() {
 	let provider;
 	if (mapMap) 
 	{
-		provider = new OpenStreetMapsProvider('https://a.tile.openstreetmap.fr/osmfr');
+		provider = new RasterMapProvider();
 	}
-	else if (debug && !normalsInDebug) 
+	else if (debug && !drawNormals) 
 	{
 		provider = new DebugProvider();
 	}
@@ -520,9 +664,19 @@ function createMap()
 
 	}
 	provider.minZoom = 5;
-	provider.maxZoom = 11;
+	provider.maxZoom = 11 + heightProvider.maxOverZoom;
+	provider.zoomDelta = 2 ;
+	return provider;
+}
 
-	map = new MapView(null, provider, new LocalHeightProvider(), false, render);
+function createMap() 
+{
+	if (map !== undefined)
+	{
+		scene.remove(map);
+	}
+	const provider = createProvider();
+	map = new MapView(null, provider, heightProvider, false, render);
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
 	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
 	map.lod = lod;
@@ -555,13 +709,18 @@ const sunLight = new SunLight(
 	new THREE.Vector2( 45.05, 25.47 ),
 	new THREE.Vector3( 0.0, 0.0, -1.0 ),
 	new THREE.Vector3( 1.0, 0.0, 0.0 ),
-	new THREE.Vector3( 0.0, -1.0, 0.0 )
+	new THREE.Vector3( 0.0, -1.0, 0.0 ),
+	0.001
 );
 camera.add( sunLight as any );
 // camera.add( sunLight.directionalLight );
 // Add an ambient light
-scene.add( new THREE.AmbientLight( 0x333333) );
+const ambientLight = new THREE.AmbientLight( 0xffffff, 1)
+scene.add( ambientLight );
 scene.add(camera );
+sky.visible = sunLight.visible = shouldRenderSy();
+ambientLight.visible = needsLights();
+
 
 // Adjust the directional light's shadow camera dimensions
 // sunLight.directionalLight.shadow.camera.right = 30.0;
@@ -570,13 +729,9 @@ scene.add(camera );
 // sunLight.directionalLight.shadow.camera.bottom = -30.0;
 // sunLight.directionalLight.shadow.camera.near = camera.near;
 // sunLight.directionalLight.shadow.camera.far = camera.far;
-sunLight.directionalLight.shadow.mapSize.width = 512;
-sunLight.directionalLight.shadow.mapSize.height = 512;
-sunLight.directionalLight.castShadow = true;
-const helper1 = new THREE.DirectionalLightHelper( sunLight.directionalLight, 500 );
-scene.add( helper1 );
-const helper = new THREE.CameraHelper(sunLight.directionalLight.shadow.camera);
-scene.add(helper);
+// sunLight.directionalLight.shadow.mapSize.width = 512;
+// sunLight.directionalLight.shadow.mapSize.height = 512;
+// sunLight.directionalLight.castShadow = true;
 
 // const axesHelper = new THREE.AxesHelper( 50 );
 // scene.add( axesHelper );
@@ -653,7 +808,6 @@ function setDate(secondsInDay)
 	date.setHours(hours);
 	date.setMinutes(minutes);
 	date.setSeconds(seconds);
-	console.log('setDate', date);
 	sunLight.setDate(date);
 	datelabel.innerText = date.toLocaleString();
 
@@ -669,21 +823,43 @@ controls.addEventListener('control', () =>
 	const delta = clock.getDelta();
 	controls.update(delta);
 });
-// export let csm = new CSM({
-// 	maxFar: camera.far,
-// 	cascades: 4,
-// 	shadowMapSize: 1024,
-// 	lightDirection: new THREE.Vector3(1, -1, 1).normalize(),
-// 	camera: camera,
-// 	parent: scene
-// });
-
 const composer = new POSTPROCESSING.EffectComposer(renderer);
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
 const outlineEffect = new CustomOutlineEffect();
 composer.addPass(new POSTPROCESSING.EffectPass(camera, outlineEffect));
 
 let minYPx = 0;
+
+const computeFeatures = throttle(function(){
+	sky.visible = false;
+	sunLight.visible = false;
+	ambientLight.visible = false;
+
+
+	applyOnNodes((node) => 
+	{
+		node.material.userData.drawBlack.value = true;
+		node.material.userData.computeNormals.value = false;
+		node.objectsHolder.visible = true;
+	});
+	if (debugGPUPicking) 
+	{
+		rendereroff.setRenderTarget(null);
+		rendereroff.render(scene, camera);
+	}
+	rendereroff.setRenderTarget(pointBufferTarget);
+	rendereroff.render(scene, camera);
+
+	readShownFeatures();
+	applyOnNodes((node) => 
+	{
+		node.material.userData.drawBlack.value = false;
+		node.material.userData.computeNormals.value = shouldComputeNormals();
+		node.objectsHolder.visible = debugFeaturePoints;
+	});
+	sky.visible = sunLight.visible = shouldRenderSy();
+	ambientLight.visible = needsLights();
+}, 100);
 document.body.onresize = function() 
 {
 	const width = window.innerWidth;
@@ -711,7 +887,7 @@ document.body.onresize = function()
 
 	renderer.setSize(width, height);
 	renderer.setPixelRatio(rendererScaleRatio);
-	// renderTarget.setSize(width, height);
+	magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
 
 	pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
 	rendereroff.setSize(offWidth, offHeight);
@@ -746,11 +922,18 @@ function toScreenXY(pos3D)
 
 function applyOnNode(node, cb) 
 {
-	if (node.isMesh) 
-	{
+	// if (node.isMesh) 
+	// {
 		cb(node);
-	}
+	// }
 	node.children.forEach((n) => 
+	{
+		if (n !== node.objectsHolder) 
+		{
+			applyOnNode(n, cb);
+		}
+	});
+	node.childrenCache && node.childrenCache.forEach((n) => 
 	{
 		if (n !== node.objectsHolder) 
 		{
@@ -806,6 +989,7 @@ function roundRect(ctx, x, y, w, h, r)
 	ctx.arcTo(x, y, x + w, y, r);
 	ctx.closePath();
 }
+
 function drawFeatures() 
 {
 	if (!drawLines) 
@@ -961,55 +1145,57 @@ function readShownFeatures()
 	}
 	featuresToShow = rFeatures;
 }
-
-export function render(forceDrawFeatures = false) 
+function isTouchEvent(event) 
 {
-	if (!renderer || !composer) 
+	return 'TouchEvent' in window && event instanceof TouchEvent;
+}
+function onMouseDown(event) 
+{	
+	if (showMagnify) 
 	{
-		return;
+		showMagnify = false;
 	}
+	else 
+	{
+		if (isTouchEvent(event)) 
+		{
+			var touchEvent = event;
+			for (var i = 0; i < touchEvent.touches.length; i++) 
+			{
+				mousePosition.x += touchEvent.touches[i].clientX;
+				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
+			}
+			mousePosition.x /= touchEvent.touches.length;
+			mousePosition.y /= touchEvent.touches.length;
+		}
+		else 
+		{
+			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
+		}
+		showMagnify = true;
+	}
+	console.log('onMouseDown', showMagnify, mousePosition);
+	render();
+}
+// window.addEventListener('mousedown', onMouseDown);
+// window.addEventListener('touchstart', onMouseDown, {passive: true});
+
+
+function actualRender(forceDrawFeatures) 
+{
 	if (readFeatures && pixelsBuffer) 
 	{
-		renderingIndex = (renderingIndex + 1) % (listeningForDeviceSensors ? 10 : 5);
-		if (forceDrawFeatures || renderingIndex === 0) 
-		{
-			const skyWasVisible = sky.visible;
-			sky.visible = false;
-			sunLight.visible = false;
-
-
-			applyOnNodes((node) => 
-			{
-				node.material.userData.drawBlack.value = true;
-				node.objectsHolder.visible = true;
-			});
-			if (debugGPUPicking) 
-			{
-				rendereroff.setRenderTarget(null);
-				rendereroff.render(scene, camera);
-			}
-			rendereroff.setRenderTarget(pointBufferTarget);
-			rendereroff.render(scene, camera);
-
-			readShownFeatures();
-			applyOnNodes((node) => 
-			{
-				node.material.userData.drawBlack.value = false;
-				node.objectsHolder.visible = debugFeaturePoints;
-			});
-			sky.visible = skyWasVisible;
-			sunLight.visible = skyWasVisible;
-		}
+		computeFeatures();
 		drawFeatures();
 	}
 	else 
 	{
-		// applyOnNodes((node) =>
-		// {
-		// 	// node.material.userData.drawBlack.value = false;
-		// 	// node.material.userData.drawNormals.value = false;
-		// 	node.objectsHolder.visible = debugFeaturePoints;
-		// });
+		applyOnNodes((node) =>
+		{
+			// node.material.userData.drawBlack.value = false;
+			// node.material.userData.drawNormals.value = false;
+			node.objectsHolder.visible = debugFeaturePoints;
+		});
 	}
 
 	if (debug || mapMap) 
@@ -1020,6 +1206,36 @@ export function render(forceDrawFeatures = false)
 	{
 		composer.render(clock.getDelta());
 	}
-	// stats.end();
+}
+export function render(forceDrawFeatures = false) 
+{
+	if (!renderer || !composer) 
+	{
+		return;
+	}
+	
+	if (showMagnify) 
+	{
+		renderer.setRenderTarget(magnify3dTarget);
+		actualRender(forceDrawFeatures);
+		renderer.setRenderTarget(null);
+		magnify3d.render({
+			renderer: renderer,
+			pos: mousePosition,
+			inputBuffer: magnify3dTarget,
+			renderSceneCB: (target) => 
+			{
+				renderer.setRenderTarget(target);
+				renderer.render(scene, camera);
+				renderer.setRenderTarget(null);
+			}
+			
+		});
+	}
+	else 
+	{
+		actualRender(forceDrawFeatures);
+	}
+	stats.end();
 }
 setPosition(position);

@@ -31,7 +31,7 @@ export class HeightDebugProvider extends MapProvider
 		this.provider = provider;
 	}
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		return new Promise((resolve, reject) => 
 		{

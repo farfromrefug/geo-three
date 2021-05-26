@@ -120,7 +120,7 @@ export class MaterialHeightShader extends MapHeightNode
 			float getElevation(vec2 coord, float width, float height) {
 				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
 				return getPixelElevation(e);
-				}
+			}
 			float getElevationMean(vec2 coord, float width, float height) {
 				// if (heightMapLocation.z != 1.0) {
 				// 	return  getElevation(coord, width, height);
@@ -257,7 +257,6 @@ export class MaterialHeightShader extends MapHeightNode
 				// @ts-ignore
 				this.material.map = texture;
 			}
-			// 1057 735
 	}
 
 	public async onHeightImage(image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement): Promise<void>
@@ -409,25 +408,22 @@ export class MaterialHeightShader extends MapHeightNode
 		}
 	}
 	protected handleParentOverZoomTile(resolve?) {
-			// @ts-ignore
-			//{w, s, e, n};
-			const tileBox = tileToBBOX([this.x, this.y, this.level]);
-			const parent = this.parent as MaterialHeightShader;
-			const parentOverZoomFactor = parent.overZoomFactor;
-			const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
-			const width = parentTileBox[2] - parentTileBox[0];
-			const height = parentTileBox[3] - parentTileBox[1];
-			this.overZoomFactor = parentOverZoomFactor * 2;
-			this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
-			this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
-			this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+		const tileBox = tileToBBOX([this.x, this.y, this.level]);
+		const parent = this.parent as MaterialHeightShader;
+		const parentOverZoomFactor = parent.overZoomFactor;
+		const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
+		const width = parentTileBox[2] - parentTileBox[0];
+		const height = parentTileBox[3] - parentTileBox[1];
+		this.overZoomFactor = parentOverZoomFactor * 2;
+		this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
+		this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
+		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
 
-			this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
-			this.onHeightImage(parent.material.userData.heightMap.value);
-			// console.log('heightMapLocation', this.x, this.y, this.level, this.heightMapLocation);
+		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+		this.onHeightImage(parent.material.userData.heightMap.value);
 
-			resolve && resolve();
-		}
+		resolve && resolve();
+	}
 
 	/**
 	* Overrides normal raycasting, to avoid raycasting when isMesh is set to false.

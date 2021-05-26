@@ -1,10 +1,11 @@
-import {BufferGeometry, Intersection, LinearFilter, Material, MeshPhongMaterial, NearestFilter, Raycaster, RGBFormat, Texture, Vector3} from 'three';
+import {BufferGeometry, Intersection, LinearFilter, Material, MeshPhongMaterial, NearestFilter, Raycaster, RGBFormat, Texture, Vector3, Vector4} from 'three';
 import {MapHeightNode} from './MapHeightNode';
 import {MapNodeGeometry} from '../geometries/MapNodeGeometry';
 import {MapPlaneNode} from './MapPlaneNode';
 import {UnitsUtils} from '../utils/UnitsUtils';
 import {MapNode} from './MapNode';
 import {MapView} from '../MapView';
+import {tileToBBOX} from '@mapbox/tilebelt';
 
 /**
  * Map height node that uses GPU height calculation to generate the deformed plane mesh.
@@ -20,15 +21,26 @@ import {MapView} from '../MapView';
  */
 export class MapHeightNodeShader extends MapHeightNode 
 {
+	/**
+	 * Variable used to get correct height map location while using maxOverZoom
+	 */
+	protected heightMapLocation = [0, 0, 1, 1]
+
+	/**
+	 * Variable used to get correct height map location while using maxOverZoom
+	 */
+	protected overZoomFactor = 1;
+
+
+
 	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0) 
 	{
-		const material: Material = MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({map: MapHeightNodeShader.EMPTY_TEXTURE}));
-
-		super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, material);
+		super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({map: MapHeightNodeShader.EMPTY_TEXTURE})));
 
 		this.frustumCulled = false;
 	}
 
+	public static ELEVATION_DECODER = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 	/**
 	 * Empty texture used as a placeholder for missing textures.
 	 */
@@ -55,7 +67,9 @@ export class MapHeightNodeShader extends MapHeightNode
 	 */
 	public static prepareMaterial(material: Material): Material
 	{
-		material.userData = {heightMap: {value: MapHeightNodeShader.EMPTY_TEXTURE}};
+		material.userData = {heightMap: {value: MapHeightNodeShader.EMPTY_TEXTURE},
+		elevationDecoder: {value: MapHeightNodeShader.ELEVATION_DECODER},
+		heightMapLocation: {value: new Vector4() }};
 
 		material.onBeforeCompile = (shader) => 
 		{
@@ -69,6 +83,16 @@ export class MapHeightNodeShader extends MapHeightNode
 			shader.vertexShader =
 				`
 			uniform sampler2D heightMap;
+			uniform vec4 heightMapLocation;
+			uniform vec4 elevationDecoder;
+			float getPixelElevation(vec4 e) {
+				// Convert encoded elevation value to meters
+				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
+			}
+			float getElevation(vec2 coord) {
+				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+				return getPixelElevation(e);
+			}
 			` + shader.vertexShader;
 
 			// Vertex depth logic
@@ -76,8 +100,7 @@ export class MapHeightNodeShader extends MapHeightNode
 			#include <fog_vertex>
 	
 			// Calculate height of the title
-			vec4 _theight = texture2D(heightMap, vUv);
-			float _height = ((_theight.r * 255.0 * 65536.0 + _theight.g * 255.0 * 256.0 + _theight.b * 255.0) * 0.1) - 10000.0;
+			float _height = getElevation(vUv);
 			vec3 _transformed = position + _height * normal;
 	
 			// Vertex position based on height
@@ -102,6 +125,24 @@ export class MapHeightNodeShader extends MapHeightNode
 			// @ts-ignore
 			this.material.userData.heightMap.value = texture;
 		}
+	}
+
+	protected handleParentOverZoomTile(resolve?) {
+		const tileBox = tileToBBOX([this.x, this.y, this.level]);
+		const parent = this.parent as MapHeightNodeShader;
+		const parentOverZoomFactor = parent.overZoomFactor;
+		const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
+		const width = parentTileBox[2] - parentTileBox[0];
+		const height = parentTileBox[3] - parentTileBox[1];
+		this.overZoomFactor = parentOverZoomFactor * 2;
+		this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
+		this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
+		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+
+		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+		this.onHeightImage(parent.material.userData.heightMap.value);
+
+		resolve && resolve();
 	}
 
 	/**

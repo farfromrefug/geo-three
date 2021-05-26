@@ -122,7 +122,7 @@ export class HereMapsProvider extends MapProvider
 
 	public getMetaData(): void {}
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		this.nextServer();
 

@@ -56,7 +56,7 @@ export class OpenMapTilesProvider extends MapProvider
 		});
 	}
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		return new Promise((resolve, reject) => 
 		{

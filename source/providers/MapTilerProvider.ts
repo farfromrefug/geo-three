@@ -54,7 +54,7 @@ export class MapTilerProvider extends MapProvider
 		this.resolution = 512;
 	}
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any> 
+	public fetchImage(zoom: number, x: number, y: number): Promise<any> 
 	{
 		return new Promise((resolve, reject) => 
 		{

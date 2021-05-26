@@ -12,7 +12,7 @@ export class DebugProvider extends MapProvider
 	 */
 	public resolution: number = 256;
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		const canvas = new OffscreenCanvas(this.resolution, this.resolution);
 		const context = canvas.getContext('2d');

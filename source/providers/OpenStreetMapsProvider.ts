@@ -28,7 +28,7 @@ export class OpenStreetMapsProvider extends MapProvider
 		this.format = 'png';
 	}
 
-	public fetchTile(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		return new Promise<HTMLImageElement>((resolve, reject) => 
 		{

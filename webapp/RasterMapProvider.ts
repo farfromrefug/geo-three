@@ -13,22 +13,17 @@ function zoomTiles(zoomedTiles, zoom) {
 	} else {
 	  var zoomedTiles = zoomedTiles.map(function(tile){
 		  const bbox = tileToBBOX(tile)
-		  console.log('bbox', tile, zoom, bbox)
-		  //[w, s, e, n]
-		
 		return pointToTile(
 			bbox[0] + (bbox[2] - bbox[0])/2,
 			bbox[1] + (bbox[3] - bbox[1])/2, zoom);
 	  });
 	  return zoomedTiles;
 	}
-  }
+}
 function tilesToZoom(tiles, zoom) {
 	var newTiles = zoomTiles(tiles, zoom);
 	return newTiles;
-  
-	
-  }
+}
 
 export default class RasterMapProvider extends OpenStreetMapsProvider 
 {

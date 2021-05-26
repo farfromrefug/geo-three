@@ -88,7 +88,7 @@ export class LODFrustum extends LODRadial
 		}
 		else
 		{
-			return node.isReady;
+			return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
 		}
 	}
 

@@ -155,6 +155,14 @@ export class MapHeightNode extends MapNode
 		node.updateMatrixWorld(true);
 	}
 
+	parent: MapHeightNode;
+
+	heightListeners = []
+
+	protected handleParentOverZoomTile(resolve?) {
+		throw new Error('not implemented');
+	}
+
 	public async loadHeightGeometry(): Promise<any> 
 	{
 		if (this.isHeightReady) {
@@ -167,8 +175,26 @@ export class MapHeightNode extends MapNode
 			throw new Error('GeoThree: MapView.heightProvider provider is null.');
 		}
 		try {
+			const zoom = this.level;
+			if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+				const parent = this.parent;
+				if (parent.heightLoaded ) {
+					this.handleParentOverZoomTile();
+				} else {
+					const promise = new Promise(resolve=>{
+						parent.heightListeners.push(()=>this.handleParentOverZoomTile(resolve))
+					})
+					if ( !parent.isHeightReady) {
+						// ensure parent is loaded first
+						parent.loadHeightGeometry();
+					}
+					await promise;
+				} 
+			} else {
 				const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
 				this.onHeightImage(image);
+			}
+
 		} finally {
 			this.heightLoaded = true;
 			this.heightListeners.forEach(l=>l());

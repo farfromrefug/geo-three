@@ -25,6 +25,17 @@ export abstract class MapProvider
 	public maxZoom: number = 20;
 
 	/**
+	 * Allowed overMaxZoom.
+	 */
+	public maxOverZoom: number = 0;
+
+	/**
+	 * factor used to create bitmaps based on higher zooms
+	 */
+	public zoomDelta: number = 0;
+
+
+	/**
 	 * Map bounds.
 	 */
 	public bounds: number[] = [];

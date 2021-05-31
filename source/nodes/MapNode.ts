@@ -201,8 +201,6 @@ export abstract class MapNode extends Mesh
 
 		if (this.childrenCache !== null) 
 		{
-			this.isMesh = false;
-			this.objectsHolder.visible = false;
 			this.childrenCache.forEach((n) => 
 			{
 				if (n !== this.objectsHolder) 
@@ -212,6 +210,11 @@ export abstract class MapNode extends Mesh
 				}
 			});
 			this.children = this.childrenCache;
+			if (this.nodesLoaded >= MapNode.CHILDRENS) 
+			{
+				this.isMesh = false;
+				this.objectsHolder.visible = false;
+			}
 		}
 		else 
 		{

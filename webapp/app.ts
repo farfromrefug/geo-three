@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
 import CameraControls from 'camera-controls';
 import Stats from 'stats.js';
+import TWEEN from '@tweenjs/tween.js';
 
 import * as THREE from 'three';
 import Magnify3d from './Magnify3d';
@@ -16,19 +17,27 @@ import * as POSTPROCESSING from 'postprocessing';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapView} from '../source/MapView';
 import {MapNode} from '../source/nodes/MapNode';
-import {MapMartiniHeightNode} from '../source/nodes/MapMartiniHeightNode';
 import {DebugProvider} from '../source/providers/DebugProvider';
 import {LODFrustum} from '../source/lod/LODFrustum';
 import {EmptyProvider} from './EmptyProvider';
 import {MaterialHeightShader} from './MaterialHeightShader';
 import {LocalHeightProvider} from './LocalHeightProvider';
 import RasterMapProvider from './RasterMapProvider';
-import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider';
 import {SunLight} from './SunLight';
 
 
+function getURLParameter(name) 
+{
+	return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
+}
+
+
+const devLocal = (getURLParameter('local') || 'false') === 'true';
+
 class CustomOutlineEffect extends POSTPROCESSING.Effect 
 {
+	public uniforms: Map<String, any>
+
 	constructor() 
 	{
 		super(
@@ -61,6 +70,7 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 `,
 			{
 				attributes: POSTPROCESSING.EffectAttribute.DEPTH,
+				blendFunction: POSTPROCESSING.BlendFunction.AVERAGE, 
 				uniforms: new Map([
 					['outlineColor', new THREE.Uniform(new THREE.Color(darkTheme ? 0xffffff : 0x000000))],
 					['multiplierParameters', new THREE.Uniform(new THREE.Vector2(depthBiais, depthMultiplier))]
@@ -77,17 +87,22 @@ const stats = new Stats();
 stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
 document.body.appendChild(stats.dom);
 
-function throttle (callback, limit) {
-    var waiting = false;                      // Initially, we're not waiting
-    return function () {                      // We return a throttled function
-        if (!waiting) {                       // If we're not waiting
-            callback.apply(this, arguments);  // Execute users function
-            waiting = true;                   // Prevent future invocations
-            setTimeout(function () {          // After a period of time
-                waiting = false;              // And allow future invocations
-            }, limit);
-        }
-    }
+function throttle(callback, limit) 
+{
+	var waiting = false; // Initially, we're not waiting
+	return function() 
+	{ // We return a throttled function
+		if (!waiting) 
+		{ // If we're not waiting
+			// eslint-disable-next-line prefer-rest-params
+			callback.apply(this, arguments); // Execute users function
+			waiting = true; // Prevent future invocations
+			setTimeout(function() 
+			{ // After a period of time
+				waiting = false; // And allow future invocations
+			}, limit);
+		}
+	};
 }
 function ArraySortOn(array, key) 
 {
@@ -107,11 +122,12 @@ function ArraySortOn(array, key)
 const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
 
 export let debug = false;
-export let mapMap = false;
+export let mapMap = true;
 export let drawTexture = true;
-export let computeNormals = true;
-export let debugFeaturePoints = false;
+export let computeNormals = false;
+export let debugFeaturePoints = true;
 export let wireframe = false;
+export let mapoutline = false;
 export let dayNightCycle = false;
 let debugGPUPicking = false;
 let readFeatures = true;
@@ -127,13 +143,13 @@ export let depthMultiplier =30;
 export const featuresByColor = {};
 // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
-const FAR = 200000;
+export let currentViewingDistance = 0;
+export let FAR = 200000;
 const TEXT_HEIGHT = 180;
 let currentPosition;
 let elevation = 1000;
 const clock = new THREE.Clock();
 let renderingIndex = -1;
-const position = {lat: 45.19177, lon: 5.72831};
 let map;
 // updSunPos(45.16667, 5.71667);
 const EPS = 1e-5;
@@ -144,16 +160,19 @@ let showingCamera = false;
 let showMagnify = false;
 let mousePosition = new THREE.Vector2();
 
-export function shouldComputeNormals() {
-	return  drawNormals || ((debug || mapMap) && (computeNormals && dayNightCycle));
+export function shouldComputeNormals() 
+{
+	return drawNormals || (debug || mapMap) && (computeNormals || dayNightCycle);
 }
 
-export function shouldRenderSy() {
-	return  ((debug || mapMap) && dayNightCycle);
+export function shouldRenderSky() 
+{
+	return (debug || mapMap) && dayNightCycle;
 }
 
-export function needsLights() {
-	return  (debug || mapMap);
+export function needsLights() 
+{
+	return debug || mapMap;
 }
 
 export function setTerrarium(value: boolean) 
@@ -175,7 +194,6 @@ export function setTerrarium(value: boolean)
 	}
 }
 
-setTerrarium(true);
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
 const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
@@ -324,9 +342,10 @@ export function setDebugMode(value)
 	debug = value;
 	setupLOD();
 
-	sky.visible = sunLight.visible = shouldRenderSy();
+	sky.visible = sunLight.visible = shouldRenderSky();
 	ambientLight.visible = needsLights();
-	if (map) {
+	if (map) 
+	{
 		map.provider = createProvider();
 		applyOnNodes((node) => 
 		{
@@ -347,10 +366,11 @@ export function setMapMode(value)
 {
 	mapMap = value;
 	
-	sky.visible = sunLight.visible = shouldRenderSy();
+	sky.visible = sunLight.visible = shouldRenderSky();
 	ambientLight.visible = needsLights();
 	setupLOD();
-	if (map) {
+	if (map) 
+	{
 		map.provider = createProvider();
 		applyOnNodes((node) => 
 		{
@@ -368,28 +388,6 @@ export function setMapMode(value)
 export function toggleMapMode() 
 {
 	setMapMode(!mapMap);
-}
-export function setMapModeNormals(value) 
-{
-	let oldVal = mapMap && !computeNormals;
-	computeNormals = value;
-	if (map) 
-	{
-		let newVal = mapMap && !computeNormals;
-		applyOnNodes((node) => 
-		{
-			node.material.userData.computeNormals.value = shouldComputeNormals();
-			// node.material.flatShading = newVal;
-			// node.material.needsUpdate = newVal !== oldVal;
-			
-		});
-	}
-	render();
-}
-
-export function toggleMapModeNormals() 
-{
-	setMapModeNormals(!computeNormals);
 }
 export function setDrawTexture(value) 
 {
@@ -425,11 +423,36 @@ export function setNormalsInDebug(value)
 	}
 	render();
 }
+
+export function setComputeNormals(value) 
+{
+	computeNormals = value;
+	sky.visible = shouldRenderSky();
+	sunLight.visible = shouldRenderSky() || computeNormals;
+	ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
+	console.log('setComputeNormals2', value, shouldComputeNormals());
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			
+		});
+	}
+	render();
+}
+
+export function toggleComputeNormals() 
+{
+	setComputeNormals(!computeNormals);
+}
 export function setDayNightCycle(value) 
 {
 	dayNightCycle = value;
-	sky.visible = sunLight.visible = shouldRenderSy();
-	ambientLight.intensity = value ? 0.1875 : 1;
+	sky.visible = shouldRenderSky();
+	sunLight.visible = shouldRenderSky() || computeNormals;
+	ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
+	console.log('setDayNightCycle', dayNightCycle, shouldComputeNormals());
 	if (map) 
 	{
 		applyOnNodes((node) => 
@@ -480,7 +503,13 @@ export function setDebugFeaturePoints(value)
 	{
 		applyOnNodes((node) => 
 		{
-			node.objectsHolder.visible = debugFeaturePoints;
+			// node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
+			node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+			let child = node.objectsHolder.children[0];
+			if (child) 
+			{
+				child.material.uniforms.forViewing.value = debugFeaturePoints;
+			}
 		});
 	}
 	render();
@@ -493,7 +522,7 @@ export function setDarkMode(value)
 {
 	darkTheme = value;
 	outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
-	document.body.style.backgroundColor = (darkTheme) ? 'black' : 'white';
+	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
 	render();
 }
 export function toggleDarkMode() 
@@ -504,14 +533,23 @@ export function setWireFrame(value)
 {
 	wireframe = value;
 	applyOnNodes((node) => 
-		{
-			node.material.wireframe = wireframe;
-		});
+	{
+		node.material.wireframe = wireframe;
+	});
 	render();
 }
 export function toggleWireFrame() 
 {
 	setWireFrame(!wireframe);
+}
+export function setMapOultine(value) 
+{
+	mapoutline = value;
+	render();
+}
+export function toggleMapOultine() 
+{
+	setMapOultine(!mapoutline);
 }
 
 export function setDrawElevations(value) 
@@ -545,10 +583,11 @@ export function toggleCamera()
 	}
 }
 
-let datelabel;
+let datelabel, viewingDistanceLabel, compass;
 try 
 {
-	document.body.style.backgroundColor = (darkTheme || mapMap) ? 'black' : 'white';
+	compass = document.querySelector('#compass img');
+	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
 	const debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
 	debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
 	debugMapCheckBox.value = debug as any;
@@ -557,10 +596,6 @@ try
 	const mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
 	mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
 	mapMapCheckBox.checked = mapMap as any;
-
-	const mapModeNormalsCheckBox = document.getElementById('mapModeNormals') as HTMLInputElement;
-	mapModeNormalsCheckBox.onchange = (event: any) => {return setMapModeNormals(event.target.checked);};
-	mapModeNormalsCheckBox.checked = computeNormals as any;
 	
 	const dayNightCycleCheckBox = document.getElementById('dayNightCycle') as HTMLInputElement;
 	dayNightCycleCheckBox.onchange = (event: any) => {return setDayNightCycle(event.target.checked);};
@@ -576,10 +611,10 @@ try
 	readFeaturesCheckbox.checked = readFeatures as any;
 	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
 	
-	const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
-	drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
-	drawLinesCheckbox.checked = drawLines as any;
-	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+	// const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
+	// drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
+	// drawLinesCheckbox.checked = drawLines as any;
+	// canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
 	
 	const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints') as HTMLInputElement;
 	debugFeaturePointsCheckbox.onchange = (event: any) => {return setDebugFeaturePoints(event.target.checked);};
@@ -591,6 +626,10 @@ try
 	const wireframeCheckbox = document.getElementById('wireframe') as HTMLInputElement;
 	wireframeCheckbox.onchange = (event: any) => {return setWireFrame(event.target.checked);};
 	wireframeCheckbox.checked = wireframe as any;
+
+	const mapoutlineCheckbox = document.getElementById('mapoutline') as HTMLInputElement;
+	mapoutlineCheckbox.onchange = (event: any) => {return setMapOultine(event.target.checked);};
+	mapoutlineCheckbox.checked = mapoutline as any;
 	
 	const elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
 	elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
@@ -614,6 +653,10 @@ try
 	dateSlider.value = secondsInDay as any;
 	datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
 	datelabel.innerText = new Date().toLocaleString();
+	viewingDistanceLabel = document.getElementById('viewingDistanceLabel') as HTMLLabelElement;
+
+	const viewingDistanceSlider = document.getElementById('viewingDistanceSlider') as HTMLInputElement;
+	viewingDistanceSlider.oninput = (event: any) => {return setViewingDistance(event.target.value);};
 	
 	const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
 	cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
@@ -626,33 +669,48 @@ try
 	const normalsInDebugCheckbox = document.getElementById('normalsInDebug') as HTMLInputElement;
 	normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
 	normalsInDebugCheckbox.value = drawNormals as any;
+
 }
 catch (err) {}
 
-const heightProvider = new LocalHeightProvider();
+const heightProvider = new LocalHeightProvider(devLocal);
+setTerrarium(heightProvider.terrarium);
 
 function onControlUpdate() 
 {	
 	map.lod.updateLOD(map, camera, renderer, scene);
+	if (compass) 
+	{
+		const angle = controls.azimuthAngle * 180 / Math.PI % 360;
+		const pitch = controls.polarAngle * 180 / Math.PI % 360;
+		const styling =
+				'rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
+		compass.style['-webkit-transform'] = styling;
+	}
+	if (window['nsWebViewBridge']) 
+	{
+
+		window['nsWebViewBridge'].emit('controls', {
+			// distance: controls.distance,
+			azim: controls.azimuthAngle * 180 / Math.PI
+		});
+	}
 	render();
 }
-function setupLOD() {
-	heightProvider.maxOverZoom = debug || mapMap ? 1: 0;
-	// if (debug || mapMap){
-	// 	lod.subdivideDistance = 100;
-	// 	lod.simplifyDistance = 230;
-	// } else {
-		lod.subdivideDistance = 40;
-		lod.simplifyDistance = 140;
-	// }
+function setupLOD() 
+{
+	heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
+	lod.subdivideDistance = 40;
+	lod.simplifyDistance = 140;
 }
 const lod = new LODFrustum();
 setupLOD();
-function createProvider() {
+function createProvider() 
+{
 	let provider;
 	if (mapMap) 
 	{
-		provider = new RasterMapProvider();
+		provider = new RasterMapProvider(devLocal);
 	}
 	else if (debug && !drawNormals) 
 	{
@@ -664,8 +722,9 @@ function createProvider() {
 
 	}
 	provider.minZoom = 5;
-	provider.maxZoom = 11 + heightProvider.maxOverZoom;
-	provider.zoomDelta = 2 ;
+	provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
+	provider.zoomDelta = 1 ;
+	provider.minLevelForZoomDelta = 12 ;
 	return provider;
 }
 
@@ -677,6 +736,8 @@ function createMap()
 	}
 	const provider = createProvider();
 	map = new MapView(null, provider, heightProvider, false, render);
+	// map.lowMemoryUsage = isMobile;
+	map.lowMemoryUsage = true;
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
 	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
 	map.lod = lod;
@@ -698,7 +759,7 @@ controls.minZoom = 1;
 controls.minDistance = -10000;
 controls.maxDistance = 1000;
 // controls.dollyToCursor = true;
-controls.truckSpeed = 1 / EPS * 30000;
+controls.truckSpeed = 1 / EPS * 60000;
 controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
@@ -715,12 +776,13 @@ const sunLight = new SunLight(
 camera.add( sunLight as any );
 // camera.add( sunLight.directionalLight );
 // Add an ambient light
-const ambientLight = new THREE.AmbientLight( 0xffffff, 1)
+const ambientLight = new THREE.AmbientLight( 0xffffff, 1);
 scene.add( ambientLight );
 scene.add(camera );
-sky.visible = sunLight.visible = shouldRenderSy();
+sky.visible = sunLight.visible = shouldRenderSky();
 ambientLight.visible = needsLights();
 
+// const fog = new THREE.Fog(0xffffff, camera.near, camera.far * 2);
 
 // Adjust the directional light's shadow camera dimensions
 // sunLight.directionalLight.shadow.camera.right = 30.0;
@@ -733,8 +795,8 @@ ambientLight.visible = needsLights();
 // sunLight.directionalLight.shadow.mapSize.height = 512;
 // sunLight.directionalLight.castShadow = true;
 
-// const axesHelper = new THREE.AxesHelper( 50 );
-// scene.add( axesHelper );
+const axesHelper = new THREE.AxesHelper( 50 );
+scene.add( axesHelper );
 
 function updateSky() 
 {
@@ -745,10 +807,18 @@ function updateSky()
 
 	sky.material.uniforms['sunPosition'].value.copy( sun );
 }
-export function setPosition(coords) 
-{
 
-	currentPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
+function updateCurrentViewingDistance() 
+{
+	currentViewingDistance = getViewingDistance();
+	if (viewingDistanceLabel) 
+	{
+		viewingDistanceLabel.innerText = Math.round(currentViewingDistance/1000) + 'km';
+	}
+}
+export function setPosition(coords, animated = false) 
+{
+	const newPosition= UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
 	// axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
 	sunLight.setPosition(coords.lat, coords.lon);
 	sunLight.setDate(new Date());
@@ -758,8 +828,26 @@ export function setPosition(coords)
 	{
 		elevation = coords.altitude;
 	}
-	controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y);
-	controls.update(clock.getDelta());
+	if (animated) 
+	{
+		startAnimation(currentPosition, newPosition, 500, (newPos) => 
+		{
+			currentPosition = newPos;
+			controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y, false);
+			controls.update(clock.getDelta());
+		}, () => 
+		{
+			updateCurrentViewingDistance();
+		});
+	}
+	else 
+	{
+		currentPosition = newPosition;
+
+		controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y, false);
+		controls.update(clock.getDelta());
+		updateCurrentViewingDistance();
+	}
 }
 export function setElevation(newValue) 
 {
@@ -799,8 +887,9 @@ export function setDepthMultiplier(newValue)
 }
 
 
-function setDate(secondsInDay) 
+export function setDate(secondsInDay) 
 {
+	console.log('setDate', secondsInDay);
 	let date = new Date();
 	const hours = Math.floor(secondsInDay/3600);
 	const minutes = Math.floor((secondsInDay - hours*3600)/ 60);
@@ -809,7 +898,10 @@ function setDate(secondsInDay)
 	date.setMinutes(minutes);
 	date.setSeconds(seconds);
 	sunLight.setDate(date);
-	datelabel.innerText = date.toLocaleString();
+	if (datelabel) 
+	{
+		datelabel.innerText = date.toLocaleString();
+	}
 
 	updateSky();
 	render();
@@ -829,18 +921,26 @@ const outlineEffect = new CustomOutlineEffect();
 composer.addPass(new POSTPROCESSING.EffectPass(camera, outlineEffect));
 
 let minYPx = 0;
-
-const computeFeatures = throttle(function(){
+function actualComputeFeatures() 
+{
+	let oldSyVisible = sky.visible;
+	let oldSunLightVisible = sunLight.visible;
+	let oldAmbientLightVisible = ambientLight.visible;
 	sky.visible = false;
 	sunLight.visible = false;
 	ambientLight.visible = false;
-
 
 	applyOnNodes((node) => 
 	{
 		node.material.userData.drawBlack.value = true;
 		node.material.userData.computeNormals.value = false;
-		node.objectsHolder.visible = true;
+		node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
+		// node.objectsHolder.visible = node.isMesh;
+		let child = node.objectsHolder.children[0];
+		if (child) 
+		{
+			child.material.uniforms.forViewing.value = false;
+		}
 	});
 	if (debugGPUPicking) 
 	{
@@ -851,15 +951,26 @@ const computeFeatures = throttle(function(){
 	rendereroff.render(scene, camera);
 
 	readShownFeatures();
+
+	const shouldShowNormals = shouldComputeNormals();
 	applyOnNodes((node) => 
 	{
 		node.material.userData.drawBlack.value = false;
-		node.material.userData.computeNormals.value = shouldComputeNormals();
-		node.objectsHolder.visible = debugFeaturePoints;
+		node.material.userData.computeNormals.value = shouldShowNormals;
+		node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+		// node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
+		let child = node.objectsHolder.children[0];
+		if (child) 
+		{
+			child.material.uniforms.forViewing.value = debugFeaturePoints;
+		}
+		
 	});
-	sky.visible = sunLight.visible = shouldRenderSy();
-	ambientLight.visible = needsLights();
-}, 100);
+	sky.visible = oldSyVisible;
+	sunLight.visible = oldSunLightVisible;
+	ambientLight.visible = oldAmbientLightVisible;
+}
+const computeFeatures = throttle(actualComputeFeatures, 100);
 document.body.onresize = function() 
 {
 	const width = window.innerWidth;
@@ -924,7 +1035,7 @@ function applyOnNode(node, cb)
 {
 	// if (node.isMesh) 
 	// {
-		cb(node);
+	cb(node);
 	// }
 	node.children.forEach((n) => 
 	{
@@ -1181,24 +1292,37 @@ function onMouseDown(event)
 // window.addEventListener('touchstart', onMouseDown, {passive: true});
 
 
-function actualRender(forceDrawFeatures) 
+function actualRender(forceComputeFeatures) 
 {
 	if (readFeatures && pixelsBuffer) 
 	{
-		computeFeatures();
+		if (forceComputeFeatures) 
+		{
+			actualComputeFeatures();
+		}
+		else 
+		{
+			computeFeatures();
+
+		}
 		drawFeatures();
+		// scene.fog = fog;
 	}
 	else 
 	{
 		applyOnNodes((node) =>
 		{
-			// node.material.userData.drawBlack.value = false;
-			// node.material.userData.drawNormals.value = false;
-			node.objectsHolder.visible = debugFeaturePoints;
+			
+			node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+			let child = node.objectsHolder.children[0];
+			if (child) 
+			{
+				child.material.uniforms.forViewing.value = debugFeaturePoints;
+			}
 		});
 	}
 
-	if (debug || mapMap) 
+	if ((debug || mapMap) && !mapoutline) 
 	{
 		renderer.render(scene, camera);
 	}
@@ -1207,7 +1331,7 @@ function actualRender(forceDrawFeatures)
 		composer.render(clock.getDelta());
 	}
 }
-export function render(forceDrawFeatures = false) 
+export function render(forceComputeFeatures = false) 
 {
 	if (!renderer || !composer) 
 	{
@@ -1217,7 +1341,7 @@ export function render(forceDrawFeatures = false)
 	if (showMagnify) 
 	{
 		renderer.setRenderTarget(magnify3dTarget);
-		actualRender(forceDrawFeatures);
+		actualRender(forceComputeFeatures);
 		renderer.setRenderTarget(null);
 		magnify3d.render({
 			renderer: renderer,
@@ -1234,8 +1358,107 @@ export function render(forceDrawFeatures = false)
 	}
 	else 
 	{
-		actualRender(forceDrawFeatures);
+		actualRender(forceComputeFeatures);
 	}
 	stats.end();
 }
-setPosition(position);
+
+export function setInitialPosition() 
+{
+	moveToStartPoint(false);
+	// setAzimuth(90 );
+	// setElevation(100);
+}
+
+export function moveToEndPoint(animated = true) 
+{
+	setPosition({lat: 42.51908, lon: 3.10784}, animated);
+}
+
+export function moveToStartPoint(animated = true) 
+{
+	setPosition({lat: 45.19177, lon: 5.72831}, animated);
+}
+
+let needsAnimation = false;
+// Setup the animation loop.
+function animate(time) 
+{
+	if (needsAnimation) 
+	{
+		requestAnimationFrame(animate);
+	}
+	TWEEN.update(time);
+}
+
+function startAnimation(from, to, duration, onUpdate?, onEnd?) 
+{
+	needsAnimation = true;
+	requestAnimationFrame(animate);
+	new TWEEN.Tween( from )
+		.to( to, duration )
+		.easing( TWEEN.Easing.Quadratic.Out )
+		.onUpdate( onUpdate).onComplete(() => 
+		{
+			if (onEnd) 
+			{
+				onEnd();
+			}
+			needsAnimation = false;
+		}).start();
+}
+
+export function setAzimuth(value: number) 
+{
+	const current = controls.azimuthAngle *180 / Math.PI % 360 * Math.PI / 180;
+	startAnimation({progress: current}, {progress: value * Math.PI / 180}, 200, function( values ) 
+	{
+		controls.azimuthAngle = values.progress;
+		const delta = clock.getDelta();
+		controls.update(delta);
+	});
+}
+export function setViewingDistance(meters: number) 
+{
+	FAR = meters / currentViewingDistance * FAR;
+	camera.far = FAR;
+	camera.updateProjectionMatrix();
+	updateCurrentViewingDistance();
+
+	if (map) 
+	{
+		applyOnNodes((node) => 
+		{
+			let child = node.objectsHolder.children[0];
+			if (child) 
+			{
+				child.material.uniforms.far.value = FAR;
+			}
+		});
+	}
+	render(true);
+}
+
+
+const TO_RAD = Math.PI / 180;
+const TO_DEG = 180 / Math.PI;
+
+function getDistance(start, end) 
+{
+	const slat = start.latitude * TO_RAD;
+	const slon = start.longitude * TO_RAD;
+	const elat = end.latitude * TO_RAD;
+	const elon = end.longitude * TO_RAD;
+	return Math.round(
+		Math.acos(Math.sin(elat) * Math.sin(slat) + Math.cos(elat) * Math.cos(slat) * Math.cos(slon - elon)) * UnitsUtils.EARTH_RADIUS
+	);
+}
+function getViewingDistance() 
+{
+
+	var farPoint = new THREE.Vector3( 0, 0, -camera.far );
+	farPoint.applyMatrix4( camera.matrixWorld );
+	const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
+	const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
+	return getDistance(point1, point2);
+}

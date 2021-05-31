@@ -5,12 +5,18 @@ import {MVTLoader} from '@loaders.gl/mvt';
 
 export class LocalHeightProvider extends MapProvider 
 {
-	public constructor() 
+	public local: boolean
+
+	public terrarium: boolean
+
+	public constructor(local = false) 
 	{
 		super();
 		this.name = 'local';
+		this.local = local;
+		this.terrarium = !local;
 		this.minZoom = 5;
-		this.maxZoom = 11;
+		this.maxZoom = local ? 11 : 15;
 	}
 
 	public async fetchTile(zoom, x, y): Promise<HTMLImageElement>
@@ -23,8 +29,15 @@ export class LocalHeightProvider extends MapProvider
 				image.onload = () => { return resolve(image); };
 				image.onerror = () => { return resolve(null); };
 				image.crossOrigin = 'Anonymous';
-				image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-				// image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+				if (this.local) 
+				{
+					image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+				}
+				else 
+				{
+					image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+
+				}
 			})
 		]);
 		return result[0] as any;
@@ -34,8 +47,7 @@ export class LocalHeightProvider extends MapProvider
 	{
 		return new CancelablePromise((resolve, reject) => 
 		{
-			const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-			// const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
+			const url = this.local? `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf` : `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
 			try 
 			{
 				XHRUtils.getRaw(

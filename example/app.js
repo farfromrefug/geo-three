@@ -1299,6 +1299,807 @@ var webapp = (function (exports) {
 
     var Stats = stats_min.exports;
 
+    /**
+     * The Ease class provides a collection of easing functions for use with tween.js.
+     */
+    var Easing = {
+        Linear: {
+            None: function (amount) {
+                return amount;
+            },
+        },
+        Quadratic: {
+            In: function (amount) {
+                return amount * amount;
+            },
+            Out: function (amount) {
+                return amount * (2 - amount);
+            },
+            InOut: function (amount) {
+                if ((amount *= 2) < 1) {
+                    return 0.5 * amount * amount;
+                }
+                return -0.5 * (--amount * (amount - 2) - 1);
+            },
+        },
+        Cubic: {
+            In: function (amount) {
+                return amount * amount * amount;
+            },
+            Out: function (amount) {
+                return --amount * amount * amount + 1;
+            },
+            InOut: function (amount) {
+                if ((amount *= 2) < 1) {
+                    return 0.5 * amount * amount * amount;
+                }
+                return 0.5 * ((amount -= 2) * amount * amount + 2);
+            },
+        },
+        Quartic: {
+            In: function (amount) {
+                return amount * amount * amount * amount;
+            },
+            Out: function (amount) {
+                return 1 - --amount * amount * amount * amount;
+            },
+            InOut: function (amount) {
+                if ((amount *= 2) < 1) {
+                    return 0.5 * amount * amount * amount * amount;
+                }
+                return -0.5 * ((amount -= 2) * amount * amount * amount - 2);
+            },
+        },
+        Quintic: {
+            In: function (amount) {
+                return amount * amount * amount * amount * amount;
+            },
+            Out: function (amount) {
+                return --amount * amount * amount * amount * amount + 1;
+            },
+            InOut: function (amount) {
+                if ((amount *= 2) < 1) {
+                    return 0.5 * amount * amount * amount * amount * amount;
+                }
+                return 0.5 * ((amount -= 2) * amount * amount * amount * amount + 2);
+            },
+        },
+        Sinusoidal: {
+            In: function (amount) {
+                return 1 - Math.cos((amount * Math.PI) / 2);
+            },
+            Out: function (amount) {
+                return Math.sin((amount * Math.PI) / 2);
+            },
+            InOut: function (amount) {
+                return 0.5 * (1 - Math.cos(Math.PI * amount));
+            },
+        },
+        Exponential: {
+            In: function (amount) {
+                return amount === 0 ? 0 : Math.pow(1024, amount - 1);
+            },
+            Out: function (amount) {
+                return amount === 1 ? 1 : 1 - Math.pow(2, -10 * amount);
+            },
+            InOut: function (amount) {
+                if (amount === 0) {
+                    return 0;
+                }
+                if (amount === 1) {
+                    return 1;
+                }
+                if ((amount *= 2) < 1) {
+                    return 0.5 * Math.pow(1024, amount - 1);
+                }
+                return 0.5 * (-Math.pow(2, -10 * (amount - 1)) + 2);
+            },
+        },
+        Circular: {
+            In: function (amount) {
+                return 1 - Math.sqrt(1 - amount * amount);
+            },
+            Out: function (amount) {
+                return Math.sqrt(1 - --amount * amount);
+            },
+            InOut: function (amount) {
+                if ((amount *= 2) < 1) {
+                    return -0.5 * (Math.sqrt(1 - amount * amount) - 1);
+                }
+                return 0.5 * (Math.sqrt(1 - (amount -= 2) * amount) + 1);
+            },
+        },
+        Elastic: {
+            In: function (amount) {
+                if (amount === 0) {
+                    return 0;
+                }
+                if (amount === 1) {
+                    return 1;
+                }
+                return -Math.pow(2, 10 * (amount - 1)) * Math.sin((amount - 1.1) * 5 * Math.PI);
+            },
+            Out: function (amount) {
+                if (amount === 0) {
+                    return 0;
+                }
+                if (amount === 1) {
+                    return 1;
+                }
+                return Math.pow(2, -10 * amount) * Math.sin((amount - 0.1) * 5 * Math.PI) + 1;
+            },
+            InOut: function (amount) {
+                if (amount === 0) {
+                    return 0;
+                }
+                if (amount === 1) {
+                    return 1;
+                }
+                amount *= 2;
+                if (amount < 1) {
+                    return -0.5 * Math.pow(2, 10 * (amount - 1)) * Math.sin((amount - 1.1) * 5 * Math.PI);
+                }
+                return 0.5 * Math.pow(2, -10 * (amount - 1)) * Math.sin((amount - 1.1) * 5 * Math.PI) + 1;
+            },
+        },
+        Back: {
+            In: function (amount) {
+                var s = 1.70158;
+                return amount * amount * ((s + 1) * amount - s);
+            },
+            Out: function (amount) {
+                var s = 1.70158;
+                return --amount * amount * ((s + 1) * amount + s) + 1;
+            },
+            InOut: function (amount) {
+                var s = 1.70158 * 1.525;
+                if ((amount *= 2) < 1) {
+                    return 0.5 * (amount * amount * ((s + 1) * amount - s));
+                }
+                return 0.5 * ((amount -= 2) * amount * ((s + 1) * amount + s) + 2);
+            },
+        },
+        Bounce: {
+            In: function (amount) {
+                return 1 - Easing.Bounce.Out(1 - amount);
+            },
+            Out: function (amount) {
+                if (amount < 1 / 2.75) {
+                    return 7.5625 * amount * amount;
+                }
+                else if (amount < 2 / 2.75) {
+                    return 7.5625 * (amount -= 1.5 / 2.75) * amount + 0.75;
+                }
+                else if (amount < 2.5 / 2.75) {
+                    return 7.5625 * (amount -= 2.25 / 2.75) * amount + 0.9375;
+                }
+                else {
+                    return 7.5625 * (amount -= 2.625 / 2.75) * amount + 0.984375;
+                }
+            },
+            InOut: function (amount) {
+                if (amount < 0.5) {
+                    return Easing.Bounce.In(amount * 2) * 0.5;
+                }
+                return Easing.Bounce.Out(amount * 2 - 1) * 0.5 + 0.5;
+            },
+        },
+    };
+
+    var now$1;
+    // Include a performance.now polyfill.
+    // In node.js, use process.hrtime.
+    // eslint-disable-next-line
+    // @ts-ignore
+    if (typeof self === 'undefined' && typeof process !== 'undefined' && process.hrtime) {
+        now$1 = function () {
+            // eslint-disable-next-line
+            // @ts-ignore
+            var time = process.hrtime();
+            // Convert [seconds, nanoseconds] to milliseconds.
+            return time[0] * 1000 + time[1] / 1000000;
+        };
+    }
+    // In a browser, use self.performance.now if it is available.
+    else if (typeof self !== 'undefined' && self.performance !== undefined && self.performance.now !== undefined) {
+        // This must be bound, because directly assigning this function
+        // leads to an invocation exception in Chrome.
+        now$1 = self.performance.now.bind(self.performance);
+    }
+    // Use Date.now if it is available.
+    else if (Date.now !== undefined) {
+        now$1 = Date.now;
+    }
+    // Otherwise, use 'new Date().getTime()'.
+    else {
+        now$1 = function () {
+            return new Date().getTime();
+        };
+    }
+    var now$1$1 = now$1;
+
+    /**
+     * Controlling groups of tweens
+     *
+     * Using the TWEEN singleton to manage your tweens can cause issues in large apps with many components.
+     * In these cases, you may want to create your own smaller groups of tween
+     */
+    var Group$1 = /** @class */ (function () {
+        function Group() {
+            this._tweens = {};
+            this._tweensAddedDuringUpdate = {};
+        }
+        Group.prototype.getAll = function () {
+            var _this = this;
+            return Object.keys(this._tweens).map(function (tweenId) {
+                return _this._tweens[tweenId];
+            });
+        };
+        Group.prototype.removeAll = function () {
+            this._tweens = {};
+        };
+        Group.prototype.add = function (tween) {
+            this._tweens[tween.getId()] = tween;
+            this._tweensAddedDuringUpdate[tween.getId()] = tween;
+        };
+        Group.prototype.remove = function (tween) {
+            delete this._tweens[tween.getId()];
+            delete this._tweensAddedDuringUpdate[tween.getId()];
+        };
+        Group.prototype.update = function (time, preserve) {
+            if (time === void 0) { time = now$1$1(); }
+            if (preserve === void 0) { preserve = false; }
+            var tweenIds = Object.keys(this._tweens);
+            if (tweenIds.length === 0) {
+                return false;
+            }
+            // Tweens are updated in "batches". If you add a new tween during an
+            // update, then the new tween will be updated in the next batch.
+            // If you remove a tween during an update, it may or may not be updated.
+            // However, if the removed tween was added during the current batch,
+            // then it will not be updated.
+            while (tweenIds.length > 0) {
+                this._tweensAddedDuringUpdate = {};
+                for (var i = 0; i < tweenIds.length; i++) {
+                    var tween = this._tweens[tweenIds[i]];
+                    var autoStart = !preserve;
+                    if (tween && tween.update(time, autoStart) === false && !preserve) {
+                        delete this._tweens[tweenIds[i]];
+                    }
+                }
+                tweenIds = Object.keys(this._tweensAddedDuringUpdate);
+            }
+            return true;
+        };
+        return Group;
+    }());
+
+    /**
+     *
+     */
+    var Interpolation = {
+        Linear: function (v, k) {
+            var m = v.length - 1;
+            var f = m * k;
+            var i = Math.floor(f);
+            var fn = Interpolation.Utils.Linear;
+            if (k < 0) {
+                return fn(v[0], v[1], f);
+            }
+            if (k > 1) {
+                return fn(v[m], v[m - 1], m - f);
+            }
+            return fn(v[i], v[i + 1 > m ? m : i + 1], f - i);
+        },
+        Bezier: function (v, k) {
+            var b = 0;
+            var n = v.length - 1;
+            var pw = Math.pow;
+            var bn = Interpolation.Utils.Bernstein;
+            for (var i = 0; i <= n; i++) {
+                b += pw(1 - k, n - i) * pw(k, i) * v[i] * bn(n, i);
+            }
+            return b;
+        },
+        CatmullRom: function (v, k) {
+            var m = v.length - 1;
+            var f = m * k;
+            var i = Math.floor(f);
+            var fn = Interpolation.Utils.CatmullRom;
+            if (v[0] === v[m]) {
+                if (k < 0) {
+                    i = Math.floor((f = m * (1 + k)));
+                }
+                return fn(v[(i - 1 + m) % m], v[i], v[(i + 1) % m], v[(i + 2) % m], f - i);
+            }
+            else {
+                if (k < 0) {
+                    return v[0] - (fn(v[0], v[0], v[1], v[1], -f) - v[0]);
+                }
+                if (k > 1) {
+                    return v[m] - (fn(v[m], v[m], v[m - 1], v[m - 1], f - m) - v[m]);
+                }
+                return fn(v[i ? i - 1 : 0], v[i], v[m < i + 1 ? m : i + 1], v[m < i + 2 ? m : i + 2], f - i);
+            }
+        },
+        Utils: {
+            Linear: function (p0, p1, t) {
+                return (p1 - p0) * t + p0;
+            },
+            Bernstein: function (n, i) {
+                var fc = Interpolation.Utils.Factorial;
+                return fc(n) / fc(i) / fc(n - i);
+            },
+            Factorial: (function () {
+                var a = [1];
+                return function (n) {
+                    var s = 1;
+                    if (a[n]) {
+                        return a[n];
+                    }
+                    for (var i = n; i > 1; i--) {
+                        s *= i;
+                    }
+                    a[n] = s;
+                    return s;
+                };
+            })(),
+            CatmullRom: function (p0, p1, p2, p3, t) {
+                var v0 = (p2 - p0) * 0.5;
+                var v1 = (p3 - p1) * 0.5;
+                var t2 = t * t;
+                var t3 = t * t2;
+                return (2 * p1 - 2 * p2 + v0 + v1) * t3 + (-3 * p1 + 3 * p2 - 2 * v0 - v1) * t2 + v0 * t + p1;
+            },
+        },
+    };
+
+    /**
+     * Utils
+     */
+    var Sequence = /** @class */ (function () {
+        function Sequence() {
+        }
+        Sequence.nextId = function () {
+            return Sequence._nextId++;
+        };
+        Sequence._nextId = 0;
+        return Sequence;
+    }());
+
+    var mainGroup = new Group$1();
+
+    /**
+     * Tween.js - Licensed under the MIT license
+     * https://github.com/tweenjs/tween.js
+     * ----------------------------------------------
+     *
+     * See https://github.com/tweenjs/tween.js/graphs/contributors for the full list of contributors.
+     * Thank you all, you're awesome!
+     */
+    var Tween = /** @class */ (function () {
+        function Tween(_object, _group) {
+            if (_group === void 0) { _group = mainGroup; }
+            this._object = _object;
+            this._group = _group;
+            this._isPaused = false;
+            this._pauseStart = 0;
+            this._valuesStart = {};
+            this._valuesEnd = {};
+            this._valuesStartRepeat = {};
+            this._duration = 1000;
+            this._initialRepeat = 0;
+            this._repeat = 0;
+            this._yoyo = false;
+            this._isPlaying = false;
+            this._reversed = false;
+            this._delayTime = 0;
+            this._startTime = 0;
+            this._easingFunction = Easing.Linear.None;
+            this._interpolationFunction = Interpolation.Linear;
+            this._chainedTweens = [];
+            this._onStartCallbackFired = false;
+            this._id = Sequence.nextId();
+            this._isChainStopped = false;
+            this._goToEnd = false;
+        }
+        Tween.prototype.getId = function () {
+            return this._id;
+        };
+        Tween.prototype.isPlaying = function () {
+            return this._isPlaying;
+        };
+        Tween.prototype.isPaused = function () {
+            return this._isPaused;
+        };
+        Tween.prototype.to = function (properties, duration) {
+            // TODO? restore this, then update the 07_dynamic_to example to set fox
+            // tween's to on each update. That way the behavior is opt-in (there's
+            // currently no opt-out).
+            // for (const prop in properties) this._valuesEnd[prop] = properties[prop]
+            this._valuesEnd = Object.create(properties);
+            if (duration !== undefined) {
+                this._duration = duration;
+            }
+            return this;
+        };
+        Tween.prototype.duration = function (d) {
+            this._duration = d;
+            return this;
+        };
+        Tween.prototype.start = function (time) {
+            if (this._isPlaying) {
+                return this;
+            }
+            // eslint-disable-next-line
+            this._group && this._group.add(this);
+            this._repeat = this._initialRepeat;
+            if (this._reversed) {
+                // If we were reversed (f.e. using the yoyo feature) then we need to
+                // flip the tween direction back to forward.
+                this._reversed = false;
+                for (var property in this._valuesStartRepeat) {
+                    this._swapEndStartRepeatValues(property);
+                    this._valuesStart[property] = this._valuesStartRepeat[property];
+                }
+            }
+            this._isPlaying = true;
+            this._isPaused = false;
+            this._onStartCallbackFired = false;
+            this._isChainStopped = false;
+            this._startTime = time !== undefined ? (typeof time === 'string' ? now$1$1() + parseFloat(time) : time) : now$1$1();
+            this._startTime += this._delayTime;
+            this._setupProperties(this._object, this._valuesStart, this._valuesEnd, this._valuesStartRepeat);
+            return this;
+        };
+        Tween.prototype._setupProperties = function (_object, _valuesStart, _valuesEnd, _valuesStartRepeat) {
+            for (var property in _valuesEnd) {
+                var startValue = _object[property];
+                var startValueIsArray = Array.isArray(startValue);
+                var propType = startValueIsArray ? 'array' : typeof startValue;
+                var isInterpolationList = !startValueIsArray && Array.isArray(_valuesEnd[property]);
+                // If `to()` specifies a property that doesn't exist in the source object,
+                // we should not set that property in the object
+                if (propType === 'undefined' || propType === 'function') {
+                    continue;
+                }
+                // Check if an Array was provided as property value
+                if (isInterpolationList) {
+                    var endValues = _valuesEnd[property];
+                    if (endValues.length === 0) {
+                        continue;
+                    }
+                    // handle an array of relative values
+                    endValues = endValues.map(this._handleRelativeValue.bind(this, startValue));
+                    // Create a local copy of the Array with the start value at the front
+                    _valuesEnd[property] = [startValue].concat(endValues);
+                }
+                // handle the deepness of the values
+                if ((propType === 'object' || startValueIsArray) && startValue && !isInterpolationList) {
+                    _valuesStart[property] = startValueIsArray ? [] : {};
+                    // eslint-disable-next-line
+                    for (var prop in startValue) {
+                        // eslint-disable-next-line
+                        // @ts-ignore FIXME?
+                        _valuesStart[property][prop] = startValue[prop];
+                    }
+                    _valuesStartRepeat[property] = startValueIsArray ? [] : {}; // TODO? repeat nested values? And yoyo? And array values?
+                    // eslint-disable-next-line
+                    // @ts-ignore FIXME?
+                    this._setupProperties(startValue, _valuesStart[property], _valuesEnd[property], _valuesStartRepeat[property]);
+                }
+                else {
+                    // Save the starting value, but only once.
+                    if (typeof _valuesStart[property] === 'undefined') {
+                        _valuesStart[property] = startValue;
+                    }
+                    if (!startValueIsArray) {
+                        // eslint-disable-next-line
+                        // @ts-ignore FIXME?
+                        _valuesStart[property] *= 1.0; // Ensures we're using numbers, not strings
+                    }
+                    if (isInterpolationList) {
+                        // eslint-disable-next-line
+                        // @ts-ignore FIXME?
+                        _valuesStartRepeat[property] = _valuesEnd[property].slice().reverse();
+                    }
+                    else {
+                        _valuesStartRepeat[property] = _valuesStart[property] || 0;
+                    }
+                }
+            }
+        };
+        Tween.prototype.stop = function () {
+            if (!this._isChainStopped) {
+                this._isChainStopped = true;
+                this.stopChainedTweens();
+            }
+            if (!this._isPlaying) {
+                return this;
+            }
+            // eslint-disable-next-line
+            this._group && this._group.remove(this);
+            this._isPlaying = false;
+            this._isPaused = false;
+            if (this._onStopCallback) {
+                this._onStopCallback(this._object);
+            }
+            return this;
+        };
+        Tween.prototype.end = function () {
+            this._goToEnd = true;
+            this.update(Infinity);
+            return this;
+        };
+        Tween.prototype.pause = function (time) {
+            if (time === void 0) { time = now$1$1(); }
+            if (this._isPaused || !this._isPlaying) {
+                return this;
+            }
+            this._isPaused = true;
+            this._pauseStart = time;
+            // eslint-disable-next-line
+            this._group && this._group.remove(this);
+            return this;
+        };
+        Tween.prototype.resume = function (time) {
+            if (time === void 0) { time = now$1$1(); }
+            if (!this._isPaused || !this._isPlaying) {
+                return this;
+            }
+            this._isPaused = false;
+            this._startTime += time - this._pauseStart;
+            this._pauseStart = 0;
+            // eslint-disable-next-line
+            this._group && this._group.add(this);
+            return this;
+        };
+        Tween.prototype.stopChainedTweens = function () {
+            for (var i = 0, numChainedTweens = this._chainedTweens.length; i < numChainedTweens; i++) {
+                this._chainedTweens[i].stop();
+            }
+            return this;
+        };
+        Tween.prototype.group = function (group) {
+            this._group = group;
+            return this;
+        };
+        Tween.prototype.delay = function (amount) {
+            this._delayTime = amount;
+            return this;
+        };
+        Tween.prototype.repeat = function (times) {
+            this._initialRepeat = times;
+            this._repeat = times;
+            return this;
+        };
+        Tween.prototype.repeatDelay = function (amount) {
+            this._repeatDelayTime = amount;
+            return this;
+        };
+        Tween.prototype.yoyo = function (yoyo) {
+            this._yoyo = yoyo;
+            return this;
+        };
+        Tween.prototype.easing = function (easingFunction) {
+            this._easingFunction = easingFunction;
+            return this;
+        };
+        Tween.prototype.interpolation = function (interpolationFunction) {
+            this._interpolationFunction = interpolationFunction;
+            return this;
+        };
+        Tween.prototype.chain = function () {
+            var tweens = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                tweens[_i] = arguments[_i];
+            }
+            this._chainedTweens = tweens;
+            return this;
+        };
+        Tween.prototype.onStart = function (callback) {
+            this._onStartCallback = callback;
+            return this;
+        };
+        Tween.prototype.onUpdate = function (callback) {
+            this._onUpdateCallback = callback;
+            return this;
+        };
+        Tween.prototype.onRepeat = function (callback) {
+            this._onRepeatCallback = callback;
+            return this;
+        };
+        Tween.prototype.onComplete = function (callback) {
+            this._onCompleteCallback = callback;
+            return this;
+        };
+        Tween.prototype.onStop = function (callback) {
+            this._onStopCallback = callback;
+            return this;
+        };
+        /**
+         * @returns true if the tween is still playing after the update, false
+         * otherwise (calling update on a paused tween still returns true because
+         * it is still playing, just paused).
+         */
+        Tween.prototype.update = function (time, autoStart) {
+            if (time === void 0) { time = now$1$1(); }
+            if (autoStart === void 0) { autoStart = true; }
+            if (this._isPaused)
+                return true;
+            var property;
+            var elapsed;
+            var endTime = this._startTime + this._duration;
+            if (!this._goToEnd && !this._isPlaying) {
+                if (time > endTime)
+                    return false;
+                if (autoStart)
+                    this.start(time);
+            }
+            this._goToEnd = false;
+            if (time < this._startTime) {
+                return true;
+            }
+            if (this._onStartCallbackFired === false) {
+                if (this._onStartCallback) {
+                    this._onStartCallback(this._object);
+                }
+                this._onStartCallbackFired = true;
+            }
+            elapsed = (time - this._startTime) / this._duration;
+            elapsed = this._duration === 0 || elapsed > 1 ? 1 : elapsed;
+            var value = this._easingFunction(elapsed);
+            // properties transformations
+            this._updateProperties(this._object, this._valuesStart, this._valuesEnd, value);
+            if (this._onUpdateCallback) {
+                this._onUpdateCallback(this._object, elapsed);
+            }
+            if (elapsed === 1) {
+                if (this._repeat > 0) {
+                    if (isFinite(this._repeat)) {
+                        this._repeat--;
+                    }
+                    // Reassign starting values, restart by making startTime = now
+                    for (property in this._valuesStartRepeat) {
+                        if (!this._yoyo && typeof this._valuesEnd[property] === 'string') {
+                            this._valuesStartRepeat[property] =
+                                // eslint-disable-next-line
+                                // @ts-ignore FIXME?
+                                this._valuesStartRepeat[property] + parseFloat(this._valuesEnd[property]);
+                        }
+                        if (this._yoyo) {
+                            this._swapEndStartRepeatValues(property);
+                        }
+                        this._valuesStart[property] = this._valuesStartRepeat[property];
+                    }
+                    if (this._yoyo) {
+                        this._reversed = !this._reversed;
+                    }
+                    if (this._repeatDelayTime !== undefined) {
+                        this._startTime = time + this._repeatDelayTime;
+                    }
+                    else {
+                        this._startTime = time + this._delayTime;
+                    }
+                    if (this._onRepeatCallback) {
+                        this._onRepeatCallback(this._object);
+                    }
+                    return true;
+                }
+                else {
+                    if (this._onCompleteCallback) {
+                        this._onCompleteCallback(this._object);
+                    }
+                    for (var i = 0, numChainedTweens = this._chainedTweens.length; i < numChainedTweens; i++) {
+                        // Make the chained tweens start exactly at the time they should,
+                        // even if the `update()` method was called way past the duration of the tween
+                        this._chainedTweens[i].start(this._startTime + this._duration);
+                    }
+                    this._isPlaying = false;
+                    return false;
+                }
+            }
+            return true;
+        };
+        Tween.prototype._updateProperties = function (_object, _valuesStart, _valuesEnd, value) {
+            for (var property in _valuesEnd) {
+                // Don't update properties that do not exist in the source object
+                if (_valuesStart[property] === undefined) {
+                    continue;
+                }
+                var start = _valuesStart[property] || 0;
+                var end = _valuesEnd[property];
+                var startIsArray = Array.isArray(_object[property]);
+                var endIsArray = Array.isArray(end);
+                var isInterpolationList = !startIsArray && endIsArray;
+                if (isInterpolationList) {
+                    _object[property] = this._interpolationFunction(end, value);
+                }
+                else if (typeof end === 'object' && end) {
+                    // eslint-disable-next-line
+                    // @ts-ignore FIXME?
+                    this._updateProperties(_object[property], start, end, value);
+                }
+                else {
+                    // Parses relative end values with start as base (e.g.: +10, -3)
+                    end = this._handleRelativeValue(start, end);
+                    // Protect against non numeric properties.
+                    if (typeof end === 'number') {
+                        // eslint-disable-next-line
+                        // @ts-ignore FIXME?
+                        _object[property] = start + (end - start) * value;
+                    }
+                }
+            }
+        };
+        Tween.prototype._handleRelativeValue = function (start, end) {
+            if (typeof end !== 'string') {
+                return end;
+            }
+            if (end.charAt(0) === '+' || end.charAt(0) === '-') {
+                return start + parseFloat(end);
+            }
+            else {
+                return parseFloat(end);
+            }
+        };
+        Tween.prototype._swapEndStartRepeatValues = function (property) {
+            var tmp = this._valuesStartRepeat[property];
+            var endValue = this._valuesEnd[property];
+            if (typeof endValue === 'string') {
+                this._valuesStartRepeat[property] = this._valuesStartRepeat[property] + parseFloat(endValue);
+            }
+            else {
+                this._valuesStartRepeat[property] = this._valuesEnd[property];
+            }
+            this._valuesEnd[property] = tmp;
+        };
+        return Tween;
+    }());
+
+    var VERSION$1 = '18.6.4';
+
+    /**
+     * Tween.js - Licensed under the MIT license
+     * https://github.com/tweenjs/tween.js
+     * ----------------------------------------------
+     *
+     * See https://github.com/tweenjs/tween.js/graphs/contributors for the full list of contributors.
+     * Thank you all, you're awesome!
+     */
+    var nextId = Sequence.nextId;
+    /**
+     * Controlling groups of tweens
+     *
+     * Using the TWEEN singleton to manage your tweens can cause issues in large apps with many components.
+     * In these cases, you may want to create your own smaller groups of tweens.
+     */
+    var TWEEN = mainGroup;
+    // This is the best way to export things in a way that's compatible with both ES
+    // Modules and CommonJS, without build hacks, and so as not to break the
+    // existing API.
+    // https://github.com/rollup/rollup/issues/1961#issuecomment-423037881
+    var getAll = TWEEN.getAll.bind(TWEEN);
+    var removeAll = TWEEN.removeAll.bind(TWEEN);
+    var add = TWEEN.add.bind(TWEEN);
+    var remove = TWEEN.remove.bind(TWEEN);
+    var update = TWEEN.update.bind(TWEEN);
+    var exports$1 = {
+        Easing: Easing,
+        Group: Group$1,
+        Interpolation: Interpolation,
+        now: now$1$1,
+        Sequence: Sequence,
+        nextId: nextId,
+        Tween: Tween,
+        VERSION: VERSION$1,
+        getAll: getAll,
+        removeAll: removeAll,
+        add: add,
+        remove: remove,
+        update: update,
+    };
+
     // threejs.org/license
     const REVISION = '125';
     const MOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 };
@@ -58345,6 +59146,10 @@ var webapp = (function (exports) {
              */
             this.zoomDelta = 0;
             /**
+             * When to start using zoomDelta
+             */
+            this.minLevelForZoomDelta = 0;
+            /**
              * Map bounds.
              */
             this.bounds = [];
@@ -58352,6 +59157,9 @@ var webapp = (function (exports) {
              * Map center point.
              */
             this.center = [];
+        }
+        get actualMaxZoom() {
+            return this.maxZoom + this.maxOverZoom;
         }
         /**
          * Get a tile for the x, y, zoom based on the provider configuration.
@@ -58374,23 +59182,23 @@ var webapp = (function (exports) {
         getMetaData() { }
         fetchTile(zoom, x, y) {
             return __awaiter(this, void 0, void 0, function* () {
-                if (this.zoomDelta <= 0) {
+                if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
                     return this.fetchImage(zoom, x, y);
                 }
                 else {
-                    const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => valA[1] - valB[1] ||
-                        valA[0] - valB[0]);
-                    const images = (yield Promise.all(tiles.map(t => this.fetchImage(t[2], t[0], t[1]))));
+                    const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => {
+                        return valA[1] - valB[1] ||
+                            valA[0] - valB[0];
+                    });
+                    const images = (yield Promise.all(tiles.map((t) => { return this.fetchImage(t[2], t[0], t[1]); })));
                     const width = images[0].width * Math.floor(this.zoomDelta * 2);
                     const fullWidth = width / Math.sqrt(images.length);
-                    const canvas = document.createElement('canvas');
+                    const canvas = new OffscreenCanvas(width, width);
                     var context = canvas.getContext('2d');
-                    context.globalAlpha = 1.0;
-                    canvas.width = width;
-                    canvas.height = width;
                     let tileY = tiles[0][1];
                     let ix = 0;
                     let iy = 0;
+                    //   context.strokeStyle = '#FF0000';
                     images.forEach((image, index) => {
                         if (tileY !== tiles[index][1]) {
                             tileY = tiles[index][1];
@@ -58398,6 +59206,13 @@ var webapp = (function (exports) {
                             iy += 1;
                         }
                         context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
+                        // context.strokeRect(ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
+                        // context.fillStyle = '#000000';
+                        // context.textAlign = 'center';
+                        // context.textBaseline = 'middle';
+                        // context.font = 'bold ' + fullWidth * 0.1 + 'px arial';
+                        // context.fillText('(' + zoom + ')', ix * fullWidth + fullWidth / 2, iy * fullWidth + fullWidth * 0.4);
+                        // context.fillText('(' + x + ', ' + y + ')', ix * fullWidth + fullWidth / 2, iy * fullWidth + fullWidth * 0.6);
                         ix += 1;
                     });
                     return canvas;
@@ -58505,6 +59320,10 @@ var webapp = (function (exports) {
              */
             this.parentNode = null;
             /**
+             * Flag indicating if the tile texture was loaded (even if failed).
+             */
+            this.textureLoaded = false;
+            /**
              * Indicates how many children nodes where loaded.
              */
             this.nodesLoaded = 0;
@@ -58565,21 +59384,23 @@ var webapp = (function (exports) {
          */
         subdivide() {
             const mapView = this.mapView;
-            const maxZoom = Math.min(mapView.provider.maxZoom + mapView.provider.maxOverZoom, mapView.heightProvider.maxZoom + mapView.heightProvider.maxOverZoom);
-            if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) {
+            const maxZoom = Math.min(mapView.provider.actualMaxZoom, mapView.heightProvider.actualMaxZoom);
+            if (this.subdivided || this.level + 1 > maxZoom) {
                 return;
             }
             this.subdivided = true;
             if (this.childrenCache !== null) {
-                this.isMesh = false;
-                this.objectsHolder.visible = false;
                 this.childrenCache.forEach((n) => {
                     if (n !== this.objectsHolder) {
-                        n.isMesh = !n.subdivided;
-                        n.objectsHolder.visible = !n.subdivided;
+                        n.isMesh = n.textureLoaded;
+                        n.objectsHolder.visible = n.textureLoaded;
                     }
                 });
                 this.children = this.childrenCache;
+                if (this.nodesLoaded >= MapNode.CHILDRENS) {
+                    this.isMesh = false;
+                    this.objectsHolder.visible = false;
+                }
             }
             else {
                 this.createChildNodes();
@@ -58592,39 +59413,65 @@ var webapp = (function (exports) {
          *
          * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
          */
-        simplify() {
+        simplify(distance, far) {
+            var _a, _b, _c;
             if (!this.subdivided) {
                 return;
             }
-            this.childrenCache = this.children;
-            this.objectsHolder.visible = true;
+            let removed = [];
             this.subdivided = false;
+            // try to find multiple rules to clean up memory
+            if (this.mapView.lowMemoryUsage || distance > far / 100 || ((_a = this.parentNode) === null || _a === void 0 ? void 0 : _a.subdivided) && ((_c = (_b = this.parentNode) === null || _b === void 0 ? void 0 : _b.parentNode) === null || _c === void 0 ? void 0 : _c.subdivided)) {
+                if (this.childrenCache && this.children.length > 1) {
+                    removed.push(...this.childrenCache);
+                    this.childrenCache = null;
+                    this.nodesLoaded = 0;
+                }
+            }
+            else {
+                this.childrenCache = this.children;
+                if (this.childrenCache) {
+                    this.childrenCache.forEach((c) => {
+                        if (c.childrenCache && c.children.length > 1) {
+                            removed.push(...c.childrenCache);
+                            c.childrenCache = null;
+                            c.nodesLoaded = [];
+                        }
+                    });
+                }
+            }
             this.isMesh = true;
+            this.objectsHolder.visible = true;
             this.children = [this.objectsHolder];
+            return removed;
+        }
+        /**
+         * Handle loaded texture
+         *
+         * This base method assumes the existence of a material attribute with a map texture.
+         */
+        onTextureImage(image) {
+            if (image) {
+                const texture = new Texture(image);
+                texture.generateMipmaps = false;
+                texture.format = RGBFormat;
+                texture.magFilter = LinearFilter;
+                texture.minFilter = LinearFilter;
+                texture.needsUpdate = true;
+                // @ts-ignore
+                this.material.map = texture;
+            }
         }
         /**
          * Load tile texture from the server.
          *
-         * This base method assumes the existence of a material attribute with a map texture.
          */
         loadTexture() {
             if (this.isTextureReady) {
                 return;
             }
             this.isTextureReady = true;
-            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-                if (image) {
-                    const texture = new Texture(image);
-                    texture.generateMipmaps = false;
-                    texture.format = RGBFormat;
-                    texture.magFilter = LinearFilter;
-                    texture.minFilter = LinearFilter;
-                    texture.needsUpdate = true;
-                    // @ts-ignore
-                    this.material.map = texture;
-                }
-                this.nodeReady();
-            }).catch(() => {
+            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).catch(() => {
                 const canvas = new OffscreenCanvas(1, 1);
                 const context = canvas.getContext('2d');
                 context.fillStyle = '#FF0000';
@@ -58634,6 +59481,8 @@ var webapp = (function (exports) {
                 texture.needsUpdate = true;
                 // @ts-ignore
                 this.material.map = texture;
+            }).finally(() => {
+                this.textureLoaded = true;
                 this.nodeReady();
             });
         }
@@ -58644,30 +59493,27 @@ var webapp = (function (exports) {
          */
         nodeReady() {
             // Update parent nodes loaded
-            this.isMesh = true;
+            this.isMesh = !this.subdivided;
             const parentNode = this.parentNode;
             if (parentNode !== null) {
                 parentNode.nodesLoaded++;
                 if (parentNode.nodesLoaded >= MapNode.CHILDRENS) {
-                    if (parentNode.subdivided === true) {
-                        parentNode.isMesh = false;
-                        parentNode.objectsHolder.visible = false;
-                    }
                     parentNode.children.forEach((child, index) => {
                         if (child !== parentNode.objectsHolder) {
                             let theNode = child;
-                            // child.visible = true;
-                            // child.objectsHolder.visible = true;
-                            // child.visible = true;
                             theNode.isMesh = !theNode.subdivided;
                             theNode.objectsHolder.visible = !theNode.subdivided;
                         }
                     });
+                    if (parentNode.subdivided === true) {
+                        parentNode.isMesh = false;
+                        parentNode.objectsHolder.visible = false;
+                    }
                 }
             }
             // If its the root object just set visible
             else if (!this.subdivided) {
-                this.visible = true;
+                this.isMesh = true;
                 this.objectsHolder.visible = true;
             }
             this.mapView.onNodeReady();
@@ -58822,10 +59668,6 @@ var webapp = (function (exports) {
              * Flag indicating if the tile height data was loaded (even if failed).
              */
             this.heightLoaded = false;
-            /**
-             * Flag indicating if the tile texture was loaded (even if failed).
-             */
-            this.textureLoaded = false;
             this.heightListeners = [];
             this.matrixAutoUpdate = false;
             const autoLoad = mapView.nodeShouldAutoLoad();
@@ -58835,6 +59677,11 @@ var webapp = (function (exports) {
             super.initialize();
             return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
         }
+        /**
+         * Handle loaded texture
+         *
+         * This base method assumes the existence of a material attribute with a map texture.
+         */
         onTextureImage(image) {
             if (image) {
                 const texture = new Texture(image);
@@ -58850,14 +59697,13 @@ var webapp = (function (exports) {
         /**
          * Load tile texture from the server.
          *
-         * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
          */
         loadTexture() {
             if (this.isTextureReady) {
                 return;
             }
             this.isTextureReady = true;
-            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => this.onTextureImage(image)).finally(() => {
+            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).finally(() => {
                 this.textureLoaded = true;
                 this.nodeReady();
             });
@@ -58919,8 +59765,8 @@ var webapp = (function (exports) {
                             this.handleParentOverZoomTile();
                         }
                         else {
-                            const promise = new Promise(resolve => {
-                                parent.heightListeners.push(() => this.handleParentOverZoomTile(resolve));
+                            const promise = new Promise((resolve) => {
+                                parent.heightListeners.push(() => { return this.handleParentOverZoomTile(resolve); });
                             });
                             if (!parent.isHeightReady) {
                                 // ensure parent is loaded first
@@ -58936,7 +59782,7 @@ var webapp = (function (exports) {
                 }
                 finally {
                     this.heightLoaded = true;
-                    this.heightListeners.forEach(l => l());
+                    this.heightListeners.forEach((l) => { return l(); });
                     this.heightListeners = [];
                     this.nodeReady();
                 }
@@ -59188,9 +60034,11 @@ var webapp = (function (exports) {
          * @param material - Material to be transformed.
          */
         static prepareMaterial(material) {
-            material.userData = { heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE },
+            material.userData = {
+                heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE },
                 elevationDecoder: { value: MapHeightNodeShader.ELEVATION_DECODER },
-                heightMapLocation: { value: new Vector4() } };
+                heightMapLocation: { value: new Vector4() }
+            };
             material.onBeforeCompile = (shader) => {
                 // Pass uniforms from userData to the
                 for (const i in material.userData) {
@@ -59250,7 +60098,9 @@ var webapp = (function (exports) {
             this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
             this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
             this.onHeightImage(parent.material.userData.heightMap.value);
-            resolve && resolve();
+            if (resolve) {
+                resolve();
+            }
         }
         /**
          * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
@@ -59396,6 +60246,11 @@ var webapp = (function (exports) {
              */
             this.root = null;
             this.onNodeReady = null;
+            /**
+             * Define if we should free memory as fast as possible
+             * Used mostly for mobile devices
+             */
+            this.lowMemoryUsage = false;
             this.lod = new LODRaycast();
             this.provider = provider;
             this.heightProvider = heightProvider;
@@ -59536,25 +60391,27 @@ var webapp = (function (exports) {
             this.resolution = 256;
         }
         fetchImage(zoom, x, y) {
-            const canvas = new OffscreenCanvas(this.resolution, this.resolution);
-            const context = canvas.getContext('2d');
-            const green = new Color(0x00ff00);
-            const red = new Color(0xff0000);
-            const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
-            context.fillStyle = color.getStyle();
-            context.fillRect(0, 0, this.resolution, this.resolution);
-            context.fillStyle = '#000000';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
-            context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
-            context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
-            return Promise.resolve(canvas);
+            return __awaiter(this, void 0, void 0, function* () {
+                const canvas = new OffscreenCanvas(this.resolution, this.resolution);
+                const context = canvas.getContext('2d');
+                const green = new Color(0x00ff00);
+                const red = new Color(0xff0000);
+                const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
+                context.fillStyle = color.getStyle();
+                context.fillRect(0, 0, this.resolution, this.resolution);
+                context.fillStyle = '#000000';
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
+                context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
+                context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
+                return canvas;
+            });
         }
     }
 
     const pov$1 = new Vector3();
-    const position$2 = new Vector3();
+    const position$1 = new Vector3();
     /**
      * Check the planar distance between the nodes center and the view position.
      *
@@ -59574,8 +60431,8 @@ var webapp = (function (exports) {
         updateLOD(view, camera, renderer, scene) {
             camera.getWorldPosition(pov$1);
             view.children[0].traverse((node) => {
-                node.getWorldPosition(position$2);
-                let distance = pov$1.distanceTo(position$2);
+                node.getWorldPosition(position$1);
+                let distance = pov$1.distanceTo(position$1);
                 distance /= Math.pow(2, view.provider.maxZoom - node.level);
                 if (distance < this.subdivideDistance) {
                     node.subdivide();
@@ -59590,7 +60447,8 @@ var webapp = (function (exports) {
     const projection = new Matrix4();
     const pov = new Vector3();
     const frustum = new Frustum();
-    const position$1 = new Vector3();
+    const position = new Vector3();
+    new Vector3();
     /**
      * Check the planar distance between the nodes center and the view position.
      *
@@ -59620,57 +60478,70 @@ var webapp = (function (exports) {
              */
             this.pointOnly = false;
         }
-        handleNode(node, minZoom, maxZoom, inFrustum = false) {
-            return __awaiter(this, void 0, void 0, function* () {
-                if (!(node instanceof MapNode)) {
-                    return true;
-                }
-                node.getWorldPosition(position$1);
-                var distance = pov.distanceTo(position$1);
-                distance /= Math.pow(2, 20 - node.level);
-                inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position$1) : frustum.intersectsObject(node));
-                if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum) {
-                    node.subdivide();
-                    const children = node.children;
-                    let loadingCount = 0;
-                    if (children) {
-                        for (let index = 0; index < children.length; index++) {
-                            const n = children[index];
-                            if (!(n instanceof MapNode)) {
-                                continue;
-                            }
-                            const result = yield this.handleNode(n, minZoom, maxZoom, false);
-                            if (result) {
-                                loadingCount++;
-                            }
+        // private nodeMap = new Map<String, MapNode>();
+        isChildReady(node) {
+            return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
+        }
+        handleNode(node, camera, minZoom, maxZoom, inFrustum = false, canSubdivideOrSimplify = true) {
+            if (!(node instanceof MapNode)) {
+                return;
+            }
+            // const key =`${node.x},${node.y},${node.level}`;
+            // if (!this.nodeMap.has(key)) {
+            // 	this.nodeMap.set(key, node);
+            // }
+            node.getWorldPosition(position);
+            var distance = pov.distanceTo(position);
+            distance /= Math.pow(2, 20 - node.level);
+            inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
+            if (canSubdivideOrSimplify && (node.level < minZoom || maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
+                node.subdivide();
+                // console.log('subdivide', node.x, node.y, node.level);
+                const children = node.children;
+                if (children) {
+                    for (let index = 0; index < children.length; index++) {
+                        const n = children[index];
+                        if (!(n instanceof MapNode)) {
+                            continue;
                         }
-                        // if (loadingCount > 0 && loadingCount < 4) 
-                        // {
-                        // one not in frustum let still hide ourself
-                        node.isMesh = false;
-                        node.objectsHolder.visible = false;
-                        // }
+                        this.handleNode(n, camera, minZoom, maxZoom, false);
                     }
-                    return loadingCount > 0;
                 }
-                else if ((node.level > maxZoom || (minZoom < node.level && distance > this.simplifyDistance)) && node.parentNode) {
-                    const parentNode = node.parentNode;
-                    parentNode.simplify();
-                    if (parentNode.level > minZoom) {
-                        yield this.handleNode(parentNode, minZoom, maxZoom);
-                    }
-                    return true;
+                node.isMesh = false;
+                node.objectsHolder.visible = false;
+            }
+            else if (canSubdivideOrSimplify && (node.level > maxZoom || (!inFrustum || minZoom < node.level) && distance > this.simplifyDistance) && node.parentNode) {
+                const parentNode = node.parentNode;
+                parentNode.simplify(distance, camera.far);
+                // console.log('simplify', removed.length, parentNode.x, parentNode.y, parentNode.level);
+                // removed.forEach(n=>this.nodeMap.delete(`${n.x},${n.y},${n.level}`))
+                // if (parentNode.level > minZoom) 
+                // {
+                this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
+                // }
+            }
+            else if (inFrustum && minZoom <= node.level) {
+                if (!this.isChildReady(node)) {
+                    node.initialize();
                 }
-                else if (inFrustum && minZoom <= node.level) {
-                    if (!node.isTextureReady || (node instanceof MapHeightNode && !node.isHeightReady)) {
-                        node.initialize();
-                    }
-                    return true;
+            }
+        }
+        getChildrenToTraverse(parent) {
+            const toHandle = [];
+            function handleChild(child) {
+                if (!child.children || child.children.length === 1) {
+                    toHandle.push(child);
                 }
                 else {
-                    return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
+                    child.children.forEach((c) => {
+                        if (child instanceof MapNode) {
+                            handleChild(c);
+                        }
+                    });
                 }
-            });
+            }
+            handleChild(parent);
+            return toHandle;
         }
         updateLOD(view, camera, renderer, scene) {
             projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -59678,17 +60549,24 @@ var webapp = (function (exports) {
             camera.getWorldPosition(pov);
             const minZoom = view.provider.minZoom;
             const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
-            const toHandle = [];
-            view.children[0].traverseVisible((node) => { return toHandle.push(node); });
-            toHandle.forEach((node) => {
-                if (node.children.length <= 1) {
-                    this.handleNode(node, minZoom, maxZoom);
-                }
-            });
+            // var bottomRight = new Vector3( camera.far, 0, camera.far);
+            // var topLeft = new Vector3( -camera.far, 0, -camera.far * 2 );
+            // bottomRight.applyMatrix4( camera.matrixWorld );
+            // topLeft.applyMatrix4( camera.matrixWorld );
+            // const pos = UnitsUtils.sphericalToDatums(pov.x, -pov.z);
+            // const postopLeft = UnitsUtils.sphericalToDatums(topLeft.x , -topLeft.z);
+            // const posbottomRight = UnitsUtils.sphericalToDatums(bottomRight.x , -bottomRight.z);
+            // const bbox = [Math.min(posbottomRight.latitude, postopLeft.latitude), Math.min(posbottomRight.longitude, postopLeft.longitude), Math.max(posbottomRight.latitude, postopLeft.latitude), Math.max(posbottomRight.longitude, postopLeft.longitude)];
+            // const tile = bboxToTile(bbox.reverse())
+            // const key = `${tile[0]},${tile[1]},${tile[2]}`
+            // const toHandle = this.getChildrenToTraverse(this.nodeMap.get(key) || view.children[0]);
+            // let count  =0;
             // view.children[0].traverse((node) =>
-            // {	
-            // 	this.handleNode(node, minZoom, maxZoom);
-            // });
+            // {
+            // 	count++});
+            const toHandle = this.getChildrenToTraverse(view.children[0]);
+            // console.log('toHandle', toHandle.length, bbox.join(','), tile, count);
+            toHandle.forEach((node) => { return this.handleNode(node, camera, minZoom, maxZoom); });
         }
     }
 
@@ -59715,6 +60593,8 @@ var webapp = (function (exports) {
                 side: DoubleSide
             }), level));
             this.heightMapLocation = [0, 0, 1, 1];
+            this.mapMapLocation = [0, 0, 1, 1];
+            this.heightOverZoomFactor = 1;
             this.overZoomFactor = 1;
             // this.castShadow = true;
             // this.receiveShadow = true;
@@ -59722,7 +60602,9 @@ var webapp = (function (exports) {
             this.frustumCulled = false;
             this.exageration = exports.exageration;
             this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+            this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
             // this.material.flatShading =  mapMap && !computeNormals;
+            this.material.flatShading = false;
         }
         static getGeometry(level) {
             let size = MaterialHeightShader.GEOMETRY_SIZE;
@@ -59732,7 +60614,7 @@ var webapp = (function (exports) {
                 size = Math.max(16, size);
             }
             else if (level > 11) {
-                size /= Math.pow(2, (level - 11));
+                size /= Math.pow(2, level - 11);
                 size = Math.max(16, size);
             }
             let geo = MaterialHeightShader.geometries[size];
@@ -59755,7 +60637,8 @@ var webapp = (function (exports) {
                 zoomlevel: { value: level },
                 exageration: { value: exports.exageration },
                 elevationDecoder: { value: exports.elevationDecoder },
-                heightMapLocation: { value: new Vector4() }
+                heightMapLocation: { value: new Vector4() },
+                mapMapLocation: { value: new Vector4() }
             };
             material.onBeforeCompile = (shader) => {
                 // Pass uniforms from userData to the
@@ -59812,8 +60695,13 @@ var webapp = (function (exports) {
 			uniform bool drawNormals;
 			uniform bool drawTexture;
 			uniform bool drawBlack;
+			uniform vec4 mapMapLocation;
 			` + shader.fragmentShader;
-                // Vertex depth logic
+                shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
+				vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
+				texelColor = mapTexelToLinear( texelColor );
+				diffuseColor *= texelColor;
+					`);
                 shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
 				#include <dithering_fragment>
 				if(drawBlack) {
@@ -59828,6 +60716,7 @@ var webapp = (function (exports) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
 				}
 					`);
+                // Vertex depth logic
                 shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
 				#include <fog_vertex>
 
@@ -59882,11 +60771,58 @@ var webapp = (function (exports) {
             };
             return material;
         }
-        nodeReady() {
-            if (!this.textureLoaded) {
+        initialize() {
+            let maxUpLevel = 2;
+            let parent = this.parent;
+            while (maxUpLevel > 0 && (!parent.textureLoaded || !parent.heightLoaded)) {
+                parent = parent.parent;
+                maxUpLevel--;
+            }
+            if (parent && (parent.textureLoaded && parent.heightLoaded)) {
+                const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
+                const parentTileBox = tilebelt.tileToBBOX([parent.x, parent.y, parent.level]);
+                const width = parentTileBox[2] - parentTileBox[0];
+                const height = parentTileBox[3] - parentTileBox[1];
+                const deltaLevel = this.level - parent.level;
+                const decimalFactor = Math.pow(10, deltaLevel);
+                const dx = Math.floor((tileBox[0] - parentTileBox[0]) / width * decimalFactor) / decimalFactor;
+                const dy = Math.floor((tileBox[1] - parentTileBox[1]) / height * decimalFactor) / decimalFactor;
+                if (!this.textureLoaded) {
+                    const parentOverZoomFactor = 1 / parent.mapMapLocation[2];
+                    const mapMapLocation = [0, 0, 1, 1];
+                    mapMapLocation[0] = parent.mapMapLocation[0] + dx / parentOverZoomFactor;
+                    mapMapLocation[1] = parent.mapMapLocation[1] + dy / parentOverZoomFactor;
+                    mapMapLocation[2] = mapMapLocation[3] = 1 / Math.pow(2, parentOverZoomFactor * deltaLevel);
+                    this.material.userData.mapMapLocation.value.set(...mapMapLocation);
+                    this.material.map = parent.material.map;
+                }
+                if (!this.heightLoaded) {
+                    const parentHeightOverZoomFactor = 1 / parent.heightMapLocation[2];
+                    const heightMapLocation = [0, 0, 1, 1];
+                    heightMapLocation[0] = parent.heightMapLocation[0] + dx / parentHeightOverZoomFactor;
+                    heightMapLocation[1] = parent.heightMapLocation[1] + dy / parentHeightOverZoomFactor;
+                    heightMapLocation[2] = heightMapLocation[3] = 1 / Math.pow(2, parentHeightOverZoomFactor * deltaLevel);
+                    this.material.userData.heightMapLocation.value.set(...heightMapLocation);
+                    this.material.userData.heightMap.value = parent.material.userData.heightMap.value;
+                }
+                this.geometry = MaterialHeightShader.getGeometry(this.level);
+                this.isMesh = true;
+            }
+            return super.initialize();
+        }
+        /**
+        * Load tile texture from the server.
+        *
+        */
+        loadTexture() {
+            if (this.isTextureReady) {
                 return;
             }
-            MapNode.prototype.nodeReady.call(this);
+            this.isTextureReady = true;
+            return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).finally(() => {
+                this.textureLoaded = true;
+                this.nodeReady();
+            });
         }
         onTextureImage(image) {
             if (image) {
@@ -59897,6 +60833,7 @@ var webapp = (function (exports) {
                 texture.minFilter = LinearFilter;
                 texture.needsUpdate = true;
                 // @ts-ignore
+                this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
                 this.material.map = texture;
             }
         }
@@ -59916,8 +60853,14 @@ var webapp = (function (exports) {
                         // texture.wrapT = ClampToEdgeWrapping;
                         texture.needsUpdate = true;
                         this.material.userData.heightMap.value = texture;
+                        // @ts-ignore
+                        this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
                     }
                     this.geometry = MaterialHeightShader.getGeometry(this.level);
+                    // no more data after 14
+                    if (this.level > 14) {
+                        return;
+                    }
                     this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result) => {
                         result = result.filter((f) => { return f.properties.name && f.properties.class === 'peak'; });
                         if (result.length > 0) {
@@ -59959,34 +60902,68 @@ var webapp = (function (exports) {
                                 geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
                                 geometry.setAttribute('elevation', new Float32BufferAttribute(elevations, 1));
                                 var mesh = new Points(geometry, new ShaderMaterial({
-                                    uniforms: { exageration: { value: exports.exageration } },
+                                    uniforms: UniformsUtils.merge([
+                                        // UniformsLib.fog,
+                                        {
+                                            exageration: { value: exports.exageration },
+                                            forViewing: { value: exports.debugFeaturePoints },
+                                            far: { value: exports.FAR },
+                                            // plane: {value: debugFeaturePoints}, 
+                                            pointTexture: { value: new TextureLoader().load('disc.png') }
+                                        }
+                                    ]),
                                     vertexShader: `
-												attribute float elevation;
-												attribute vec4 color;
-												uniform float exageration;
-												varying vec4 vColor;
-												void main() {
-													vColor = color;
-													float exagerated  = elevation * exageration;
-													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
-													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
-													//  gl_PointSize = gl_Position.z _ ;
-													gl_Position = projectionMatrix * mvPosition;
-													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
-												}
+								// #include <fog_pars_vertex>
+								attribute float elevation;
+								attribute vec4 color;
+								uniform float exageration;
+								uniform bool forViewing;
+								varying float depth;
+								varying vec4 vColor;
+								// varying vec3 vClipPosition;
+								void main() {
+									float exagerated  = elevation * exageration;
+									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
+									// #include <fog_vertex>
+									if (forViewing) {
+										gl_PointSize = 10.0;
+										vColor = vec4(0.0, 0.0, 1.0, 1);
+									} else {
+										vColor = color;
+									}
+									//  gl_PointSize =  floor(elevation / 1000.0);
+									//  gl_PointSize = gl_Position.z + floor(exagerated / 1000.0)* 1.0;
+									gl_Position = projectionMatrix * mvPosition;
+									gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+									depth = gl_Position.z;
+								}
 												`,
                                     fragmentShader: `
-											varying vec4 vColor;
-											void main() {
-													gl_FragColor = vec4( vColor );
-												}
-												`,
+								// #include <fog_pars_fragment>
+								varying vec4 vColor;
+								varying float depth;
+								uniform float far;
+								uniform bool forViewing;
+								uniform sampler2D pointTexture;
+								void main() {
+									gl_FragColor = vColor;
+									// if (forViewing) {
+									// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+									// }
+									if (depth > far) {
+										discard;
+									}
+									// #include <fog_fragment>
+								}
+								`,
+                                    fog: true,
                                     transparent: true
                                 }));
-                                mesh.features = features;
+                                // (mesh as any).features = features;
+                                mesh.frustumCulled = false;
                                 mesh.updateMatrix();
                                 mesh.updateMatrixWorld(true);
-                                this.objectsHolder.visible = exports.debugFeaturePoints;
+                                // this.objectsHolder.visible = debugFeaturePoints;
                                 this.objectsHolder.add(mesh);
                             }
                         }
@@ -59998,17 +60975,20 @@ var webapp = (function (exports) {
         handleParentOverZoomTile(resolve) {
             const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
             const parent = this.parent;
-            const parentOverZoomFactor = parent.overZoomFactor;
+            const parentOverZoomFactor = parent.heightOverZoomFactor;
             const parentTileBox = tilebelt.tileToBBOX([parent.x, parent.y, parent.level]);
             const width = parentTileBox[2] - parentTileBox[0];
             const height = parentTileBox[3] - parentTileBox[1];
-            this.overZoomFactor = parentOverZoomFactor * 2;
+            this.heightOverZoomFactor = parentOverZoomFactor * 2;
             this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10) / 10 / parentOverZoomFactor;
             this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10) / 10 / parentOverZoomFactor;
-            this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+            this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.heightOverZoomFactor;
+            // console.log('handleParentOverZoomTile', parent.x, parent.y, parent.level, this.x, this.y, this.level);
             this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
             this.onHeightImage(parent.material.userData.heightMap.value);
-            resolve && resolve();
+            if (resolve) {
+                resolve();
+            }
         }
         /**
         * Overrides normal raycasting, to avoid raycasting when isMesh is set to false.
@@ -63747,11 +64727,13 @@ var webapp = (function (exports) {
     }(es5));
 
     class LocalHeightProvider extends MapProvider {
-        constructor() {
+        constructor(local = false) {
             super();
             this.name = 'local';
+            this.local = local;
+            this.terrarium = !local;
             this.minZoom = 5;
-            this.maxZoom = 11;
+            this.maxZoom = local ? 11 : 15;
         }
         fetchTile(zoom, x, y) {
             return __awaiter(this, void 0, void 0, function* () {
@@ -63761,8 +64743,12 @@ var webapp = (function (exports) {
                         image.onload = () => { return resolve(image); };
                         image.onerror = () => { return resolve(null); };
                         image.crossOrigin = 'Anonymous';
-                        image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-                        // image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+                        if (this.local) {
+                            image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+                        }
+                        else {
+                            image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+                        }
                     })
                 ]);
                 return result[0];
@@ -63771,8 +64757,7 @@ var webapp = (function (exports) {
         fetchPeaks(zoom, x, y) {
             return __awaiter(this, void 0, void 0, function* () {
                 return new CancelablePromise((resolve, reject) => {
-                    const url = `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
-                    // const url = `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf`;
+                    const url = this.local ? `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf` : `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
                     try {
                         XHRUtils.getRaw(url, (data) => __awaiter(this, void 0, void 0, function* () {
                             let result = yield es5.MVTLoader.parse(data, {
@@ -63798,9 +64783,8 @@ var webapp = (function (exports) {
     }
 
     class RasterMapProvider extends OpenStreetMapsProvider {
-        constructor() {
-            super('https://a.tile.openstreetmap.fr/osmfr');
-            // super('http://localhost:8080/styles/basic');
+        constructor(local = false) {
+            super(local ? 'http://localhost:8080/styles/terrain_no_label' : 'https://a.tile.openstreetmap.org');
         }
         fetchImage(zoom, x, y) {
             return new Promise((resolve, reject) => {
@@ -64133,6 +65117,10 @@ var webapp = (function (exports) {
     /* eslint-disable @typescript-eslint/no-unused-expressions */
     // @ts-ignore
     window.THREE = THREE;
+    function getURLParameter(name) {
+        return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
+    }
+    const devLocal = (getURLParameter('local') || 'false') === 'true';
     class CustomOutlineEffect extends postprocessing.exports.Effect {
         constructor() {
             super('CustomEffect', `
@@ -64162,6 +65150,7 @@ var webapp = (function (exports) {
 		}
 `, {
                 attributes: postprocessing.exports.EffectAttribute.DEPTH,
+                blendFunction: postprocessing.exports.BlendFunction.AVERAGE,
                 uniforms: new Map([
                     ['outlineColor', new Uniform(new Color(darkTheme ? 0xffffff : 0x000000))],
                     ['multiplierParameters', new Uniform(new Vector2(exports.depthBiais, exports.depthMultiplier))]
@@ -64179,6 +65168,7 @@ var webapp = (function (exports) {
         var waiting = false; // Initially, we're not waiting
         return function () {
             if (!waiting) { // If we're not waiting
+                // eslint-disable-next-line prefer-rest-params
                 callback.apply(this, arguments); // Execute users function
                 waiting = true; // Prevent future invocations
                 setTimeout(function () {
@@ -64200,11 +65190,12 @@ var webapp = (function (exports) {
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
     exports.debug = false;
-    exports.mapMap = false;
+    exports.mapMap = true;
     exports.drawTexture = true;
-    exports.computeNormals = true;
-    exports.debugFeaturePoints = false;
+    exports.computeNormals = false;
+    exports.debugFeaturePoints = true;
     exports.wireframe = false;
+    exports.mapoutline = false;
     exports.dayNightCycle = false;
     let debugGPUPicking = false;
     let readFeatures = true;
@@ -64220,12 +65211,12 @@ var webapp = (function (exports) {
     const featuresByColor = {};
     // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
     exports.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
-    const FAR = 200000;
+    exports.currentViewingDistance = 0;
+    exports.FAR = 200000;
     const TEXT_HEIGHT = 180;
     let currentPosition;
     let elevation = 1000;
     const clock = new Clock();
-    const position = { lat: 45.19177, lon: 5.72831 };
     let map;
     // updSunPos(45.16667, 5.71667);
     const EPS = 1e-5;
@@ -64235,13 +65226,13 @@ var webapp = (function (exports) {
     let showingCamera = false;
     new Vector2();
     function shouldComputeNormals() {
-        return exports.drawNormals || ((exports.debug || exports.mapMap) && (exports.computeNormals && exports.dayNightCycle));
+        return exports.drawNormals || (exports.debug || exports.mapMap) && (exports.computeNormals || exports.dayNightCycle);
     }
-    function shouldRenderSy() {
-        return ((exports.debug || exports.mapMap) && exports.dayNightCycle);
+    function shouldRenderSky() {
+        return (exports.debug || exports.mapMap) && exports.dayNightCycle;
     }
     function needsLights() {
-        return (exports.debug || exports.mapMap);
+        return exports.debug || exports.mapMap;
     }
     function setTerrarium(value) {
         if (value) {
@@ -64256,7 +65247,6 @@ var webapp = (function (exports) {
             });
         }
     }
-    setTerrarium(true);
     const canvas = document.getElementById('canvas');
     const canvas3 = document.getElementById('canvas3');
     const canvas4 = document.getElementById('canvas4');
@@ -64375,7 +65365,7 @@ var webapp = (function (exports) {
     function setDebugMode(value) {
         exports.debug = value;
         setupLOD();
-        sky.visible = sunLight.visible = shouldRenderSy();
+        sky.visible = sunLight.visible = shouldRenderSky();
         ambientLight.visible = needsLights();
         if (map) {
             map.provider = createProvider();
@@ -64393,7 +65383,7 @@ var webapp = (function (exports) {
     }
     function setMapMode(value) {
         exports.mapMap = value;
-        sky.visible = sunLight.visible = shouldRenderSy();
+        sky.visible = sunLight.visible = shouldRenderSky();
         ambientLight.visible = needsLights();
         setupLOD();
         if (map) {
@@ -64411,20 +65401,6 @@ var webapp = (function (exports) {
     }
     function toggleMapMode() {
         setMapMode(!exports.mapMap);
-    }
-    function setMapModeNormals(value) {
-        exports.computeNormals = value;
-        if (map) {
-            applyOnNodes((node) => {
-                node.material.userData.computeNormals.value = shouldComputeNormals();
-                // node.material.flatShading = newVal;
-                // node.material.needsUpdate = newVal !== oldVal;
-            });
-        }
-        render();
-    }
-    function toggleMapModeNormals() {
-        setMapModeNormals(!exports.computeNormals);
     }
     function setDrawTexture(value) {
         exports.drawTexture = value;
@@ -64451,10 +65427,28 @@ var webapp = (function (exports) {
         }
         render();
     }
+    function setComputeNormals(value) {
+        exports.computeNormals = value;
+        sky.visible = shouldRenderSky();
+        sunLight.visible = shouldRenderSky() || exports.computeNormals;
+        ambientLight.intensity = exports.computeNormals || exports.dayNightCycle ? 0.1875 : 1;
+        console.log('setComputeNormals2', value, shouldComputeNormals());
+        if (map) {
+            applyOnNodes((node) => {
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+            });
+        }
+        render();
+    }
+    function toggleComputeNormals() {
+        setComputeNormals(!exports.computeNormals);
+    }
     function setDayNightCycle(value) {
         exports.dayNightCycle = value;
-        sky.visible = sunLight.visible = shouldRenderSy();
-        ambientLight.intensity = value ? 0.1875 : 1;
+        sky.visible = shouldRenderSky();
+        sunLight.visible = shouldRenderSky() || exports.computeNormals;
+        ambientLight.intensity = exports.computeNormals || exports.dayNightCycle ? 0.1875 : 1;
+        console.log('setDayNightCycle', exports.dayNightCycle, shouldComputeNormals());
         if (map) {
             applyOnNodes((node) => {
                 node.material.userData.computeNormals.value = shouldComputeNormals();
@@ -64493,7 +65487,12 @@ var webapp = (function (exports) {
         exports.debugFeaturePoints = value;
         if (map) {
             applyOnNodes((node) => {
-                node.objectsHolder.visible = exports.debugFeaturePoints;
+                // node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
+                node.objectsHolder.visible = node.isMesh && exports.debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+                let child = node.objectsHolder.children[0];
+                if (child) {
+                    child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+                }
             });
         }
         render();
@@ -64504,7 +65503,7 @@ var webapp = (function (exports) {
     function setDarkMode(value) {
         darkTheme = value;
         outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
-        document.body.style.backgroundColor = (darkTheme) ? 'black' : 'white';
+        document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
         render();
     }
     function toggleDarkMode() {
@@ -64519,6 +65518,13 @@ var webapp = (function (exports) {
     }
     function toggleWireFrame() {
         setWireFrame(!exports.wireframe);
+    }
+    function setMapOultine(value) {
+        exports.mapoutline = value;
+        render();
+    }
+    function toggleMapOultine() {
+        setMapOultine(!exports.mapoutline);
     }
     function setDrawElevations(value) {
         drawElevations = value;
@@ -64542,18 +65548,16 @@ var webapp = (function (exports) {
             startCam();
         }
     }
-    let datelabel;
+    let datelabel, viewingDistanceLabel, compass;
     try {
-        document.body.style.backgroundColor = (darkTheme || exports.mapMap) ? 'black' : 'white';
+        compass = document.querySelector('#compass img');
+        document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
         const debugMapCheckBox = document.getElementById('debugMap');
         debugMapCheckBox.onchange = (event) => { return setDebugMode(event.target.checked); };
         debugMapCheckBox.value = exports.debug;
         const mapMapCheckBox = document.getElementById('mapMap');
         mapMapCheckBox.onchange = (event) => { return setMapMode(event.target.checked); };
         mapMapCheckBox.checked = exports.mapMap;
-        const mapModeNormalsCheckBox = document.getElementById('mapModeNormals');
-        mapModeNormalsCheckBox.onchange = (event) => { return setMapModeNormals(event.target.checked); };
-        mapModeNormalsCheckBox.checked = exports.computeNormals;
         const dayNightCycleCheckBox = document.getElementById('dayNightCycle');
         dayNightCycleCheckBox.onchange = (event) => { return setDayNightCycle(event.target.checked); };
         dayNightCycleCheckBox.checked = exports.dayNightCycle;
@@ -64565,10 +65569,10 @@ var webapp = (function (exports) {
         readFeaturesCheckbox.onchange = (event) => { return setReadFeatures(event.target.checked); };
         readFeaturesCheckbox.checked = readFeatures;
         canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-        const drawLinesCheckbox = document.getElementById('drawLines');
-        drawLinesCheckbox.onchange = (event) => { return setDrawLines(event.target.checked); };
-        drawLinesCheckbox.checked = drawLines;
-        canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+        // const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
+        // drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
+        // drawLinesCheckbox.checked = drawLines as any;
+        // canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
         const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints');
         debugFeaturePointsCheckbox.onchange = (event) => { return setDebugFeaturePoints(event.target.checked); };
         debugFeaturePointsCheckbox.checked = exports.debugFeaturePoints;
@@ -64578,6 +65582,9 @@ var webapp = (function (exports) {
         const wireframeCheckbox = document.getElementById('wireframe');
         wireframeCheckbox.onchange = (event) => { return setWireFrame(event.target.checked); };
         wireframeCheckbox.checked = exports.wireframe;
+        const mapoutlineCheckbox = document.getElementById('mapoutline');
+        mapoutlineCheckbox.onchange = (event) => { return setMapOultine(event.target.checked); };
+        mapoutlineCheckbox.checked = exports.mapoutline;
         const elevationSlider = document.getElementById('elevationSlider');
         elevationSlider.oninput = (event) => { return setElevation(event.target.value); };
         elevationSlider.value = elevation;
@@ -64597,6 +65604,9 @@ var webapp = (function (exports) {
         dateSlider.value = secondsInDay;
         datelabel = document.getElementById('dateLabel');
         datelabel.innerText = new Date().toLocaleString();
+        viewingDistanceLabel = document.getElementById('viewingDistanceLabel');
+        const viewingDistanceSlider = document.getElementById('viewingDistanceSlider');
+        viewingDistanceSlider.oninput = (event) => { return setViewingDistance(event.target.value); };
         const cameraCheckbox = document.getElementById('camera');
         cameraCheckbox.onchange = (event) => { return toggleCamera(); };
         cameraCheckbox.value = showingCamera;
@@ -64608,27 +65618,35 @@ var webapp = (function (exports) {
         normalsInDebugCheckbox.value = exports.drawNormals;
     }
     catch (err) { }
-    const heightProvider = new LocalHeightProvider();
+    const heightProvider = new LocalHeightProvider(devLocal);
+    setTerrarium(heightProvider.terrarium);
     function onControlUpdate() {
         map.lod.updateLOD(map, camera, renderer, scene);
+        if (compass) {
+            const angle = controls.azimuthAngle * 180 / Math.PI % 360;
+            const pitch = controls.polarAngle * 180 / Math.PI % 360;
+            const styling = 'rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
+            compass.style['-webkit-transform'] = styling;
+        }
+        if (window['nsWebViewBridge']) {
+            window['nsWebViewBridge'].emit('controls', {
+                // distance: controls.distance,
+                azim: controls.azimuthAngle * 180 / Math.PI
+            });
+        }
         render();
     }
     function setupLOD() {
-        heightProvider.maxOverZoom = exports.debug || exports.mapMap ? 1 : 0;
-        // if (debug || mapMap){
-        // 	lod.subdivideDistance = 100;
-        // 	lod.simplifyDistance = 230;
-        // } else {
+        heightProvider.maxOverZoom = exports.debug || exports.mapMap ? 2 : devLocal ? 1 : 0;
         lod.subdivideDistance = 40;
         lod.simplifyDistance = 140;
-        // }
     }
     const lod = new LODFrustum();
     setupLOD();
     function createProvider() {
         let provider;
         if (exports.mapMap) {
-            provider = new RasterMapProvider();
+            provider = new RasterMapProvider(devLocal);
         }
         else if (exports.debug && !exports.drawNormals) {
             provider = new DebugProvider();
@@ -64637,8 +65655,9 @@ var webapp = (function (exports) {
             provider = new EmptyProvider();
         }
         provider.minZoom = 5;
-        provider.maxZoom = 11 + heightProvider.maxOverZoom;
-        provider.zoomDelta = 2;
+        provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
+        provider.zoomDelta = 1;
+        provider.minLevelForZoomDelta = 12;
         return provider;
     }
     function createMap() {
@@ -64647,6 +65666,8 @@ var webapp = (function (exports) {
         }
         const provider = createProvider();
         map = new MapView(null, provider, heightProvider, false, render);
+        // map.lowMemoryUsage = isMobile;
+        map.lowMemoryUsage = true;
         map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
         // map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
         map.lod = lod;
@@ -64656,7 +65677,7 @@ var webapp = (function (exports) {
         // renderer.shadowMap.enabled = mapMap;
     }
     createMap();
-    const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 100, FAR);
+    const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 100, exports.FAR);
     camera.position.set(0, 0, EPS);
     const controls = new CameraControls(camera, canvas);
     controls.azimuthRotateSpeed = -0.15; // negative value to invert rotation direction
@@ -64665,7 +65686,7 @@ var webapp = (function (exports) {
     controls.minDistance = -10000;
     controls.maxDistance = 1000;
     // controls.dollyToCursor = true;
-    controls.truckSpeed = 1 / EPS * 30000;
+    controls.truckSpeed = 1 / EPS * 60000;
     controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
     controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
     controls.verticalDragToForward = true;
@@ -64677,8 +65698,9 @@ var webapp = (function (exports) {
     const ambientLight = new AmbientLight(0xffffff, 1);
     scene.add(ambientLight);
     scene.add(camera);
-    sky.visible = sunLight.visible = shouldRenderSy();
+    sky.visible = sunLight.visible = shouldRenderSky();
     ambientLight.visible = needsLights();
+    // const fog = new THREE.Fog(0xffffff, camera.near, camera.far * 2);
     // Adjust the directional light's shadow camera dimensions
     // sunLight.directionalLight.shadow.camera.right = 30.0;
     // sunLight.directionalLight.shadow.camera.left = -30.0;
@@ -64689,8 +65711,8 @@ var webapp = (function (exports) {
     // sunLight.directionalLight.shadow.mapSize.width = 512;
     // sunLight.directionalLight.shadow.mapSize.height = 512;
     // sunLight.directionalLight.castShadow = true;
-    // const axesHelper = new THREE.AxesHelper( 50 );
-    // scene.add( axesHelper );
+    const axesHelper = new AxesHelper(50);
+    scene.add(axesHelper);
     function updateSky() {
         const phi = Math.PI / 2 - sunLight.elevation;
         const theta = Math.PI - sunLight.azimuth;
@@ -64698,8 +65720,14 @@ var webapp = (function (exports) {
         sun.setFromSphericalCoords(1, phi, theta);
         sky.material.uniforms['sunPosition'].value.copy(sun);
     }
-    function setPosition(coords) {
-        currentPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
+    function updateCurrentViewingDistance() {
+        exports.currentViewingDistance = getViewingDistance();
+        if (viewingDistanceLabel) {
+            viewingDistanceLabel.innerText = Math.round(exports.currentViewingDistance / 1000) + 'km';
+        }
+    }
+    function setPosition(coords, animated = false) {
+        const newPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
         // axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
         sunLight.setPosition(coords.lat, coords.lon);
         sunLight.setDate(new Date());
@@ -64707,8 +65735,21 @@ var webapp = (function (exports) {
         if (coords.altitude) {
             elevation = coords.altitude;
         }
-        controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y);
-        controls.update(clock.getDelta());
+        if (animated) {
+            startAnimation(currentPosition, newPosition, 500, (newPos) => {
+                currentPosition = newPos;
+                controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y, false);
+                controls.update(clock.getDelta());
+            }, () => {
+                updateCurrentViewingDistance();
+            });
+        }
+        else {
+            currentPosition = newPosition;
+            controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y, false);
+            controls.update(clock.getDelta());
+            updateCurrentViewingDistance();
+        }
     }
     function setElevation(newValue) {
         elevation = newValue;
@@ -64739,6 +65780,7 @@ var webapp = (function (exports) {
         render();
     }
     function setDate(secondsInDay) {
+        console.log('setDate', secondsInDay);
         let date = new Date();
         const hours = Math.floor(secondsInDay / 3600);
         const minutes = Math.floor((secondsInDay - hours * 3600) / 60);
@@ -64747,7 +65789,9 @@ var webapp = (function (exports) {
         date.setMinutes(minutes);
         date.setSeconds(seconds);
         sunLight.setDate(date);
-        datelabel.innerText = date.toLocaleString();
+        if (datelabel) {
+            datelabel.innerText = date.toLocaleString();
+        }
         updateSky();
         render();
     }
@@ -64763,14 +65807,22 @@ var webapp = (function (exports) {
     const outlineEffect = new CustomOutlineEffect();
     composer.addPass(new postprocessing.exports.EffectPass(camera, outlineEffect));
     let minYPx = 0;
-    const computeFeatures = throttle(function () {
+    function actualComputeFeatures() {
+        let oldSyVisible = sky.visible;
+        let oldSunLightVisible = sunLight.visible;
+        let oldAmbientLightVisible = ambientLight.visible;
         sky.visible = false;
         sunLight.visible = false;
         ambientLight.visible = false;
         applyOnNodes((node) => {
             node.material.userData.drawBlack.value = true;
             node.material.userData.computeNormals.value = false;
-            node.objectsHolder.visible = true;
+            node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
+            // node.objectsHolder.visible = node.isMesh;
+            let child = node.objectsHolder.children[0];
+            if (child) {
+                child.material.uniforms.forViewing.value = false;
+            }
         });
         if (debugGPUPicking) {
             rendereroff.setRenderTarget(null);
@@ -64779,14 +65831,22 @@ var webapp = (function (exports) {
         rendereroff.setRenderTarget(pointBufferTarget);
         rendereroff.render(scene, camera);
         readShownFeatures();
+        const shouldShowNormals = shouldComputeNormals();
         applyOnNodes((node) => {
             node.material.userData.drawBlack.value = false;
-            node.material.userData.computeNormals.value = shouldComputeNormals();
-            node.objectsHolder.visible = exports.debugFeaturePoints;
+            node.material.userData.computeNormals.value = shouldShowNormals;
+            node.objectsHolder.visible = node.isMesh && exports.debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+            // node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
+            let child = node.objectsHolder.children[0];
+            if (child) {
+                child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+            }
         });
-        sky.visible = sunLight.visible = shouldRenderSy();
-        ambientLight.visible = needsLights();
-    }, 100);
+        sky.visible = oldSyVisible;
+        sunLight.visible = oldSunLightVisible;
+        ambientLight.visible = oldAmbientLightVisible;
+    }
+    const computeFeatures = throttle(actualComputeFeatures, 100);
     document.body.onresize = function () {
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -64905,7 +65965,7 @@ var webapp = (function (exports) {
         ctx2d.scale(devicePixelRatio, devicePixelRatio);
         for (let index = 0; index < toShow; index++) {
             const f = featuresToDraw[index];
-            if (f.y < TEXT_HEIGHT || f.z >= FAR || f.z / f.properties.ele > FAR / 3000) {
+            if (f.y < TEXT_HEIGHT || f.z >= exports.FAR || f.z / f.properties.ele > exports.FAR / 3000) {
                 continue;
             }
             const textColor = darkTheme ? 'white' : 'black';
@@ -64988,40 +66048,122 @@ var webapp = (function (exports) {
     }
     // window.addEventListener('mousedown', onMouseDown);
     // window.addEventListener('touchstart', onMouseDown, {passive: true});
-    function actualRender(forceDrawFeatures) {
+    function actualRender(forceComputeFeatures) {
         if (readFeatures && pixelsBuffer) {
-            computeFeatures();
+            if (forceComputeFeatures) {
+                actualComputeFeatures();
+            }
+            else {
+                computeFeatures();
+            }
             drawFeatures();
+            // scene.fog = fog;
         }
         else {
             applyOnNodes((node) => {
-                // node.material.userData.drawBlack.value = false;
-                // node.material.userData.drawNormals.value = false;
-                node.objectsHolder.visible = exports.debugFeaturePoints;
+                node.objectsHolder.visible = node.isMesh && exports.debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+                let child = node.objectsHolder.children[0];
+                if (child) {
+                    child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+                }
             });
         }
-        if (exports.debug || exports.mapMap) {
+        if ((exports.debug || exports.mapMap) && !exports.mapoutline) {
             renderer.render(scene, camera);
         }
         else {
             composer.render(clock.getDelta());
         }
     }
-    function render(forceDrawFeatures = false) {
+    function render(forceComputeFeatures = false) {
         if (!renderer || !composer) {
             return;
         }
         {
-            actualRender();
+            actualRender(forceComputeFeatures);
         }
         stats.end();
     }
-    setPosition(position);
+    function setInitialPosition() {
+        moveToStartPoint(false);
+        // setAzimuth(90 );
+        // setElevation(100);
+    }
+    function moveToEndPoint(animated = true) {
+        setPosition({ lat: 42.51908, lon: 3.10784 }, animated);
+    }
+    function moveToStartPoint(animated = true) {
+        setPosition({ lat: 45.19177, lon: 5.72831 }, animated);
+    }
+    let needsAnimation = false;
+    // Setup the animation loop.
+    function animate(time) {
+        if (needsAnimation) {
+            requestAnimationFrame(animate);
+        }
+        exports$1.update(time);
+    }
+    function startAnimation(from, to, duration, onUpdate, onEnd) {
+        needsAnimation = true;
+        requestAnimationFrame(animate);
+        new exports$1.Tween(from)
+            .to(to, duration)
+            .easing(exports$1.Easing.Quadratic.Out)
+            .onUpdate(onUpdate).onComplete(() => {
+            if (onEnd) {
+                onEnd();
+            }
+            needsAnimation = false;
+        }).start();
+    }
+    function setAzimuth(value) {
+        const current = controls.azimuthAngle * 180 / Math.PI % 360 * Math.PI / 180;
+        startAnimation({ progress: current }, { progress: value * Math.PI / 180 }, 200, function (values) {
+            controls.azimuthAngle = values.progress;
+            const delta = clock.getDelta();
+            controls.update(delta);
+        });
+    }
+    function setViewingDistance(meters) {
+        exports.FAR = meters / exports.currentViewingDistance * exports.FAR;
+        camera.far = exports.FAR;
+        camera.updateProjectionMatrix();
+        updateCurrentViewingDistance();
+        if (map) {
+            applyOnNodes((node) => {
+                let child = node.objectsHolder.children[0];
+                if (child) {
+                    child.material.uniforms.far.value = exports.FAR;
+                }
+            });
+        }
+        render(true);
+    }
+    const TO_RAD = Math.PI / 180;
+    function getDistance(start, end) {
+        const slat = start.latitude * TO_RAD;
+        const slon = start.longitude * TO_RAD;
+        const elat = end.latitude * TO_RAD;
+        const elon = end.longitude * TO_RAD;
+        return Math.round(Math.acos(Math.sin(elat) * Math.sin(slat) + Math.cos(elat) * Math.cos(slat) * Math.cos(slon - elon)) * UnitsUtils.EARTH_RADIUS);
+    }
+    function getViewingDistance() {
+        var farPoint = new Vector3(0, 0, -camera.far);
+        farPoint.applyMatrix4(camera.matrixWorld);
+        const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
+        const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
+        return getDistance(point1, point2);
+    }
 
     exports.featuresByColor = featuresByColor;
+    exports.moveToEndPoint = moveToEndPoint;
+    exports.moveToStartPoint = moveToStartPoint;
     exports.needsLights = needsLights;
     exports.render = render;
+    exports.setAzimuth = setAzimuth;
+    exports.setComputeNormals = setComputeNormals;
     exports.setDarkMode = setDarkMode;
+    exports.setDate = setDate;
     exports.setDayNightCycle = setDayNightCycle;
     exports.setDebugFeaturePoints = setDebugFeaturePoints;
     exports.setDebugGPUPicking = setDebugGPUPicking;
@@ -65033,17 +66175,20 @@ var webapp = (function (exports) {
     exports.setDrawTexture = setDrawTexture;
     exports.setElevation = setElevation;
     exports.setExageration = setExageration;
+    exports.setInitialPosition = setInitialPosition;
     exports.setMapMode = setMapMode;
-    exports.setMapModeNormals = setMapModeNormals;
+    exports.setMapOultine = setMapOultine;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
     exports.setReadFeatures = setReadFeatures;
     exports.setTerrarium = setTerrarium;
+    exports.setViewingDistance = setViewingDistance;
     exports.setWireFrame = setWireFrame;
     exports.shouldComputeNormals = shouldComputeNormals;
-    exports.shouldRenderSy = shouldRenderSy;
+    exports.shouldRenderSky = shouldRenderSky;
     exports.startCam = startCam;
     exports.toggleCamera = toggleCamera;
+    exports.toggleComputeNormals = toggleComputeNormals;
     exports.toggleDarkMode = toggleDarkMode;
     exports.toggleDayNightCycle = toggleDayNightCycle;
     exports.toggleDebugFeaturePoints = toggleDebugFeaturePoints;
@@ -65054,7 +66199,7 @@ var webapp = (function (exports) {
     exports.toggleDrawLines = toggleDrawLines;
     exports.toggleDrawTexture = toggleDrawTexture;
     exports.toggleMapMode = toggleMapMode;
-    exports.toggleMapModeNormals = toggleMapModeNormals;
+    exports.toggleMapOultine = toggleMapOultine;
     exports.toggleNormalsInDebug = toggleNormalsInDebug;
     exports.toggleReadFeatures = toggleReadFeatures;
     exports.toggleWireFrame = toggleWireFrame;

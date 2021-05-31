@@ -2,13 +2,13 @@ import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider
 
 export default class RasterMapProvider extends OpenStreetMapsProvider 
 {
-	public constructor()
+	public constructor(local = false)
 	{
-		super('https://a.tile.openstreetmap.fr/osmfr');
-		// super('http://localhost:8080/styles/basic');
+		super(local? 'http://localhost:8080/styles/terrain_no_label': 'https://a.tile.openstreetmap.org');
 	}
 
-	public fetchImage(zoom: number, x: number, y: number) {
+	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	{
 		return new Promise<HTMLImageElement>((resolve, reject) => 
 		{
 			const image = document.createElement('img');

@@ -17,6 +17,23 @@
             transform: translate(-50%, -50%);
         }
 
+        #compass {
+            perspective: 100px;
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 99;
+            top: 0;
+            right: 80px;
+            opacity: 0.9;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 10px;
+            cursor: hand;
+        }
+        #compass img {
+        }
+
         #elevationSlider {
             position: absolute;
             top: 40%;
@@ -67,6 +84,14 @@
         }
         #dateLabel {
             position: absolute;
+            bottom: 24px;
+        }
+        #viewingDistanceLabel {
+            position: absolute;
+            bottom: 70px;
+        }
+        #viewingDistanceSlider {
+            position: absolute;
             bottom: 40px;
             width: 70vh;
             left: 50%;
@@ -74,114 +99,62 @@
         }
     </style>
     <head>
-        <meta
-            id="Viewport"
-            name="viewport"
-            content="initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5, user-scalable=no"
-        />
+        <meta id="Viewport" name="viewport" content="initial-scale=0.5, maximum-scale=0.5, minimum-scale=0.5, user-scalable=no" />
         <title></title>
     </head>
-    <body>
+    <body onload="webapp.setInitialPosition()">
         <video id="video" autoplay playsinline></video>
-        <canvas
-            id="canvas"
-            style="
-                background-color: transparent;
-                position: absolute;
-                top: 0px;
-                left: 0px;
-                width: 100%;
-                height: 100%;
-            "
-        ></canvas>
-        <canvas
-            id="canvas3"
-            style="
-                visibility: hidden;
-                position: absolute;
-                pointer-events: none;
-                top: 0px;
-                left: 0px;
-                width: 100%;
-                height: 100%;
-            "
-        ></canvas>
-        <canvas
-            id="canvas4"
-            style="
-                position: absolute;
-                pointer-events: none;
-                top: 0px;
-                left: 0px;
-                width: 100%;
-                height: 100%;
-            "
-        ></canvas>
-
-        <form style="position: absolute; bottom: 20px; right: 20px">
+        <canvas id="canvas" style="background-color: transparent; position: absolute; top: 0px; left: 0px; width: 100%; height: 100%"></canvas>
+        <canvas id="canvas3" style="visibility: hidden; position: absolute; pointer-events: none; top: 0px; left: 0px; width: 100%; height: 100%"></canvas>
+        <canvas id="canvas4" style="position: absolute; pointer-events: none; top: 0px; left: 0px; width: 100%; height: 100%"></canvas>
+        <div id="compass" onclick="webapp.setAzimuth(0)">
+            <img src="compass.svg" width="60%" />
+        </div>
+        <button onclick="webapp.moveToEndPoint()" style="position: absolute; top: 20px; right: 20px">move</button>
+        <button onclick="webapp.moveToStartPoint()" style="position: absolute; top: 60px; right: 20px">return</button>
+        <form style="position: absolute; bottom: 20px; right: 20px; float: right">
             <input type="checkbox" id="mapMap" name="mapMap" />
             <label for="mapMap"> map Map</label><br />
             <input type="checkbox" id="debugMap" name="debugMap" />
             <label for="debugMap"> Debug Map</label><br />
+            <input type="checkbox" id="computeNormals" name="computeNormals" onchange="webapp.toggleComputeNormals()" />
+            <label for="computeNormals"> compute normals</label><br />
             <input type="checkbox" id="normalsInDebug" name="normalsInDebug" />
-            <label for="normalsInDebug"> normalsInDebug</label><br />
+            <label for="normalsInDebug"> draw normals</label><br />
             <input type="checkbox" id="dayNightCycle" name="mapMap" />
             <label for="dayNightCycle"> dayNight Cycle</label><br />
-            <input
-                type="checkbox"
-                id="debugGPUPicking"
-                name="debugGPUPicking"
-            />
+            <input type="checkbox" id="debugGPUPicking" name="debugGPUPicking" />
             <label for="debugGPUPicking"> Debug GPU Picking</label><br />
-            <input
-                type="checkbox"
-                id="readFeatures"
-                name="readFeatures"
-                checked
-            />
+            <input type="checkbox" id="readFeatures" name="readFeatures" checked />
             <label for="drawFeatures"> Enable read features</label><br />
-            <input
-                type="checkbox"
-                id="debugFeaturePoints"
-                name="debugFeaturePoints"
-            />
-            <label for="readFeatures"> Debug Draw Features</label><br />
-            <input type="checkbox" id="drawLines" name="drawLines" checked />
-            <label for="readFeatures"> Enable drawing features</label><br />
+            <input type="checkbox" id="debugFeaturePoints" name="debugFeaturePoints" />
+            <label for="debugFeaturePoints"> Debug Draw Features</label><br />
             <input type="checkbox" id="camera" name="camera" />
             <label for="camera"> Enable camera</label><br />
             <input type="checkbox" id="darkmode" name="darkmode" />
             <label for="darkmode"> Dark Mode</label><br />
             <input type="checkbox" id="drawElevations" name="drawElevations" />
             <label for="drawElevations"> peaks elevation</label><br />
-
-            <input
-                type="checkbox"
-                id="mapModeNormals"
-                name="mapModeNormals"
-            />
-            <label for="mapModeNormals"> mapModeNormals</label><br />
-            <input
-                type="checkbox"
-                id="wireframe"
-                name="wireframe"
-            />
+            <input type="checkbox" id="wireframe" />
             <label for="wireframe"> wireframe</label><br />
+            <input type="checkbox" id="mapoutline" />
+            <label for="mapoutline"> map outline</label><br />
         </form>
 
         <input id="elevationSlider" type="range" min="0" max="9000" />
         <label id="exagerationSliderLabel"> exageration</label><br />
         <input id="exagerationSlider" type="range" min="0" max="4" step="0.01" />
         <label id="depthMultiplierSliderLabel"> depthMultiplier</label><br />
-        <input id="depthMultiplierSlider" type="range" min="0" max="1000"  step="0.1"/>
+        <input id="depthMultiplierSlider" type="range" min="0" max="1000" step="0.1" />
         <label id="depthBiaisSliderLabel"> depthBiais</label><br />
         <input id="depthBiaisSlider" type="range" min="0" max="10" step="0.01" />
 
-
-        <input id="dateSlider" type="range" min="0" max="86400" step="0.01" />
-
-        <!-- Code -->
-        <label id="dateLabel"></label><br />
+        <div style="text-align: center">
+            <label id="dateLabel"></label><br />
+            <input id="dateSlider" type="range" min="0" max="86400" step="0.01" />
+            <label id="viewingDistanceLabel"></label><br />
+            <input id="viewingDistanceSlider" type="range" min="0" max="400000" step="1" />
+        </div>
 
         <script type="text/javascript" src="./app.js"></script>
     </body>

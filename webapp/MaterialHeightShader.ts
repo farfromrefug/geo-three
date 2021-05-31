@@ -1,13 +1,13 @@
-import { BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Texture, Vector3, Vector4 } from 'three';
+import {BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR} from './app';
 
 import {tileToBBOX} from '@mapbox/tilebelt';
-import { MapView } from '../source/MapView';
-import { MapNode } from '../source/nodes/MapNode';
+import {MapView} from '../source/MapView';
+import {MapNode} from '../source/nodes/MapNode';
 
 export let currentColor = 0xffffff;
 
@@ -35,6 +35,11 @@ export class MaterialHeightShader extends MapHeightNode
 	public exageration: number;
 
 	public heightMapLocation = [0, 0, 1, 1]
+
+	public mapMapLocation = [0, 0, 1, 1]
+
+	public heightOverZoomFactor = 1;
+
 	public overZoomFactor = 1;
 
 	public static getGeometry(level: number): MapNodeGeometry
@@ -45,8 +50,10 @@ export class MaterialHeightShader extends MapHeightNode
 			// size /= Math.pow(2, 11 - level);
 			size /= 11 - level;
 			size = Math.max(16, size);
-		} else if (level > 11) {
-			size /= Math.pow(2, (level - 11));
+		}
+		else if (level > 11) 
+		{
+			size /= Math.pow(2, level - 11);
 			size = Math.max(16, size);
 		}
 		let geo = MaterialHeightShader.geometries[size];
@@ -66,9 +73,9 @@ export class MaterialHeightShader extends MapHeightNode
 	{
 		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
 			map: MaterialHeightShader.EMPTY_TEXTURE,
-			color: 0xffffff,
+			color: 0xffffff,		
 			wireframe: wireframe,
-			shininess:0,
+			shininess: 0,
 			side: DoubleSide
 		}), level));
 
@@ -78,7 +85,9 @@ export class MaterialHeightShader extends MapHeightNode
 		this.frustumCulled = false;
 		this.exageration = exageration;
 		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+		this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
 		// this.material.flatShading =  mapMap && !computeNormals;
+		this.material.flatShading = false;
 	}
 
 	public static prepareMaterial(material: MeshPhongMaterial, level: any): MeshPhongMaterial 
@@ -93,7 +102,8 @@ export class MaterialHeightShader extends MapHeightNode
 			zoomlevel: {value: level},
 			exageration: {value: exageration},
 			elevationDecoder: {value: elevationDecoder},
-			heightMapLocation: {value: new Vector4() }
+			heightMapLocation: {value: new Vector4()},
+			mapMapLocation: {value: new Vector4()}
 		};
 
 		material.onBeforeCompile = (shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }) => 
@@ -153,9 +163,18 @@ export class MaterialHeightShader extends MapHeightNode
 			uniform bool drawNormals;
 			uniform bool drawTexture;
 			uniform bool drawBlack;
+			uniform vec4 mapMapLocation;
 			` + shader.fragmentShader;
 
-			// Vertex depth logic
+
+			shader.fragmentShader = shader.fragmentShader.replace(
+				'#include <map_fragment>',
+				`
+				vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
+				texelColor = mapTexelToLinear( texelColor );
+				diffuseColor *= texelColor;
+					`
+			);
 			shader.fragmentShader = shader.fragmentShader.replace(
 				'#include <dithering_fragment>',
 				`
@@ -173,6 +192,7 @@ export class MaterialHeightShader extends MapHeightNode
 				}
 					`
 			);
+			// Vertex depth logic
 			shader.vertexShader = shader.vertexShader.replace(
 				'#include <fog_vertex>',
 				`
@@ -236,36 +256,98 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public geometry: BufferGeometry;
 
-	public nodeReady(): void 
+	public initialize(): Promise<any>
 	{
-		if (!this.textureLoaded) {
-			return;
+		let maxUpLevel = 2;
+		let parent = this.parent as MaterialHeightShader;
+		while (maxUpLevel > 0 && (!parent.textureLoaded || !parent.heightLoaded)) 
+		{
+			parent = parent.parent as MaterialHeightShader;
+			maxUpLevel--;
 		}
-		MapNode.prototype.nodeReady.call(this);
+		if (parent && (parent.textureLoaded && parent.heightLoaded)) 
+		{
+			const tileBox = tileToBBOX([this.x, this.y, this.level]);
+			const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
+			const width = parentTileBox[2] - parentTileBox[0];
+			const height = parentTileBox[3] - parentTileBox[1];
+			const deltaLevel = this.level - parent.level;
+			const decimalFactor = Math.pow(10, deltaLevel);
+			const dx = Math.floor((tileBox[0] - parentTileBox[0]) / width * decimalFactor ) / decimalFactor;
+			const dy = Math.floor((tileBox[1] - parentTileBox[1]) / height * decimalFactor ) / decimalFactor;
+			if (!this.textureLoaded) 
+			{
+				const parentOverZoomFactor = 1 / parent.mapMapLocation[2];
+				const mapMapLocation = [0, 0, 1, 1];
+				mapMapLocation[0] = parent.mapMapLocation[0] + dx / parentOverZoomFactor;
+				mapMapLocation[1] = parent.mapMapLocation[1] + dy / parentOverZoomFactor;
+				mapMapLocation[2] = mapMapLocation[3] = 1 / Math.pow(2, parentOverZoomFactor * deltaLevel);
+				this.material.userData.mapMapLocation.value.set(...mapMapLocation);
+				this.material.map = parent.material.map;
+			}
+
+			if (!this.heightLoaded) 
+			{
+				const parentHeightOverZoomFactor = 1 / parent.heightMapLocation[2];
+				const heightMapLocation = [0, 0, 1, 1];
+				heightMapLocation[0] = parent.heightMapLocation[0] + dx / parentHeightOverZoomFactor;
+				heightMapLocation[1] = parent.heightMapLocation[1] + dy / parentHeightOverZoomFactor;
+				heightMapLocation[2] = heightMapLocation[3] = 1 / Math.pow(2, parentHeightOverZoomFactor * deltaLevel);
+				this.material.userData.heightMapLocation.value.set(...heightMapLocation);
+				this.material.userData.heightMap.value = parent.material.userData.heightMap.value;
+			}
+
+			this.geometry = MaterialHeightShader.getGeometry(this.level);
+			this.isMesh = true;
+		}
+		return super.initialize();
 	}
 
-	onTextureImage(image) {
+	/**
+	* Load tile texture from the server.
+	*
+	*/
+	public loadTexture(): Promise<any> 
+	{
+		if (this.isTextureReady) 
+		{
+			return;
+		}
+		this.isTextureReady = true;
+		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {return this.onTextureImage(image);}).finally(() =>
+		{
+			this.textureLoaded = true;
+			this.nodeReady();
+		});
+	}
+
+	public onTextureImage(image): void
+	{
 		if (image) 
-			{
-				const texture = new Texture(image as any);
-				texture.generateMipmaps = false;
-				texture.format = RGBFormat;
-				texture.magFilter = LinearFilter;
-				texture.minFilter = LinearFilter;
-				texture.needsUpdate = true;
+		{
+			const texture = new Texture(image as any);
+			texture.generateMipmaps = false;
+			texture.format = RGBFormat;
+			texture.magFilter = LinearFilter;
+			texture.minFilter = LinearFilter;
+			texture.needsUpdate = true;
 	
-				// @ts-ignore
-				this.material.map = texture;
-			}
+			// @ts-ignore
+			this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
+			this.material.map = texture;
+		}
 	}
 
 	public async onHeightImage(image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement): Promise<void>
 	{
-		if (image) 
+		if (image ) 
 		{
-			if (image instanceof Texture) {
+			if (image instanceof Texture) 
+			{
 				this.material.userData.heightMap.value = image;
-			} else {
+			}
+			else 
+			{
 				var texture = new Texture(image);
 				texture.generateMipmaps = false;
 				texture.format = RGBFormat;
@@ -276,14 +358,23 @@ export class MaterialHeightShader extends MapHeightNode
 				texture.needsUpdate = true;
 	
 				this.material.userData.heightMap.value = texture;
+
+				// @ts-ignore
+				this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
 			}
 			this.geometry = MaterialHeightShader.getGeometry(this.level);
+
+			// no more data after 14
+			if (this.level > 14) 
+			{
+				return;
+			}
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
-
 				result = result.filter(
 					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name && f.properties.class === 'peak'; }
 				);
+				
 				if (result.length > 0) 
 				{
 					const features = [];
@@ -296,7 +387,7 @@ export class MaterialHeightShader extends MapHeightNode
 						0,
 						0
 					);
-					result.forEach((f: { geometry: { coordinates: any[]; }; localCoords: Vector3; id: any; pointIndex: number; level: number; x: number; y: number; color: number; properties: { ele: any; }; }, index: any) => 
+					result.forEach((f: { geometry: { coordinates: any[]; }; localCoords: Vector3; id: any; pointIndex: number; level: number; x: number; y: number; color: number; properties: { ele: any; name: string}; }, index: any) => 
 					{
 						var coords = UnitsUtils.datumsToSpherical(
 							f.geometry.coordinates[1],
@@ -368,36 +459,70 @@ export class MaterialHeightShader extends MapHeightNode
 						var mesh = new Points(
 							geometry,
 							new ShaderMaterial({
-								uniforms: {exageration: {value: exageration}},
+								uniforms: UniformsUtils.merge([
+									// UniformsLib.fog,
+									{
+										exageration: {value: exageration},
+										forViewing: {value: debugFeaturePoints}, 
+										far: {value: FAR}, 
+										// plane: {value: debugFeaturePoints}, 
+										pointTexture: {value: new TextureLoader().load( 'disc.png' )}
+									}
+								]),
 								vertexShader: `
-												attribute float elevation;
-												attribute vec4 color;
-												uniform float exageration;
-												varying vec4 vColor;
-												void main() {
-													vColor = color;
-													float exagerated  = elevation * exageration;
-													vec4 mvPosition = modelViewMatrix * vec4( position + exagerated* vec3(0,1,0), 1.0 );
-													//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
-													//  gl_PointSize = gl_Position.z _ ;
-													gl_Position = projectionMatrix * mvPosition;
-													gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
-												}
+								// #include <fog_pars_vertex>
+								attribute float elevation;
+								attribute vec4 color;
+								uniform float exageration;
+								uniform bool forViewing;
+								varying float depth;
+								varying vec4 vColor;
+								// varying vec3 vClipPosition;
+								void main() {
+									float exagerated  = elevation * exageration;
+									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
+									// #include <fog_vertex>
+									if (forViewing) {
+										gl_PointSize = 10.0;
+										vColor = vec4(0.0, 0.0, 1.0, 1);
+									} else {
+										vColor = color;
+									}
+									//  gl_PointSize =  floor(elevation / 1000.0);
+									//  gl_PointSize = gl_Position.z + floor(exagerated / 1000.0)* 1.0;
+									gl_Position = projectionMatrix * mvPosition;
+									gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+									depth = gl_Position.z;
+								}
 												`,
 								fragmentShader: `
-											varying vec4 vColor;
-											void main() {
-													gl_FragColor = vec4( vColor );
-												}
-												`,
+								// #include <fog_pars_fragment>
+								varying vec4 vColor;
+								varying float depth;
+								uniform float far;
+								uniform bool forViewing;
+								uniform sampler2D pointTexture;
+								void main() {
+									gl_FragColor = vColor;
+									// if (forViewing) {
+									// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+									// }
+									if (depth > far) {
+										discard;
+									}
+									// #include <fog_fragment>
+								}
+								`,
+								fog: true,
 								transparent: true
 							})
 						);
-						mesh.features = features;
+						// (mesh as any).features = features;
+						mesh.frustumCulled = false;
 
 						mesh.updateMatrix();
 						mesh.updateMatrixWorld(true);
-						this.objectsHolder.visible = debugFeaturePoints;
+						// this.objectsHolder.visible = debugFeaturePoints;
 						this.objectsHolder.add(mesh);
 					}
 				}
@@ -407,22 +532,27 @@ export class MaterialHeightShader extends MapHeightNode
 			
 		}
 	}
-	protected handleParentOverZoomTile(resolve?) {
+
+	protected handleParentOverZoomTile(resolve?): void
+	{
 		const tileBox = tileToBBOX([this.x, this.y, this.level]);
 		const parent = this.parent as MaterialHeightShader;
-		const parentOverZoomFactor = parent.overZoomFactor;
+		const parentOverZoomFactor = parent.heightOverZoomFactor;
 		const parentTileBox = tileToBBOX([parent.x, parent.y, parent.level]);
 		const width = parentTileBox[2] - parentTileBox[0];
 		const height = parentTileBox[3] - parentTileBox[1];
-		this.overZoomFactor = parentOverZoomFactor * 2;
-		this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
-		this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
-		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+		this.heightOverZoomFactor = parentOverZoomFactor * 2;
+		this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
+		this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10 / parentOverZoomFactor;
+		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.heightOverZoomFactor;
 
+		// console.log('handleParentOverZoomTile', parent.x, parent.y, parent.level, this.x, this.y, this.level);
 		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
 		this.onHeightImage(parent.material.userData.heightMap.value);
-
-		resolve && resolve();
+		if (resolve) 
+		{
+			resolve();
+		}
 	}
 
 	/**

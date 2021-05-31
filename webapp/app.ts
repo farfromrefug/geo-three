@@ -1365,6 +1365,7 @@ export function render(forceComputeFeatures = false)
 
 export function setInitialPosition() 
 {
+	console.log('setInitialPosition');
 	moveToStartPoint(false);
 	// setAzimuth(90 );
 	// setElevation(100);

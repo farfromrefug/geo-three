@@ -229,18 +229,47 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
 	 */
-	public simplify(): void
+	public simplify(distance, far): MapNode[]
 	{
 		if (!this.subdivided) 
 		{
 			return;
 		}
-		this.childrenCache = this.children;
-
-		this.objectsHolder.visible = true;
+		let removed = [];
 		this.subdivided = false;
+
+		// try to find multiple rules to clean up memory
+		if (this.mapView.lowMemoryUsage || distance > far/100 || this.parentNode?.subdivided && this.parentNode?.parentNode?.subdivided) 
+		{
+			if (this.childrenCache && this.children.length > 1) 
+			{
+				removed.push(...this.childrenCache);
+				this.childrenCache = null;
+				this.nodesLoaded = 0;
+			}
+		}
+		else 
+		{
+			this.childrenCache = this.children;
+			if (this.childrenCache) 
+			{
+				this.childrenCache.forEach((c) => 
+				{
+					if (c.childrenCache && c.children.length > 1) 
+					{
+						removed.push(...c.childrenCache);
+						c.childrenCache = null;
+						c.nodesLoaded = [];
+					}
+				});
+			}
+		}
+
 		this.isMesh = true;
+		this.objectsHolder.visible = true;
 		this.children = [this.objectsHolder];
+		
+		return removed;
 	}
 
 	/**

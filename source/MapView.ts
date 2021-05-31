@@ -75,6 +75,12 @@ export class MapView extends Mesh
 	public nodeAutoLoad: boolean;
 
 	/**
+	 * Define if we should free memory as fast as possible
+	 * Used mostly for mobile devices
+	 */
+	public lowMemoryUsage: boolean = false;
+
+	/**
 	 * Constructor for the map view objects.
 	 *
 	 * @param root - Map view node modes can be SPHERICAL, HEIGHT or PLANAR. PLANAR is used by default. Can also be a custom MapNode instance.

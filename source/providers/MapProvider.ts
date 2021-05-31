@@ -58,6 +58,10 @@ export abstract class MapProvider
 	 */
 	public zoomDelta: number = 0;
 
+	/**
+	 * When to start using zoomDelta
+	 */
+	public minLevelForZoomDelta: number = 0;
 
 	/**
 	 * Map bounds.
@@ -93,7 +97,8 @@ export abstract class MapProvider
 
 	public async fetchTile(zoom: number, x: number, y: number): Promise<any>
 	{
-		if (this.zoomDelta <= 0) {
+		if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) 
+		{
 			return this.fetchImage(zoom, x, y);
 		} else {
 			const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort(

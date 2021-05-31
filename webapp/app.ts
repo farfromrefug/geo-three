@@ -11,6 +11,9 @@ import Magnify3d from './Magnify3d';
 // @ts-ignore
 window.THREE = THREE;
 
+const TO_RAD = Math.PI / 180;
+const TO_DEG = 180 / Math.PI;
+
 import {DeviceOrientationControls} from 'three/examples/jsm/controls/DeviceOrientationControls';
 import {Sky} from 'three/examples/jsm/objects/Sky';
 import * as POSTPROCESSING from 'postprocessing';
@@ -1365,10 +1368,13 @@ export function render(forceComputeFeatures = false)
 
 export function setInitialPosition() 
 {
-	console.log('setInitialPosition');
 	moveToStartPoint(false);
 	// setAzimuth(90 );
 	// setElevation(100);
+}
+if (datelabel) 
+{
+	setInitialPosition();
 }
 
 export function moveToEndPoint(animated = true) 
@@ -1440,9 +1446,6 @@ export function setViewingDistance(meters: number)
 	render(true);
 }
 
-
-const TO_RAD = Math.PI / 180;
-const TO_DEG = 180 / Math.PI;
 
 function getDistance(start, end) 
 {

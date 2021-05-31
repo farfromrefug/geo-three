@@ -65117,6 +65117,7 @@ var webapp = (function (exports) {
     /* eslint-disable @typescript-eslint/no-unused-expressions */
     // @ts-ignore
     window.THREE = THREE;
+    const TO_RAD = Math.PI / 180;
     function getURLParameter(name) {
         return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
     }
@@ -66085,10 +66086,12 @@ var webapp = (function (exports) {
         stats.end();
     }
     function setInitialPosition() {
-        console.log('setInitialPosition');
         moveToStartPoint(false);
         // setAzimuth(90 );
         // setElevation(100);
+    }
+    if (datelabel) {
+        setInitialPosition();
     }
     function moveToEndPoint(animated = true) {
         setPosition({ lat: 42.51908, lon: 3.10784 }, animated);
@@ -66140,7 +66143,6 @@ var webapp = (function (exports) {
         }
         render(true);
     }
-    const TO_RAD = Math.PI / 180;
     function getDistance(start, end) {
         const slat = start.latitude * TO_RAD;
         const slon = start.longitude * TO_RAD;

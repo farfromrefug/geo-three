@@ -1,7 +1,6 @@
 import {MapProvider} from './MapProvider';
 import {Color} from 'three';
 
-
 /**
  * Debug provider can be used to debug the levels of the map three based on the zoom level they change between green and red.
  */
@@ -12,7 +11,7 @@ export class DebugProvider extends MapProvider
 	 */
 	public resolution: number = 256;
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	public async fetchImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		const canvas = new OffscreenCanvas(this.resolution, this.resolution);
 		const context = canvas.getContext('2d');
@@ -32,6 +31,6 @@ export class DebugProvider extends MapProvider
 		context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
 		context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
 
-		return Promise.resolve(canvas);
+		return canvas;
 	}
 }

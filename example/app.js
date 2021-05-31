@@ -65190,10 +65190,10 @@ var webapp = (function (exports) {
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
     exports.debug = false;
-    exports.mapMap = true;
+    exports.mapMap = false;
     exports.drawTexture = true;
     exports.computeNormals = false;
-    exports.debugFeaturePoints = true;
+    exports.debugFeaturePoints = false;
     exports.wireframe = false;
     exports.mapoutline = false;
     exports.dayNightCycle = false;

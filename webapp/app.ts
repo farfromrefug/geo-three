@@ -122,10 +122,10 @@ function ArraySortOn(array, key)
 const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
 
 export let debug = false;
-export let mapMap = true;
+export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
-export let debugFeaturePoints = true;
+export let debugFeaturePoints = false;
 export let wireframe = false;
 export let mapoutline = false;
 export let dayNightCycle = false;

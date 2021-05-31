@@ -1,7 +1,6 @@
 import {Group, LinearFilter, Material, Mesh, MeshPhongMaterial, Object3D, RGBFormat, Texture, Vector3, BufferGeometry} from 'three';
 import {MapView} from '../MapView';
 
-
 /**
  * Represents a map tile node inside of the tiles quad-tree
  *
@@ -48,6 +47,11 @@ export abstract class MapNode extends Mesh
 	 * which means it has started or loaded its texture
 	 */
 	public isTextureReady: boolean;
+
+	/**
+	 * Flag indicating if the tile texture was loaded (even if failed).
+	 */
+	public textureLoaded: boolean = false;
 
 	/**
 	 * Indicates how many children nodes where loaded.
@@ -203,8 +207,8 @@ export abstract class MapNode extends Mesh
 			{
 				if (n !== this.objectsHolder) 
 				{
-					n.isMesh = !n.subdivided;
-					n.objectsHolder.visible = !n.subdivided;
+					n.isMesh = n.textureLoaded;
+					n.objectsHolder.visible = n.textureLoaded;
 				}
 			});
 			this.children = this.childrenCache;
@@ -237,32 +241,38 @@ export abstract class MapNode extends Mesh
 	}
 
 	/**
-	 * Load tile texture from the server.
+	 * Handle loaded texture
 	 *
 	 * This base method assumes the existence of a material attribute with a map texture.
 	 */
+	protected onTextureImage(image): void 
+	{
+		if (image) 
+		{
+			const texture = new Texture(image as any);
+			texture.generateMipmaps = false;
+			texture.format = RGBFormat;
+			texture.magFilter = LinearFilter;
+			texture.minFilter = LinearFilter;
+			texture.needsUpdate = true;
+	
+			// @ts-ignore
+			this.material.map = texture;
+		}
+	}
+	
+	/**
+	 * Load tile texture from the server.
+	 *
+	 */
 	public loadTexture(): Promise<any>
 	{
-		if (this.isTextureReady) {
+		if (this.isTextureReady) 
+		{
 			return;
 		}
 		this.isTextureReady = true;
-		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) =>
-		{
-			if (image) 
-			{
-				const texture = new Texture(image as any);
-				texture.generateMipmaps = false;
-				texture.format = RGBFormat;
-				texture.magFilter = LinearFilter;
-				texture.minFilter = LinearFilter;
-				texture.needsUpdate = true;
-				
-				// @ts-ignore
-				this.material.map = texture;
-			}
-			this.nodeReady();
-		}).catch(() => 
+		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {return this.onTextureImage(image);}).catch(() => 
 		{
 			const canvas = new OffscreenCanvas(1, 1);
 			const context = canvas.getContext('2d');
@@ -274,6 +284,9 @@ export abstract class MapNode extends Mesh
 			texture.needsUpdate = true;
 			// @ts-ignore
 			this.material.map = texture;
+		}).finally(() => 
+		{
+			this.textureLoaded = true;
 			this.nodeReady();
 		});
 	}

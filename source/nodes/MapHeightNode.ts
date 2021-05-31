@@ -20,11 +20,6 @@ export class MapHeightNode extends MapNode
 	public heightLoaded: boolean = false;
 
 	/**
-	 * Flag indicating if the tile texture was loaded (even if failed).
-	 */
-	public textureLoaded: boolean = false;
-
-	/**
 	 * Variable indicating if it ready to be drawn
 	 * which means it has started or loaded its height data
 	 */
@@ -72,36 +67,42 @@ export class MapHeightNode extends MapNode
 	public initialize(): Promise<any>  
 	{
 		super.initialize();
-		return Promise.all([this.loadTexture(),this.loadHeightGeometry()]);
-	}
-
-	onTextureImage(image) {
-		if (image) 
-			{
-				const texture = new Texture(image as any);
-				texture.generateMipmaps = false;
-				texture.format = RGBFormat;
-				texture.magFilter = LinearFilter;
-				texture.minFilter = LinearFilter;
-				texture.needsUpdate = true;
-	
-				// @ts-ignore
-				this.material.map = texture;
-			}
+		return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
 	}
 
 	/**
+	 * Handle loaded texture
+	 *
+	 * This base method assumes the existence of a material attribute with a map texture.
+	 */
+	protected onTextureImage(image): void
+	{
+		if (image) 
+		{
+			const texture = new Texture(image as any);
+			texture.generateMipmaps = false;
+			texture.format = RGBFormat;
+			texture.magFilter = LinearFilter;
+			texture.minFilter = LinearFilter;
+			texture.needsUpdate = true;
+	
+			// @ts-ignore
+			this.material.map = texture;
+		}
+	}
+	
+	/**
 	 * Load tile texture from the server.
 	 *
-	 * Aditionally in this height node it loads elevation data from the height provider and generate the appropiate maps.
 	 */
 	public loadTexture(): Promise<any> 
 	{
-		if (this.isTextureReady) {
+		if (this.isTextureReady) 
+		{
 			return;
 		}
 		this.isTextureReady = true;
-		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => this.onTextureImage(image)).finally(() =>
+		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {return this.onTextureImage(image);}).finally(() =>
 		{
 			this.textureLoaded = true;
 			this.nodeReady();
@@ -114,7 +115,6 @@ export class MapHeightNode extends MapNode
 		{
 			return;
 		}
-
 
 		super.nodeReady();
 	}
@@ -155,17 +155,19 @@ export class MapHeightNode extends MapNode
 		node.updateMatrixWorld(true);
 	}
 
-	parent: MapHeightNode;
+	public parent: MapHeightNode;
 
-	heightListeners = []
+	public heightListeners = []
 
-	protected handleParentOverZoomTile(resolve?) {
+	protected handleParentOverZoomTile(resolve?): void 
+	{
 		throw new Error('not implemented');
 	}
 
 	public async loadHeightGeometry(): Promise<any> 
 	{
-		if (this.isHeightReady) {
+		if (this.isHeightReady) 
+		{
 			return;
 		}
 		this.isHeightReady = true;
@@ -174,34 +176,46 @@ export class MapHeightNode extends MapNode
 		{
 			throw new Error('GeoThree: MapView.heightProvider provider is null.');
 		}
-		try {
+		try 
+		{
 			const zoom = this.level;
-			if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+			if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) 
+			{
 				const parent = this.parent;
-				if (parent.heightLoaded ) {
+				if (parent.heightLoaded ) 
+				{
 					this.handleParentOverZoomTile();
-				} else {
-					const promise = new Promise(resolve=>{
-						parent.heightListeners.push(()=>this.handleParentOverZoomTile(resolve))
-					})
-					if ( !parent.isHeightReady) {
+				}
+				else 
+				{
+					const promise = new Promise((resolve) => 
+					{
+						parent.heightListeners.push(() => {return this.handleParentOverZoomTile(resolve);});
+					});
+					if ( !parent.isHeightReady) 
+					{
 						// ensure parent is loaded first
 						parent.loadHeightGeometry();
 					}
 					await promise;
 				} 
-			} else {
+			}
+			else 
+			{
 				const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
 				this.onHeightImage(image);
 			}
 
-		} finally {
+		}
+		finally 
+		{
 			this.heightLoaded = true;
-			this.heightListeners.forEach(l=>l());
+			this.heightListeners.forEach((l) => {return l();});
 			this.heightListeners = [];
 			this.nodeReady();
 		}
 	}
+
 	/**
 	 * Load height texture from the server and create a geometry to match it.
 	 *

@@ -302,38 +302,34 @@ export abstract class MapNode extends Mesh
 	public nodeReady(): void
 	{
 		// Update parent nodes loaded
-		this.isMesh = true;
+		this.isMesh = !this.subdivided;
 		const parentNode = this.parentNode;
 		if (parentNode !== null) 
 		{
 			parentNode.nodesLoaded++;
-
 			if (parentNode.nodesLoaded >= MapNode.CHILDRENS) 
-			{
+			{	
+				parentNode.children.forEach((child, index) => 
+				{
+					if (child !== parentNode.objectsHolder) 
+					{
+						let theNode = child as MapNode;
+						theNode.isMesh = !theNode.subdivided;
+						theNode.objectsHolder.visible = !theNode.subdivided;
+					}
+				});
 				if (parentNode.subdivided === true) 
 				{
 					parentNode.isMesh = false;
 					parentNode.objectsHolder.visible = false;
 				}
 
-				parentNode.children.forEach((child, index) => 
-				{
-					if (child !== parentNode.objectsHolder) 
-					{
-						let theNode = child as MapNode;
-						// child.visible = true;
-						// child.objectsHolder.visible = true;
-						// child.visible = true;
-						theNode.isMesh = !theNode.subdivided;
-						theNode.objectsHolder.visible = !theNode.subdivided;
-					}
-				});
 			}
 		}
 		// If its the root object just set visible
-		else if (!this.subdivided)
+		else if (!this.subdivided)	
 		{
-			this.visible = true;
+			this.isMesh = true;
 			this.objectsHolder.visible = true;
 		}
 		this.mapView.onNodeReady();

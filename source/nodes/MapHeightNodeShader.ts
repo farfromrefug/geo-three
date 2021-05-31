@@ -32,7 +32,6 @@ export class MapHeightNodeShader extends MapHeightNode
 	protected overZoomFactor = 1;
 
 
-
 	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0) 
 	{
 		super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({map: MapHeightNodeShader.EMPTY_TEXTURE})));
@@ -41,6 +40,7 @@ export class MapHeightNodeShader extends MapHeightNode
 	}
 
 	public static ELEVATION_DECODER = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
+
 	/**
 	 * Empty texture used as a placeholder for missing textures.
 	 */
@@ -67,9 +67,11 @@ export class MapHeightNodeShader extends MapHeightNode
 	 */
 	public static prepareMaterial(material: Material): Material
 	{
-		material.userData = {heightMap: {value: MapHeightNodeShader.EMPTY_TEXTURE},
-		elevationDecoder: {value: MapHeightNodeShader.ELEVATION_DECODER},
-		heightMapLocation: {value: new Vector4() }};
+		material.userData = {
+			heightMap: {value: MapHeightNodeShader.EMPTY_TEXTURE},
+			elevationDecoder: {value: MapHeightNodeShader.ELEVATION_DECODER},
+			heightMapLocation: {value: new Vector4()}
+		};
 
 		material.onBeforeCompile = (shader) => 
 		{
@@ -127,7 +129,8 @@ export class MapHeightNodeShader extends MapHeightNode
 		}
 	}
 
-	protected handleParentOverZoomTile(resolve?) {
+	protected handleParentOverZoomTile(resolve?): void
+	{
 		const tileBox = tileToBBOX([this.x, this.y, this.level]);
 		const parent = this.parent as MapHeightNodeShader;
 		const parentOverZoomFactor = parent.overZoomFactor;
@@ -135,14 +138,17 @@ export class MapHeightNodeShader extends MapHeightNode
 		const width = parentTileBox[2] - parentTileBox[0];
 		const height = parentTileBox[3] - parentTileBox[1];
 		this.overZoomFactor = parentOverZoomFactor * 2;
-		this.heightMapLocation[0] = parent.heightMapLocation[0]  + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
-		this.heightMapLocation[1] = parent.heightMapLocation[1]  + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10  / parentOverZoomFactor;
+		this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10 ) / 10 / parentOverZoomFactor;
+		this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10 / parentOverZoomFactor;
 		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
 
 		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
 		this.onHeightImage(parent.material.userData.heightMap.value);
 
-		resolve && resolve();
+		if (resolve) 
+		{
+			resolve();
+		}
 	}
 
 	/**

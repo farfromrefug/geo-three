@@ -72,6 +72,12 @@ export abstract class MapProvider
 	 */
 	public minLevelForZoomDelta: number = 0;
 
+	public get actualMaxZoom(): number 
+	{
+		return this.maxZoom + this.maxOverZoom;
+	}
+
+
 	/**
 	 * Map bounds.
 	 */

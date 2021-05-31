@@ -191,8 +191,8 @@ export abstract class MapNode extends Mesh
 	public subdivide(): void
 	{
 		const mapView = this.mapView;
-		const maxZoom = Math.min(mapView.provider.maxZoom + mapView.provider.maxOverZoom, mapView.heightProvider.maxZoom + mapView.heightProvider.maxOverZoom);
-		if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) 
+		const maxZoom = Math.min(mapView.provider.actualMaxZoom, mapView.heightProvider.actualMaxZoom);
+		if (this.subdivided || this.level + 1 > maxZoom) 
 		{
 			return;
 		}

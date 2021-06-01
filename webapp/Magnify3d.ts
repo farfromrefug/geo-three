@@ -122,6 +122,7 @@ export default class Magnify3d
 
 	public render({    
 		renderer,
+		rendererOut,
 		renderSceneCB,
 		pos = null,
 		zoom = 3.0,
@@ -151,8 +152,8 @@ export default class Magnify3d
 		const pixelRatio = renderer.getPixelRatio();
 		pos = {x: pos.x * pixelRatio, y: pos.y * pixelRatio};
 
-		renderer.getSize(this.size);
-		let {width, height} = this.size;
+		
+		let {width, height} = renderer.getSize(this.size);
 
 		width *= pixelRatio;
 		height *= pixelRatio;
@@ -187,7 +188,8 @@ export default class Magnify3d
 			width * width / resWidth * zoom,
 			height * height / resHeight * zoom
 		];
-		this.zoomTarget.setSize(width, height);
+		this.zoomTarget.width = width;
+		this.zoomTarget.height = height;
 		this.zoomTarget.viewport.set(...zoomedViewport);
 		
 		const autoClearBackup = renderer.autoClear;
@@ -202,16 +204,15 @@ export default class Magnify3d
 
 		// 	this.fxaaTarget.setSize(width, height);
 
-		// 	renderer.setRenderTarget(outputBuffer);
-		// 	// renderer.render(this.magnifyScene, this.camera, this.fxaaTarget); // Render magnify pass to fxaaTarget.
-		// 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
+		// 	renderer.setRenderTarget(this.fxaaTarget);
+		// 	renderer.render(this.magnifyScene, this.camera); // Render magnify pass to fxaaTarget.
 		// 	renderer.setRenderTarget(null);
+		// 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
 		// }
 		// else 
 		// {
-		renderer.setRenderTarget(outputBuffer);
-		renderer.render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
 		renderer.setRenderTarget(null);
+		(rendererOut || renderer).render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
 		// }
 
 		renderer.autoClear = autoClearBackup;

@@ -160,8 +160,8 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 let pixelsBuffer;
 const AA = devicePixelRatio <= 1;
 let showingCamera = false;
-let showMagnify = false;
-let mousePosition = new THREE.Vector2();
+// let showMagnify = false;
+// let mousePosition = new THREE.Vector2();
 
 export function shouldComputeNormals() 
 {
@@ -223,6 +223,17 @@ const rendereroff = new THREE.WebGLRenderer({
 	alpha: false,
 	powerPreference: 'high-performance',
 	stencil: false
+	// precision: isMobile ? 'mediump' : 'highp'
+});
+
+const rendererMagnify = new THREE.WebGLRenderer({
+	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
+	// logarithmicDepthBuffer: true,
+	antialias: AA,
+	alpha: true,
+	powerPreference: 'high-performance',
+	stencil: false,
+	depth: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
 const pointBufferTarget = new THREE.WebGLRenderTarget(0, 0);
@@ -687,7 +698,7 @@ function onControlUpdate()
 		const angle = controls.azimuthAngle * 180 / Math.PI % 360;
 		const pitch = controls.polarAngle * 180 / Math.PI % 360;
 		const styling =
-				'rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
+				'translate(-50%, -50%) rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
 		compass.style['-webkit-transform'] = styling;
 	}
 	if (window['nsWebViewBridge']) 
@@ -921,7 +932,8 @@ controls.addEventListener('control', () =>
 const composer = new POSTPROCESSING.EffectComposer(renderer);
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
 const outlineEffect = new CustomOutlineEffect();
-composer.addPass(new POSTPROCESSING.EffectPass(camera, outlineEffect));
+const pass = new POSTPROCESSING.EffectPass(camera, outlineEffect);
+composer.addPass(pass);
 
 let minYPx = 0;
 function actualComputeFeatures() 
@@ -1000,7 +1012,9 @@ document.body.onresize = function()
 	const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
 
 	renderer.setSize(width, height);
+	rendererMagnify.setSize(width, height);
 	renderer.setPixelRatio(rendererScaleRatio);
+	rendererMagnify.setPixelRatio(rendererScaleRatio);
 	magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
 
 	pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
@@ -1265,36 +1279,42 @@ function isTouchEvent(event)
 }
 function onMouseDown(event) 
 {	
-	if (showMagnify) 
-	{
-		showMagnify = false;
-	}
-	else 
-	{
-		if (isTouchEvent(event)) 
-		{
-			var touchEvent = event;
-			for (var i = 0; i < touchEvent.touches.length; i++) 
-			{
-				mousePosition.x += touchEvent.touches[i].clientX;
-				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
-			}
-			mousePosition.x /= touchEvent.touches.length;
-			mousePosition.y /= touchEvent.touches.length;
-		}
-		else 
-		{
-			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
-		}
-		showMagnify = true;
-	}
-	console.log('onMouseDown', showMagnify, mousePosition);
-	render();
+	
 }
 // window.addEventListener('mousedown', onMouseDown);
 // window.addEventListener('touchstart', onMouseDown, {passive: true});
-
-
+// canvas.onclick = function(event)
+// {
+// 	if (showMagnify) 
+// 	{
+// 		showMagnify = false;
+// 	}
+// 	else 
+// 	{
+// 		if (isTouchEvent(event)) 
+// 		{
+// 			var touchEvent = event;
+// 			for (var i = 0; i < touchEvent.touches.length; i++) 
+// 			{
+// 				mousePosition.x += touchEvent.touches[i].clientX;
+// 				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
+// 			}
+// 			mousePosition.x /= touchEvent.touches.length;
+// 			mousePosition.y /= touchEvent.touches.length;
+// 		}
+// 		else 
+// 		{
+// 			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
+// 		}
+// 		showMagnify = true;
+// 	}
+// 	console.log('onMouseDown', showMagnify, mousePosition);
+// 	render();
+// };
+function withoutComposer() 
+{
+	return (debug || mapMap) && !mapoutline;
+}
 function actualRender(forceComputeFeatures) 
 {
 	if (readFeatures && pixelsBuffer) 
@@ -1325,7 +1345,7 @@ function actualRender(forceComputeFeatures)
 		});
 	}
 
-	if ((debug || mapMap) && !mapoutline) 
+	if (withoutComposer()) 
 	{
 		renderer.render(scene, camera);
 	}
@@ -1341,28 +1361,37 @@ export function render(forceComputeFeatures = false)
 		return;
 	}
 	
-	if (showMagnify) 
-	{
-		renderer.setRenderTarget(magnify3dTarget);
-		actualRender(forceComputeFeatures);
-		renderer.setRenderTarget(null);
-		magnify3d.render({
-			renderer: renderer,
-			pos: mousePosition,
-			inputBuffer: magnify3dTarget,
-			renderSceneCB: (target) => 
-			{
-				renderer.setRenderTarget(target);
-				renderer.render(scene, camera);
-				renderer.setRenderTarget(null);
-			}
+	// if (showMagnify) 
+	// {
+	// 	const toComposer = withoutComposer();
+	// 	if (!toComposer )
+	// 	{
+	// 		renderer.setRenderTarget(magnify3dTarget);
+	// 	}
+	// 	else 
+	// 	{
+	// 		pass.renderToScreen = false;
+	// 	}
+	// 	actualRender(forceComputeFeatures);
+	// 	// renderer.setRenderTarget(null);
+	// 	magnify3d.render({
+	// 		renderer: renderer,
+	// 		rendererOut: rendererMagnify,
+	// 		pos: mousePosition,
+	// 		inputBuffer: magnify3dTarget,
+	// 		renderSceneCB: (target) => 
+	// 		{
+	// 			// rendering in the zoom lens
+	// 			renderer.setRenderTarget(target);
+	// 			renderer.render(scene, camera);
+	// 		}
 			
-		});
-	}
-	else 
-	{
-		actualRender(forceComputeFeatures);
-	}
+	// 	});
+	// }
+	// else 
+	// {
+	actualRender(forceComputeFeatures);
+	// }
 	stats.end();
 }
 

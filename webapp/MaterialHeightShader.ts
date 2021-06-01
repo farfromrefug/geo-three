@@ -47,8 +47,8 @@ export class MaterialHeightShader extends MapHeightNode
 		let size = MaterialHeightShader.GEOMETRY_SIZE;
 		if (level < 11) 
 		{
-			// size /= Math.pow(2, 11 - level);
-			size /= 11 - level;
+			size /= Math.pow(2, Math.floor((11 - level)/2));
+			// size /= 11 - level;
 			size = Math.max(16, size);
 		}
 		else if (level > 11) 
@@ -475,6 +475,7 @@ export class MaterialHeightShader extends MapHeightNode
 								attribute vec4 color;
 								uniform float exageration;
 								uniform bool forViewing;
+								uniform float far;
 								varying float depth;
 								varying vec4 vColor;
 								// varying vec3 vClipPosition;
@@ -482,16 +483,16 @@ export class MaterialHeightShader extends MapHeightNode
 									float exagerated  = elevation * exageration;
 									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
 									// #include <fog_vertex>
+									gl_Position = projectionMatrix * mvPosition;
 									if (forViewing) {
-										gl_PointSize = 10.0;
+										gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
 										vColor = vec4(0.0, 0.0, 1.0, 1);
 									} else {
+										// gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+										gl_PointSize = gl_Position.z/ far * 2.0;
 										vColor = color;
 									}
-									//  gl_PointSize =  floor(elevation / 1000.0);
-									//  gl_PointSize = gl_Position.z + floor(exagerated / 1000.0)* 1.0;
-									gl_Position = projectionMatrix * mvPosition;
-									gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+									//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
 									depth = gl_Position.z;
 								}
 												`,
@@ -527,7 +528,7 @@ export class MaterialHeightShader extends MapHeightNode
 					}
 				}
 
-				render();
+				render(true);
 			});
 			
 		}

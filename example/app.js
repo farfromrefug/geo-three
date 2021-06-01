@@ -51702,7 +51702,7 @@ var webapp = (function (exports) {
             scene.add(quad);
             return scene;
         }
-        render({ renderer, renderSceneCB, pos = null, zoom = 3.0, exp = 35.0, radius = 100.0, outlineColor = 0xCCCCCC, outlineThickness = 4.0, antialias = true, inputBuffer = undefined, outputBuffer = null }) {
+        render({ renderer, rendererOut, renderSceneCB, pos = null, zoom = 3.0, exp = 35.0, radius = 100.0, outlineColor = 0xCCCCCC, outlineThickness = 4.0, antialias = true, inputBuffer = undefined, outputBuffer = null }) {
             if (!renderer) {
                 console.warn('Magnify-3d: No renderer attached!');
                 return;
@@ -51714,8 +51714,7 @@ var webapp = (function (exports) {
             }
             const pixelRatio = renderer.getPixelRatio();
             pos = { x: pos.x * pixelRatio, y: pos.y * pixelRatio };
-            renderer.getSize(this.size);
-            let { width, height } = this.size;
+            let { width, height } = renderer.getSize(this.size);
             width *= pixelRatio;
             height *= pixelRatio;
             const maxViewportWidth = renderer.getContext().getParameter(renderer.getContext().MAX_VIEWPORT_DIMS)[0];
@@ -51744,7 +51743,8 @@ var webapp = (function (exports) {
                 width * width / resWidth * zoom,
                 height * height / resHeight * zoom
             ];
-            this.zoomTarget.setSize(width, height);
+            this.zoomTarget.width = width;
+            this.zoomTarget.height = height;
             this.zoomTarget.viewport.set(...zoomedViewport);
             const autoClearBackup = renderer.autoClear;
             renderer.autoClear = true; // Make sure autoClear is set.
@@ -51754,16 +51754,15 @@ var webapp = (function (exports) {
             // 	this.fxaaMaterial.uniforms['tDiffuse'].value = this.fxaaTarget.texture;
             // 	this.fxaaMaterial.uniforms['resolution'].value = {x: 1 / width, y: 1 / height};
             // 	this.fxaaTarget.setSize(width, height);
-            // 	renderer.setRenderTarget(outputBuffer);
-            // 	// renderer.render(this.magnifyScene, this.camera, this.fxaaTarget); // Render magnify pass to fxaaTarget.
-            // 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
+            // 	renderer.setRenderTarget(this.fxaaTarget);
+            // 	renderer.render(this.magnifyScene, this.camera); // Render magnify pass to fxaaTarget.
             // 	renderer.setRenderTarget(null);
+            // 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
             // }
             // else 
             // {
-            renderer.setRenderTarget(outputBuffer);
-            renderer.render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
             renderer.setRenderTarget(null);
+            (rendererOut || renderer).render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
             // }
             renderer.autoClear = autoClearBackup;
         }
@@ -65225,7 +65224,8 @@ var webapp = (function (exports) {
     let pixelsBuffer;
     const AA = devicePixelRatio <= 1;
     let showingCamera = false;
-    new Vector2();
+    // let showMagnify = false;
+    // let mousePosition = new THREE.Vector2();
     function shouldComputeNormals() {
         return exports.drawNormals || (exports.debug || exports.mapMap) && (exports.computeNormals || exports.dayNightCycle);
     }
@@ -65272,6 +65272,16 @@ var webapp = (function (exports) {
         alpha: false,
         powerPreference: 'high-performance',
         stencil: false
+        // precision: isMobile ? 'mediump' : 'highp'
+    });
+    const rendererMagnify = new WebGLRenderer({
+        canvas: document.getElementById('canvas5'),
+        // logarithmicDepthBuffer: true,
+        antialias: AA,
+        alpha: true,
+        powerPreference: 'high-performance',
+        stencil: false,
+        depth: false
         // precision: isMobile ? 'mediump' : 'highp'
     });
     const pointBufferTarget = new WebGLRenderTarget(0, 0);
@@ -65626,7 +65636,7 @@ var webapp = (function (exports) {
         if (compass) {
             const angle = controls.azimuthAngle * 180 / Math.PI % 360;
             const pitch = controls.polarAngle * 180 / Math.PI % 360;
-            const styling = 'rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
+            const styling = 'translate(-50%, -50%) rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
             compass.style['-webkit-transform'] = styling;
         }
         if (window['nsWebViewBridge']) {
@@ -65806,7 +65816,8 @@ var webapp = (function (exports) {
     const composer = new postprocessing.exports.EffectComposer(renderer);
     composer.addPass(new postprocessing.exports.RenderPass(scene, camera));
     const outlineEffect = new CustomOutlineEffect();
-    composer.addPass(new postprocessing.exports.EffectPass(camera, outlineEffect));
+    const pass = new postprocessing.exports.EffectPass(camera, outlineEffect);
+    composer.addPass(pass);
     let minYPx = 0;
     function actualComputeFeatures() {
         let oldSyVisible = sky.visible;
@@ -65867,7 +65878,9 @@ var webapp = (function (exports) {
         canvas4.height = Math.floor(height * devicePixelRatio);
         const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
         renderer.setSize(width, height);
+        rendererMagnify.setSize(width, height);
         renderer.setPixelRatio(rendererScaleRatio);
+        rendererMagnify.setPixelRatio(rendererScaleRatio);
         magnify3dTarget.setSize(width * devicePixelRatio, height * devicePixelRatio);
         pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
         rendereroff.setSize(offWidth, offHeight);
@@ -66049,6 +66062,37 @@ var webapp = (function (exports) {
     }
     // window.addEventListener('mousedown', onMouseDown);
     // window.addEventListener('touchstart', onMouseDown, {passive: true});
+    // canvas.onclick = function(event)
+    // {
+    // 	if (showMagnify) 
+    // 	{
+    // 		showMagnify = false;
+    // 	}
+    // 	else 
+    // 	{
+    // 		if (isTouchEvent(event)) 
+    // 		{
+    // 			var touchEvent = event;
+    // 			for (var i = 0; i < touchEvent.touches.length; i++) 
+    // 			{
+    // 				mousePosition.x += touchEvent.touches[i].clientX;
+    // 				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
+    // 			}
+    // 			mousePosition.x /= touchEvent.touches.length;
+    // 			mousePosition.y /= touchEvent.touches.length;
+    // 		}
+    // 		else 
+    // 		{
+    // 			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
+    // 		}
+    // 		showMagnify = true;
+    // 	}
+    // 	console.log('onMouseDown', showMagnify, mousePosition);
+    // 	render();
+    // };
+    function withoutComposer() {
+        return (exports.debug || exports.mapMap) && !exports.mapoutline;
+    }
     function actualRender(forceComputeFeatures) {
         if (readFeatures && pixelsBuffer) {
             if (forceComputeFeatures) {
@@ -66069,7 +66113,7 @@ var webapp = (function (exports) {
                 }
             });
         }
-        if ((exports.debug || exports.mapMap) && !exports.mapoutline) {
+        if (withoutComposer()) {
             renderer.render(scene, camera);
         }
         else {
@@ -66080,9 +66124,36 @@ var webapp = (function (exports) {
         if (!renderer || !composer) {
             return;
         }
-        {
-            actualRender(forceComputeFeatures);
-        }
+        // if (showMagnify) 
+        // {
+        // 	const toComposer = withoutComposer();
+        // 	if (!toComposer )
+        // 	{
+        // 		renderer.setRenderTarget(magnify3dTarget);
+        // 	}
+        // 	else 
+        // 	{
+        // 		pass.renderToScreen = false;
+        // 	}
+        // 	actualRender(forceComputeFeatures);
+        // 	// renderer.setRenderTarget(null);
+        // 	magnify3d.render({
+        // 		renderer: renderer,
+        // 		rendererOut: rendererMagnify,
+        // 		pos: mousePosition,
+        // 		inputBuffer: magnify3dTarget,
+        // 		renderSceneCB: (target) => 
+        // 		{
+        // 			// rendering in the zoom lens
+        // 			renderer.setRenderTarget(target);
+        // 			renderer.render(scene, camera);
+        // 		}
+        // 	});
+        // }
+        // else 
+        // {
+        actualRender(forceComputeFeatures);
+        // }
         stats.end();
     }
     function setInitialPosition() {

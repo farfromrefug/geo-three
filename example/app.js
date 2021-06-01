@@ -65455,7 +65455,7 @@ var webapp = (function (exports) {
             startCam();
         }
     }
-    let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel;
+    let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider;
     try {
         compass = document.querySelector('#compass img');
         document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
@@ -65492,7 +65492,7 @@ var webapp = (function (exports) {
         const mapoutlineCheckbox = document.getElementById('mapoutline');
         mapoutlineCheckbox.onchange = (event) => { return setMapOultine(event.target.checked); };
         mapoutlineCheckbox.checked = exports.mapoutline;
-        const elevationSlider = document.getElementById('elevationSlider');
+        elevationSlider = document.getElementById('elevationSlider');
         elevationSlider.oninput = (event) => { return setElevation(event.target.value); };
         elevationSlider.value = elevation;
         const exagerationSlider = document.getElementById('exagerationSlider');
@@ -65718,6 +65718,7 @@ var webapp = (function (exports) {
         }
         elevation = newValue;
         if (elevationLabel) {
+            elevationSlider.value = elevation;
             elevationLabel.innerText = newValue + 'm';
         }
         if (updateControls) {

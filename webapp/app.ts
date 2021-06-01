@@ -657,7 +657,7 @@ export function toggleCamera()
 	}
 }
 
-let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel;
+let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider;
 try 
 {
 	compass = document.querySelector('#compass img');
@@ -705,7 +705,7 @@ try
 	mapoutlineCheckbox.onchange = (event: any) => {return setMapOultine(event.target.checked);};
 	mapoutlineCheckbox.checked = mapoutline as any;
 	
-	const elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
+	elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
 	elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
 	elevationSlider.value = elevation as any;
 	
@@ -1000,6 +1000,7 @@ export function setElevation(newValue, updateControls = true)
 	elevation = newValue;
 	if (elevationLabel) 
 	{
+		elevationSlider.value = elevation as any;
 		elevationLabel.innerText = newValue + 'm';
 	}
 	if (updateControls) 

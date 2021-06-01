@@ -12,6 +12,8 @@ import Magnify3d from './Magnify3d';
 window.THREE = THREE;
 
 const TO_RAD = Math.PI / 180;
+const PI_DIV4 = Math.PI / 4;
+const PI_X2 = Math.PI * 2;
 const TO_DEG = 180 / Math.PI;
 
 import {DeviceOrientationControls} from 'three/examples/jsm/controls/DeviceOrientationControls';
@@ -86,10 +88,6 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 
 CameraControls.install({THREE: THREE});
 // @ts-ignore
-const stats = new Stats();
-stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-document.body.appendChild(stats.dom);
-
 function throttle(callback, limit) 
 {
 	var waiting = false; // Initially, we're not waiting
@@ -125,6 +123,7 @@ function ArraySortOn(array, key)
 const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
 
 export let debug = false;
+export let showStats = false;
 export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
@@ -147,21 +146,76 @@ export const featuresByColor = {};
 // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
 export let currentViewingDistance = 0;
-export let FAR = 200000;
+export let FAR = 173000;
 const TEXT_HEIGHT = 180;
 let currentPosition;
-let elevation = 1000;
+let elevation = -1;
 const clock = new THREE.Clock();
-let renderingIndex = -1;
+let selectedItem = null;
 let map;
-// updSunPos(45.16667, 5.71667);
 const EPS = 1e-5;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 let pixelsBuffer;
 const AA = devicePixelRatio <= 1;
 let showingCamera = false;
 // let showMagnify = false;
-// let mousePosition = new THREE.Vector2();
+let mousePosition = null;
+
+let animating = false;
+// Setup the animation loop.
+
+
+let stats;
+
+
+const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
+const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
+const video = document.getElementById('video') as HTMLVideoElement;
+const ctx2d = canvas4.getContext('2d');
+
+const renderer = new THREE.WebGLRenderer({
+	canvas: canvas,
+	// logarithmicDepthBuffer: true,
+	antialias: AA,
+	alpha: true,
+	powerPreference: 'high-performance',
+	stencil: false
+	// depth: false
+	// precision: isMobile ? 'mediump' : 'highp'
+});
+// const magnify3d = new Magnify3d();
+// const magnify3dTarget = new THREE.WebGLRenderTarget(0, 0); 
+
+renderer.setClearColor(0x000000, 0);
+const rendereroff = new THREE.WebGLRenderer({
+	canvas: canvas3,
+	antialias: false,
+	alpha: false,
+	powerPreference: 'high-performance',
+	stencil: false
+	// precision: isMobile ? 'mediump' : 'highp'
+});
+
+// const rendererMagnify = new THREE.WebGLRenderer({
+// 	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
+// 	// logarithmicDepthBuffer: true,
+// 	antialias: AA,
+// 	alpha: true,
+// 	powerPreference: 'high-performance',
+// 	stencil: false,
+// 	depth: false
+// 	// precision: isMobile ? 'mediump' : 'highp'
+// });
+const pointBufferTarget = new THREE.WebGLRenderTarget(0, 0);
+pointBufferTarget.texture.minFilter = THREE.NearestFilter;
+pointBufferTarget.texture.magFilter = THREE.NearestFilter;
+pointBufferTarget.texture.generateMipmaps = false;
+pointBufferTarget.stencilBuffer = false;
+// pointBufferTarget.texture.format = THREE.RGBFormat;
+
+const composer = new POSTPROCESSING.EffectComposer(renderer);
+
 
 export function shouldComputeNormals() 
 {
@@ -197,51 +251,6 @@ export function setTerrarium(value: boolean)
 	}
 }
 
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
-const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
-const video = document.getElementById('video') as HTMLVideoElement;
-const ctx2d = canvas4.getContext('2d');
-
-const renderer = new THREE.WebGLRenderer({
-	canvas: canvas,
-	// logarithmicDepthBuffer: true,
-	antialias: AA,
-	alpha: true,
-	powerPreference: 'high-performance',
-	stencil: false
-	// depth: false
-	// precision: isMobile ? 'mediump' : 'highp'
-});
-const magnify3d = new Magnify3d();
-const magnify3dTarget = new THREE.WebGLRenderTarget(0, 0); 
-
-renderer.setClearColor(0x000000, 0);
-const rendereroff = new THREE.WebGLRenderer({
-	canvas: canvas3,
-	antialias: false,
-	alpha: false,
-	powerPreference: 'high-performance',
-	stencil: false
-	// precision: isMobile ? 'mediump' : 'highp'
-});
-
-const rendererMagnify = new THREE.WebGLRenderer({
-	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
-	// logarithmicDepthBuffer: true,
-	antialias: AA,
-	alpha: true,
-	powerPreference: 'high-performance',
-	stencil: false,
-	depth: false
-	// precision: isMobile ? 'mediump' : 'highp'
-});
-const pointBufferTarget = new THREE.WebGLRenderTarget(0, 0);
-pointBufferTarget.texture.minFilter = THREE.NearestFilter;
-pointBufferTarget.texture.magFilter = THREE.NearestFilter;
-pointBufferTarget.texture.generateMipmaps = false;
-pointBufferTarget.stencilBuffer = false;
-// pointBufferTarget.texture.format = THREE.RGBFormat;
 
 function createSky() 
 {
@@ -403,6 +412,30 @@ export function toggleMapMode()
 {
 	setMapMode(!mapMap);
 }
+export function setPredefinedMapMode(value) 
+{
+	mapMap = value;
+	mapoutline = value;
+	
+	sky.visible = sunLight.visible = shouldRenderSky();
+	ambientLight.visible = needsLights();
+	setupLOD();
+	if (map) 
+	{
+		map.provider = createProvider();
+		applyOnNodes((node) => 
+		{
+			node.isTextureReady = false;
+			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+		});
+		onControlUpdate();
+	}
+}
+export function togglePredefinedMapMode() 
+{
+	setPredefinedMapMode(!mapMap);
+}
 export function setDrawTexture(value) 
 {
 	drawTexture = value;
@@ -444,7 +477,6 @@ export function setComputeNormals(value)
 	sky.visible = shouldRenderSky();
 	sunLight.visible = shouldRenderSky() || computeNormals;
 	ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
-	console.log('setComputeNormals2', value, shouldComputeNormals());
 	if (map) 
 	{
 		applyOnNodes((node) => 
@@ -466,7 +498,6 @@ export function setDayNightCycle(value)
 	sky.visible = shouldRenderSky();
 	sunLight.visible = shouldRenderSky() || computeNormals;
 	ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
-	console.log('setDayNightCycle', dayNightCycle, shouldComputeNormals());
 	if (map) 
 	{
 		applyOnNodes((node) => 
@@ -489,6 +520,35 @@ export function setDebugGPUPicking(value)
 export function toggleDebugGPUPicking() 
 {
 	setDebugGPUPicking(!debugGPUPicking);
+}
+export function setShowStats(value) 
+{
+	showStats = value;
+	if (value) 
+	{
+		if (!stats) 
+		{
+			stats = new Stats();
+			stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+			document.body.appendChild(stats.dom);
+		}
+		else 
+		{
+			document.body.appendChild(stats.dom);
+		}
+	}
+	else 
+	{
+		if (stats) 
+		{
+			document.body.removeChild(stats.dom);
+		}
+	}
+	render();
+}
+export function toggleShowStats() 
+{
+	setShowStats(!showStats);
 }
 export function setReadFeatures(value) 
 {
@@ -518,7 +578,7 @@ export function setDebugFeaturePoints(value)
 		applyOnNodes((node) => 
 		{
 			// node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
-			node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+			node.objectsHolder.visible = debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
 			let child = node.objectsHolder.children[0];
 			if (child) 
 			{
@@ -597,7 +657,7 @@ export function toggleCamera()
 	}
 }
 
-let datelabel, viewingDistanceLabel, compass;
+let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel;
 try 
 {
 	compass = document.querySelector('#compass img');
@@ -684,6 +744,9 @@ try
 	normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
 	normalsInDebugCheckbox.value = drawNormals as any;
 
+	selectedPeakLabel = document.getElementById('selectedPeakLabel') as HTMLLabelElement;
+	elevationLabel = document.getElementById('elevationLabel') as HTMLLabelElement;
+	selectedPeakDiv = document.getElementById('selectedPeak') as HTMLDivElement;
 }
 catch (err) {}
 
@@ -703,17 +766,16 @@ function onControlUpdate()
 	}
 	if (window['nsWebViewBridge']) 
 	{
-
 		window['nsWebViewBridge'].emit('controls', {
 			// distance: controls.distance,
-			azim: controls.azimuthAngle * 180 / Math.PI
+			azim: controls.azimuthAngle * TO_DEG
 		});
 	}
 	render();
 }
 function setupLOD() 
 {
-	heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
+	// heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
 	lod.subdivideDistance = 40;
 	lod.simplifyDistance = 140;
 }
@@ -737,7 +799,7 @@ function createProvider()
 	}
 	provider.minZoom = 5;
 	provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-	provider.zoomDelta = 1 ;
+	// provider.zoomDelta = 1 ;
 	provider.minLevelForZoomDelta = 12 ;
 	return provider;
 }
@@ -830,32 +892,98 @@ function updateCurrentViewingDistance()
 		viewingDistanceLabel.innerText = Math.round(currentViewingDistance/1000) + 'km';
 	}
 }
+
+function getRhumbLineBearing(originLL, destLL) 
+{
+	// difference of longitude coords
+	let diffLon = destLL.lon * TO_RAD - originLL.lon * TO_RAD;
+
+	// difference latitude coords phi
+	const diffPhi = Math.log(
+		Math.tan(destLL.lat * TO_RAD / 2 + PI_DIV4) / Math.tan(originLL.lat * TO_RAD / 2 + PI_DIV4)
+	);
+
+	// recalculate diffLon if it is greater than pi
+	if (Math.abs(diffLon) > Math.PI) 
+	{
+		if (diffLon > 0) 
+		{
+			diffLon = (PI_X2 - diffLon) * -1;
+		}
+		else 
+		{
+			diffLon = PI_X2 + diffLon;
+		}
+	}
+
+	// return the angle, normalized
+	return (Math.atan2(diffLon, diffPhi) * TO_DEG + 360) % 360;
+}
 export function setPosition(coords, animated = false) 
 {
 	const newPosition= UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
 	// axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
+	const currentCoords ={lat: sunLight.coordinates.x, lon: sunLight.coordinates.y};
 	sunLight.setPosition(coords.lat, coords.lon);
 	sunLight.setDate(new Date());
 	updateSky();
 
-	if (coords.altitude) 
-	{
-		elevation = coords.altitude;
-	}
+	
 	if (animated) 
 	{
-		startAnimation(currentPosition, newPosition, 500, (newPos) => 
+		const distance = getDistance(currentCoords, coords) ;
+		const startAimingAngle = controls.azimuthAngle * TO_DEG % 360;
+		let topAimingAngle = -getRhumbLineBearing(currentCoords, coords);
+		// if (Math.abs(topAimingAngle - 360 -startAimingAngle ) < Math.abs(topAimingAngle-startAimingAngle )) 
+		// {
+		// 	topAimingAngle -= 360;
+		// }
+		const startElevation = elevation * exageration;
+		let endElevation = startElevation;
+		if (coords.altitude) 
 		{
-			currentPosition = newPos;
-			controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y, false);
-			controls.update(clock.getDelta());
-		}, () => 
-		{
-			updateCurrentViewingDistance();
+			endElevation = coords.altitude * exageration;
+		}
+		const topElevation = (distance > 100000? 11000: endElevation + 100) * exageration;
+		startAnimation({
+			from: {...currentPosition, progress: 0},
+			to: {...newPosition, progress: 1},
+			duration: Math.min(distance / 20, 3000),
+			preventComputeFeatures: true,
+			onUpdate: (value) => 
+			{	
+				const {progress, ...newPos} = value;
+				currentPosition = newPos;
+				if (progress <= 0.2) 
+				{
+					const cProgress = 5*progress;
+					controls.azimuthAngle = (startAimingAngle + cProgress* (topAimingAngle - startAimingAngle)) * TO_RAD;
+				}
+				if (progress <= 0.5) 
+				{
+					const cProgress = 2*progress;
+					controls.moveTo(currentPosition.x, startElevation + cProgress* (topElevation - startElevation), -currentPosition.y, false);
+				}
+				else 
+				{
+					const cProgress = (progress - 0.5) * 2;
+					controls.moveTo(currentPosition.x, topElevation + cProgress* (endElevation - topElevation), -currentPosition.y, false);
+				}
+				controls.update(clock.getDelta());
+			},
+			onEnd: () => 
+			{
+				setElevation(Math.round(endElevation / exageration), false);
+				updateCurrentViewingDistance();
+			}
 		});
 	}
 	else 
 	{
+		if (coords.altitude) 
+		{
+			setElevation(coords.altitude, false);
+		}
 		currentPosition = newPosition;
 
 		controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y, false);
@@ -863,12 +991,23 @@ export function setPosition(coords, animated = false)
 		updateCurrentViewingDistance();
 	}
 }
-export function setElevation(newValue) 
+export function setElevation(newValue, updateControls = true) 
 {
+	if (elevation === newValue) 
+	{
+		return;
+	}
 	elevation = newValue;
-	controls.getTarget(tempVector);
-	controls.moveTo(tempVector.x, elevation * exageration, tempVector.z);
-	controls.update(clock.getDelta());
+	if (elevationLabel) 
+	{
+		elevationLabel.innerText = newValue + 'm';
+	}
+	if (updateControls) 
+	{
+		controls.getTarget(tempVector);
+		controls.moveTo(tempVector.x, elevation * exageration, tempVector.z);
+		controls.update(clock.getDelta());
+	}
 }
 export function setExageration(newValue) 
 {
@@ -903,7 +1042,6 @@ export function setDepthMultiplier(newValue)
 
 export function setDate(secondsInDay) 
 {
-	console.log('setDate', secondsInDay);
 	let date = new Date();
 	const hours = Math.floor(secondsInDay/3600);
 	const minutes = Math.floor((secondsInDay - hours*3600)/ 60);
@@ -924,12 +1062,17 @@ controls.addEventListener('update', () =>
 {
 	onControlUpdate();
 });
-controls.addEventListener('control', () => 
+controls.addEventListener('control', (event) => 
 {
+	// console.log(event);
+	
+	if (event.originalEvent.buttons) 
+	{
+		shouldClearSelectedOnClick = false;
+	}
 	const delta = clock.getDelta();
 	controls.update(delta);
 });
-const composer = new POSTPROCESSING.EffectComposer(renderer);
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
 const outlineEffect = new CustomOutlineEffect();
 const pass = new POSTPROCESSING.EffectPass(camera, outlineEffect);
@@ -950,7 +1093,6 @@ function actualComputeFeatures()
 		node.material.userData.drawBlack.value = true;
 		node.material.userData.computeNormals.value = false;
 		node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
-		// node.objectsHolder.visible = node.isMesh;
 		let child = node.objectsHolder.children[0];
 		if (child) 
 		{
@@ -995,14 +1137,13 @@ document.body.onresize = function()
 	let offHeight;
 	if (scale > 1) 
 	{
-		offWidth = 200;
+		offWidth = Math.max(Math.floor(width/100) * 100 /4, 200);
 		offHeight = Math.round(offWidth / scale);
 	}
 	else 
 	{
-		offHeight = 200;
-
-		offWidth = Math.round(offHeight * scale);
+		offHeight = Math.max(Math.floor(height/100) * 100 /4, 200);
+		offWidth = Math.round(offHeight * scale); 
 	}
 
 	minYPx = TEXT_HEIGHT / height * offHeight;
@@ -1012,10 +1153,10 @@ document.body.onresize = function()
 	const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
 
 	renderer.setSize(width, height);
-	rendererMagnify.setSize(width, height);
+	// rendererMagnify.setSize(width, height);
 	renderer.setPixelRatio(rendererScaleRatio);
-	rendererMagnify.setPixelRatio(rendererScaleRatio);
-	magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
+	// rendererMagnify.setPixelRatio(rendererScaleRatio);
+	// magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
 
 	pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
 	rendereroff.setSize(offWidth, offHeight);
@@ -1118,6 +1259,60 @@ function roundRect(ctx, x, y, w, h, r)
 	ctx.closePath();
 }
 
+function truncate(str, maxlength) 
+{
+	return str.length > maxlength ?
+		str.slice(0, maxlength - 1) + '…' : str;
+}
+function updateSelectedPeakLabel() 
+{
+	const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
+	const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
+	const distance = getDistance(point1, point2) ;
+	selectedPeakLabel.innerText = selectedItem.properties.name + ' ' + selectedItem.properties.ele +'m(' + Math.round(distance/100) / 10 +'km)';
+}
+function setSelectedItem(f) 
+{
+	selectedItem = f;
+	if (window['nsWebViewBridge']) 
+	{
+		window['nsWebViewBridge'].emit('selected', f);
+	}
+	else if (selectedPeakLabel)
+	{
+		if (selectedItem) 
+		{
+			updateSelectedPeakLabel();
+		}
+		else 
+		{
+			selectedPeakLabel.innerText = null;
+		}
+		selectedPeakDiv.style.visibility = selectedItem?'visible':'hidden';
+	}
+}
+export function goToSelectedItem() 
+{
+	if (selectedItem) 
+	{
+		const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
+		setSelectedItem(null);
+		setPosition(point2, true);
+	}
+
+}
+export function focusSelectedItem() 
+{
+	if (selectedItem) 
+	{
+		controls.getPosition(tempVector);
+		const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+		const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0]};
+		const angle = 360 - getRhumbLineBearing({lat: point1.latitude, lon: point1.longitude}, point2) ;
+		
+		setAzimuth(angle);
+	}
+}
 function drawFeatures() 
 {
 	if (!drawLines) 
@@ -1139,18 +1334,26 @@ function drawFeatures()
 
 	const featuresToDraw = [];
 	featuresToShow.forEach((f, index) => 
-	{
+	{	
 		if (!lastFeature) 
 		{
 			// first
 			lastFeature = f;
 		}
-		else if (f.x - lastFeature.x <= minDistance) 
+		else if (f.x - lastFeature.x <= minDistance ) 
 		{
-			deltaY = f.properties.ele - lastFeature.properties.ele;
-			if (deltaY > 0) 
+			if (selectedItem && lastFeature.geometry.coordinates === selectedItem.geometry.coordinates) 
 			{
+				featuresToDraw.push(lastFeature);
 				lastFeature = f;
+			}
+			else 
+			{
+				deltaY = f.properties.ele - lastFeature.properties.ele;
+				if (deltaY > 0)
+				{
+					lastFeature = f;
+				}
 			}
 		}
 		else 
@@ -1168,6 +1371,8 @@ function drawFeatures()
 	ctx2d.save();
 	ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
 	ctx2d.scale(devicePixelRatio, devicePixelRatio);
+	const rectTop = -12;
+	const rectBottom = 17;
 	for (let index = 0; index < toShow; index++) 
 	{
 		const f = featuresToDraw[index];
@@ -1189,7 +1394,7 @@ function drawFeatures()
 		ctx2d.translate(f.x, TEXT_HEIGHT);
 		ctx2d.rotate(-Math.PI / 4);
 		ctx2d.font = '14px Noto Sans';
-		const text = f.properties.name;
+		const text = truncate(f.properties.name, 28);
 		const textWidth = ctx2d.measureText(text).width;
 		let totalWidth = textWidth + 10;
 		let text2;
@@ -1199,10 +1404,32 @@ function drawFeatures()
 			const textWidth2 = ctx2d.measureText(text2).width;
 			totalWidth += textWidth2 - 5;
 		}
-		ctx2d.fillStyle = color + 'cc';
-		roundRect(ctx2d, 0, -12, totalWidth, 17, 8);
+		if (mousePosition && (!selectedItem || !shouldClearSelectedOnClick)) 
+		{
+			const transform = ctx2d.getTransform().inverse();
+			var point = new DOMPoint(mousePosition.x * devicePixelRatio, mousePosition.y * devicePixelRatio);
+			const test = point.matrixTransform(transform);
+			if (test.x >= 0 && test.x < totalWidth && 
+			test.y < -rectTop && test.y>=-rectBottom ) 
+			{
+				setSelectedItem(f);
+				mousePosition = null;
+			}
+		}
+		if (selectedItem && f.geometry.coordinates === selectedItem.geometry.coordinates ) 
+		{
+			ctx2d.font = 'bold 14px Noto Sans';
+			totalWidth *=1.1;
+			ctx2d.fillStyle = color + 'aa';
+		}
+		else 
+		{
+			ctx2d.fillStyle = color + 'cc';
+		}
+		roundRect(ctx2d, 0, rectTop, totalWidth, rectBottom, 8);
 		ctx2d.fill();
 		ctx2d.fillStyle = textColor;
+		
 		ctx2d.fillText(text, 5, 0);
 		if (drawElevations) 
 		{
@@ -1221,6 +1448,7 @@ function readShownFeatures()
 	rendereroff.readRenderTargetPixels(pointBufferTarget, 0, 0, width, height, pixelsBuffer);
 	const readColors = [];
 	const rFeatures = [];
+	let needsSelectedItem = Boolean(selectedItem);
 	let lastColor;
 	function handleLastColor(index) 
 	{
@@ -1231,6 +1459,10 @@ function readShownFeatures()
 			if (feature) 
 			{
 				rFeatures.push(feature);
+				if (needsSelectedItem && feature.geometry.coordinates === selectedItem.geometry.coordinates) 
+				{
+					needsSelectedItem = false;
+				}
 			}
 		}
 	}
@@ -1271,53 +1503,71 @@ function readShownFeatures()
 		lastColor = null;
 		// lastColorNb = 0;
 	}
+	if (needsSelectedItem) 
+	{
+		rFeatures.push(selectedItem);
+	}
 	featuresToShow = rFeatures;
 }
 function isTouchEvent(event) 
 {
 	return 'TouchEvent' in window && event instanceof TouchEvent;
 }
-function onMouseDown(event) 
-{	
-	
-}
-// window.addEventListener('mousedown', onMouseDown);
-// window.addEventListener('touchstart', onMouseDown, {passive: true});
-// canvas.onclick = function(event)
-// {
-// 	if (showMagnify) 
-// 	{
-// 		showMagnify = false;
-// 	}
-// 	else 
-// 	{
-// 		if (isTouchEvent(event)) 
-// 		{
-// 			var touchEvent = event;
-// 			for (var i = 0; i < touchEvent.touches.length; i++) 
-// 			{
-// 				mousePosition.x += touchEvent.touches[i].clientX;
-// 				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
-// 			}
-// 			mousePosition.x /= touchEvent.touches.length;
-// 			mousePosition.y /= touchEvent.touches.length;
-// 		}
-// 		else 
-// 		{
-// 			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
-// 		}
-// 		showMagnify = true;
-// 	}
-// 	console.log('onMouseDown', showMagnify, mousePosition);
-// 	render();
-// };
+// function onMouseMove(event) 
+// {	
+// 	shouldClearSelectedOnClick = false;
+// }
+// function onMouseMove(event) 
+// {	
+// 	shouldClearSelectedOnClick = false;
+// }
+// canvas.addEventListener('touchmove', onMouseMove);
+// canvas.addEventListener('mousemove', onMouseMove);
+// canvas.addEventListener('touchstart', onMouseDown, {passive: true});
+let shouldClearSelectedOnClick = true;
+canvas.onclick = function(event)
+{
+	// if (showMagnify) 
+	// {
+	// 	showMagnify = false;
+	// }
+	// else 
+	// {
+
+	// console.log('onclick', shouldClearSelectedOnClick, Boolean(selectedItem));
+	if (shouldClearSelectedOnClick) 
+	{
+		setSelectedItem(null);
+	}
+
+	shouldClearSelectedOnClick = true;
+	if (isTouchEvent(event)) 
+	{
+		var touchEvent = event;
+		mousePosition = new THREE.Vector2();
+		for (var i = 0; i < touchEvent.touches.length; i++) 
+		{
+			mousePosition.x += touchEvent.touches[i].clientX;
+			mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
+		}
+		mousePosition.x /= touchEvent.touches.length;
+		mousePosition.y /= touchEvent.touches.length;
+	}
+	else 
+	{
+		mousePosition = new THREE.Vector2(event.clientX, event.clientY);
+	}
+	// showMagnify = true;
+	// }
+	render();
+};
 function withoutComposer() 
 {
 	return (debug || mapMap) && !mapoutline;
 }
 function actualRender(forceComputeFeatures) 
 {
-	if (readFeatures && pixelsBuffer) 
+	if (!animating && readFeatures && pixelsBuffer) 
 	{
 		if (forceComputeFeatures) 
 		{
@@ -1331,19 +1581,19 @@ function actualRender(forceComputeFeatures)
 		drawFeatures();
 		// scene.fog = fog;
 	}
-	else 
+	// else 
+	// {
+	applyOnNodes((node) =>
 	{
-		applyOnNodes((node) =>
-		{
 			
-			node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
-			let child = node.objectsHolder.children[0];
-			if (child) 
-			{
-				child.material.uniforms.forViewing.value = debugFeaturePoints;
-			}
-		});
-	}
+		node.objectsHolder.visible = debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
+		let child = node.objectsHolder.children[0];
+		if (child) 
+		{
+			child.material.uniforms.forViewing.value = debugFeaturePoints;
+		}
+	});
+	// }
 
 	if (withoutComposer()) 
 	{
@@ -1392,7 +1642,10 @@ export function render(forceComputeFeatures = false)
 	// {
 	actualRender(forceComputeFeatures);
 	// }
-	stats.end();
+	if (stats) 
+	{
+		stats.end();
+	}
 }
 
 export function setInitialPosition() 
@@ -1403,6 +1656,7 @@ export function setInitialPosition()
 }
 if (datelabel) 
 {
+	setElevation(1000, false);
 	setInitialPosition();
 }
 
@@ -1416,47 +1670,80 @@ export function moveToStartPoint(animated = true)
 	setPosition({lat: 45.19177, lon: 5.72831}, animated);
 }
 
-let needsAnimation = false;
-// Setup the animation loop.
-function animate(time) 
+var requestId;
+
+function animationLoop(time) 
 {
-	if (needsAnimation) 
-	{
-		requestAnimationFrame(animate);
-	}
+	requestId = undefined;
+
 	TWEEN.update(time);
+	startLoop();
 }
 
-function startAnimation(from, to, duration, onUpdate?, onEnd?) 
+function startLoop() 
 {
-	needsAnimation = true;
-	requestAnimationFrame(animate);
+	if (!requestId) 
+	{
+		requestId = window.requestAnimationFrame(animationLoop);
+	}
+}
+
+function stopLoop() 
+{
+	if (requestId) 
+	{
+		window.cancelAnimationFrame(requestId);
+		requestId = undefined;
+	}
+}
+
+function startAnimation({from, to, duration, onUpdate, onEnd, preventComputeFeatures}: {from, to, duration, onUpdate?, onEnd?, preventComputeFeatures?}) 
+{
+	startLoop();
+	animating = preventComputeFeatures;
+	ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
 	new TWEEN.Tween( from )
 		.to( to, duration )
 		.easing( TWEEN.Easing.Quadratic.Out )
 		.onUpdate( onUpdate).onComplete(() => 
 		{
+			animating = false;
 			if (onEnd) 
 			{
 				onEnd();
 			}
-			needsAnimation = false;
+			stopLoop();
+			render(true);
 		}).start();
 }
 
 export function setAzimuth(value: number) 
 {
-	const current = controls.azimuthAngle *180 / Math.PI % 360 * Math.PI / 180;
-	startAnimation({progress: current}, {progress: value * Math.PI / 180}, 200, function( values ) 
+	const current = controls.azimuthAngle * TO_DEG % 360;
+	if (current === value) 
 	{
-		controls.azimuthAngle = values.progress;
-		const delta = clock.getDelta();
-		controls.update(delta);
+		return;
+	}
+	if (Math.abs(value - 360 - current) < Math.abs(value - current)) 
+	{
+		value = value - 360;
+	}
+	startAnimation({
+		from: {progress: current},
+		to: {progress: value},
+		duration: 200,
+		onUpdate: function( values ) 
+		{
+			controls.azimuthAngle = values.progress* TO_RAD;
+			const delta = clock.getDelta();
+			controls.update(delta);
+		}
 	});
 }
 export function setViewingDistance(meters: number) 
 {
 	FAR = meters / currentViewingDistance * FAR;
+	// console.log('setViewingDistance', meters, FAR);
 	camera.far = FAR;
 	camera.updateProjectionMatrix();
 	updateCurrentViewingDistance();
@@ -1478,10 +1765,10 @@ export function setViewingDistance(meters: number)
 
 function getDistance(start, end) 
 {
-	const slat = start.latitude * TO_RAD;
-	const slon = start.longitude * TO_RAD;
-	const elat = end.latitude * TO_RAD;
-	const elon = end.longitude * TO_RAD;
+	const slat = (start.latitude || start.lat) * TO_RAD;
+	const slon = (start.longitude|| start.lon)* TO_RAD;
+	const elat = (end.latitude || end.lat) * TO_RAD;
+	const elon = (end.longitude || end.lon) * TO_RAD;
 	return Math.round(
 		Math.acos(Math.sin(elat) * Math.sin(slat) + Math.cos(elat) * Math.cos(slat) * Math.cos(slon - elon)) * UnitsUtils.EARTH_RADIUS
 	);
@@ -1495,3 +1782,4 @@ function getViewingDistance()
 	const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
 	return getDistance(point1, point2);
 }
+setShowStats(showStats);

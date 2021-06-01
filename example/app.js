@@ -3,6 +3,43 @@
 var webapp = (function (exports) {
     'use strict';
 
+    /*! *****************************************************************************
+    Copyright (c) Microsoft Corporation.
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+    PERFORMANCE OF THIS SOFTWARE.
+    ***************************************************************************** */
+
+    function __rest(s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    }
+
+    function __awaiter(thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    }
+
     /*!
      * camera-controls
      * https://github.com/yomotsu/camera-controls
@@ -92,13 +129,13 @@ var webapp = (function (exports) {
         return value * Infinity;
     }
 
-    function isTouchEvent(event) {
+    function isTouchEvent$1(event) {
         return 'TouchEvent' in window && event instanceof TouchEvent;
     }
 
     function extractClientCoordFromEvent(event, out) {
         out.set(0, 0);
-        if (isTouchEvent(event)) {
+        if (isTouchEvent$1(event)) {
             var touchEvent = event;
             for (var i = 0; i < touchEvent.touches.length; i++) {
                 out.x += touchEvent.touches[i].clientX;
@@ -437,7 +474,7 @@ var webapp = (function (exports) {
                     _this._getClientRect(elementRect_1);
                     dragStartPosition_1.copy(_v2$4);
                     lastDragPosition_1.copy(_v2$4);
-                    var isMultiTouch = isTouchEvent(event) && event.touches.length >= 2;
+                    var isMultiTouch = isTouchEvent$1(event) && event.touches.length >= 2;
                     if (isMultiTouch) {
                         var touchEvent = event;
                         var dx = _v2$4.x - touchEvent.touches[1].clientX;
@@ -51608,166 +51645,6 @@ var webapp = (function (exports) {
         sRGBEncoding: sRGBEncoding
     });
 
-    // import FXAAShaderFrag from './shaders/FXAAShaderFrag.glsl';
-    // import FXAAShaderVert from './shaders/FXAAShaderVert.glsl';
-    class Magnify3d {
-        constructor() {
-            this.size = new Vector2();
-            this.magnifyMaterial = new ShaderMaterial({
-                vertexShader: `
-			void main() {
-				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-			}
-			`,
-                fragmentShader: `
-			#define AA_RANGE 2.0
-			precision mediump float;
-
-			uniform sampler2D zoomedTexture;
-			uniform sampler2D originalTexture;
-			uniform vec2 pos;
-			uniform vec2 resolution;
-			uniform vec2 mag_resolution;
-			uniform float zoom;
-			uniform float exp;
-			uniform float radius;
-			uniform float outlineThickness;
-			uniform vec3 outlineColor;
-
-			void main() {
-				vec2 uv = gl_FragCoord.xy / mag_resolution.xy;
-				vec2 pos_uv = pos.xy / mag_resolution.xy;
-				
-				float dist = distance(gl_FragCoord.xy, pos.xy);
-
-				float z;
-				vec2 p;
-
-				if (dist < radius) {
-					// https://www.wolframalpha.com/input/?i=plot+1.0+-+(pow(x+%2F+r,+e)+*+(1.0+-+(1.0+%2F+(z))))
-					z = 1.0 - (pow(dist / radius, exp) * (1.0 - (1.0 / (zoom))));
-					p = ((uv - pos_uv) / z) + pos_uv;
-					gl_FragColor = vec4(vec3(texture2D(zoomedTexture, p)), 1.0);
-				} else if (dist <= radius + outlineThickness) {
-					float w = outlineThickness / 2.0;
-					float alpha = smoothstep(0.0, AA_RANGE, dist - radius) - smoothstep(outlineThickness - AA_RANGE, outlineThickness, dist - radius);
-					
-					if (dist <= radius + outlineThickness / 2.0) {
-						// Inside outline.
-						gl_FragColor = mix(texture2D(zoomedTexture, uv), vec4(outlineColor, 1.0), alpha);
-					} else {
-						// Outside outline.
-						gl_FragColor = mix(texture2D(originalTexture, gl_FragCoord.xy / resolution.xy), vec4(outlineColor, 1.0), alpha);
-					}
-				} else {
-					gl_FragColor = texture2D(originalTexture, gl_FragCoord.xy / resolution.xy);
-				}
-			}    
-`,
-                uniforms: {
-                    zoomedTexture: { value: new Texture() },
-                    originalTexture: { value: new Texture() },
-                    pos: { value: new Vector2() },
-                    outlineColor: { value: null },
-                    'mag_resolution': { value: null },
-                    resolution: { value: null },
-                    zoom: { value: null },
-                    radius: { value: null },
-                    outlineThickness: { value: null },
-                    exp: { value: null }
-                }
-            });
-            this.magnifyMaterial.transparent = true; // Needed if inputBuffer is undefined.
-            this.magnifyScene = this.createScene(this.magnifyMaterial);
-            this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-            // Size is not really matter here. It gets updated inside `render`.
-            this.zoomTarget = new WebGLRenderTarget(0, 0);
-            // Antialiasing shader
-            // this.fxaaMaterial = new THREE.ShaderMaterial({
-            // 	vertexShader: FXAAShaderVert,
-            // 	fragmentShader: FXAAShaderFrag,
-            // 	uniforms: {
-            // 		'tDiffuse': {type: 't'},
-            // 		'resolution': {type: 'v2'}
-            // 	}
-            // });
-            // this.fxaaMaterial.transparent = true; // Needed if inputBuffer is undefined.
-            // this.fxaaScene = this.createScene(this.fxaaMaterial);
-            // this.fxaaTarget = new THREE.WebGLRenderTarget(0, 0);
-            this.outlineColor = new Color();
-        }
-        createScene(material) {
-            const quad = new Mesh(new PlaneGeometry(2, 2), material);
-            const scene = new Scene();
-            scene.add(quad);
-            return scene;
-        }
-        render({ renderer, rendererOut, renderSceneCB, pos = null, zoom = 3.0, exp = 35.0, radius = 100.0, outlineColor = 0xCCCCCC, outlineThickness = 4.0, antialias = true, inputBuffer = undefined, outputBuffer = null }) {
-            if (!renderer) {
-                console.warn('Magnify-3d: No renderer attached!');
-                return;
-            }
-            if (!pos) {
-                // No pos - Just render original scene.
-                renderSceneCB(outputBuffer);
-                return;
-            }
-            const pixelRatio = renderer.getPixelRatio();
-            pos = { x: pos.x * pixelRatio, y: pos.y * pixelRatio };
-            let { width, height } = renderer.getSize(this.size);
-            width *= pixelRatio;
-            height *= pixelRatio;
-            const maxViewportWidth = renderer.getContext().getParameter(renderer.getContext().MAX_VIEWPORT_DIMS)[0];
-            renderer.getContext().getParameter(renderer.getContext().MAX_VIEWPORT_DIMS)[1];
-            let resWidth = width;
-            let resHeight = height;
-            if (width * zoom > maxViewportWidth) {
-                resWidth = width * (width * zoom / maxViewportWidth);
-                resHeight = height * (width * zoom / maxViewportWidth);
-            }
-            // Set shader uniforms.
-            this.magnifyMaterial.uniforms['zoomedTexture'].value = this.zoomTarget.texture;
-            this.magnifyMaterial.uniforms['originalTexture'].value = inputBuffer && inputBuffer.texture || inputBuffer;
-            this.magnifyMaterial.uniforms['pos'].value = pos;
-            this.magnifyMaterial.uniforms['outlineColor'].value = this.outlineColor.set(outlineColor);
-            this.magnifyMaterial.uniforms['mag_resolution'].value = { x: resWidth, y: resHeight };
-            this.magnifyMaterial.uniforms['resolution'].value = { x: width, y: height };
-            this.magnifyMaterial.uniforms['zoom'].value = zoom;
-            this.magnifyMaterial.uniforms['radius'].value = radius * pixelRatio;
-            this.magnifyMaterial.uniforms['outlineThickness'].value = outlineThickness * pixelRatio;
-            this.magnifyMaterial.uniforms['exp'].value = exp;
-            // Make viewport centered according to pos.
-            const zoomedViewport = [
-                -pos.x * (zoom - 1) * width / resWidth,
-                -pos.y * (zoom - 1) * height / resHeight,
-                width * width / resWidth * zoom,
-                height * height / resHeight * zoom
-            ];
-            this.zoomTarget.width = width;
-            this.zoomTarget.height = height;
-            this.zoomTarget.viewport.set(...zoomedViewport);
-            const autoClearBackup = renderer.autoClear;
-            renderer.autoClear = true; // Make sure autoClear is set.
-            renderSceneCB(this.zoomTarget);
-            // if (antialias) 
-            // {
-            // 	this.fxaaMaterial.uniforms['tDiffuse'].value = this.fxaaTarget.texture;
-            // 	this.fxaaMaterial.uniforms['resolution'].value = {x: 1 / width, y: 1 / height};
-            // 	this.fxaaTarget.setSize(width, height);
-            // 	renderer.setRenderTarget(this.fxaaTarget);
-            // 	renderer.render(this.magnifyScene, this.camera); // Render magnify pass to fxaaTarget.
-            // 	renderer.setRenderTarget(null);
-            // 	renderer.render(this.fxaaScene, this.camera); // Render final pass to output buffer.
-            // }
-            // else 
-            // {
-            renderer.setRenderTarget(null);
-            (rendererOut || renderer).render(this.magnifyScene, this.camera); // Render magnify pass to outputBuffer.
-            // }
-            renderer.autoClear = autoClearBackup;
-        }
-    }
-
     /**
      * W3C Device Orientation control (http://w3c.github.io/deviceorientation/spec-source-orientation.html)
      */
@@ -58771,31 +58648,6 @@ var webapp = (function (exports) {
      */
     UnitsUtils.EARTH_ORIGIN = UnitsUtils.EARTH_PERIMETER / 2.0;
 
-    /*! *****************************************************************************
-    Copyright (c) Microsoft Corporation.
-
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted.
-
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-    REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-    AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-    INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-    LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-    PERFORMANCE OF THIS SOFTWARE.
-    ***************************************************************************** */
-
-    function __awaiter(thisArg, _arguments, P, generator) {
-        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-        return new (P || (P = Promise))(function (resolve, reject) {
-            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-            step((generator = generator.apply(thisArg, _arguments || [])).next());
-        });
-    }
-
     var d2r = Math.PI / 180,
         r2d = 180 / Math.PI;
 
@@ -60608,8 +60460,8 @@ var webapp = (function (exports) {
         static getGeometry(level) {
             let size = MaterialHeightShader.GEOMETRY_SIZE;
             if (level < 11) {
-                // size /= Math.pow(2, 11 - level);
-                size /= 11 - level;
+                size /= Math.pow(2, Math.floor((11 - level) / 2));
+                // size /= 11 - level;
                 size = Math.max(16, size);
             }
             else if (level > 11) {
@@ -60917,6 +60769,7 @@ var webapp = (function (exports) {
 								attribute vec4 color;
 								uniform float exageration;
 								uniform bool forViewing;
+								uniform float far;
 								varying float depth;
 								varying vec4 vColor;
 								// varying vec3 vClipPosition;
@@ -60924,16 +60777,16 @@ var webapp = (function (exports) {
 									float exagerated  = elevation * exageration;
 									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
 									// #include <fog_vertex>
+									gl_Position = projectionMatrix * mvPosition;
 									if (forViewing) {
-										gl_PointSize = 10.0;
+										gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
 										vColor = vec4(0.0, 0.0, 1.0, 1);
 									} else {
+										// gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+										gl_PointSize = gl_Position.z/ far * 2.0;
 										vColor = color;
 									}
-									//  gl_PointSize =  floor(elevation / 1000.0);
-									//  gl_PointSize = gl_Position.z + floor(exagerated / 1000.0)* 1.0;
-									gl_Position = projectionMatrix * mvPosition;
-									gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
+									//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
 									depth = gl_Position.z;
 								}
 												`,
@@ -60966,7 +60819,7 @@ var webapp = (function (exports) {
                                 this.objectsHolder.add(mesh);
                             }
                         }
-                        render();
+                        render(true);
                     });
                 }
             });
@@ -65113,10 +64966,12 @@ var webapp = (function (exports) {
         }
     }
 
-    /* eslint-disable @typescript-eslint/no-unused-expressions */
     // @ts-ignore
     window.THREE = THREE;
     const TO_RAD = Math.PI / 180;
+    const PI_DIV4 = Math.PI / 4;
+    const PI_X2 = Math.PI * 2;
+    const TO_DEG = 180 / Math.PI;
     function getURLParameter(name) {
         return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
     }
@@ -65161,9 +65016,6 @@ var webapp = (function (exports) {
     }
     CameraControls.install({ THREE: THREE });
     // @ts-ignore
-    const stats = new Stats();
-    stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-    document.body.appendChild(stats.dom);
     function throttle(callback, limit) {
         var waiting = false; // Initially, we're not waiting
         return function () {
@@ -65190,6 +65042,7 @@ var webapp = (function (exports) {
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
     exports.debug = false;
+    exports.showStats = false;
     exports.mapMap = false;
     exports.drawTexture = true;
     exports.computeNormals = false;
@@ -65212,20 +65065,66 @@ var webapp = (function (exports) {
     // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
     exports.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
     exports.currentViewingDistance = 0;
-    exports.FAR = 200000;
+    exports.FAR = 173000;
     const TEXT_HEIGHT = 180;
     let currentPosition;
-    let elevation = 1000;
+    let elevation = -1;
     const clock = new Clock();
+    let selectedItem = null;
     let map;
-    // updSunPos(45.16667, 5.71667);
     const EPS = 1e-5;
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     let pixelsBuffer;
     const AA = devicePixelRatio <= 1;
     let showingCamera = false;
     // let showMagnify = false;
-    // let mousePosition = new THREE.Vector2();
+    let mousePosition = null;
+    let animating = false;
+    // Setup the animation loop.
+    let stats;
+    const canvas = document.getElementById('canvas');
+    const canvas3 = document.getElementById('canvas3');
+    const canvas4 = document.getElementById('canvas4');
+    const video = document.getElementById('video');
+    const ctx2d = canvas4.getContext('2d');
+    const renderer = new WebGLRenderer({
+        canvas: canvas,
+        // logarithmicDepthBuffer: true,
+        antialias: AA,
+        alpha: true,
+        powerPreference: 'high-performance',
+        stencil: false
+        // depth: false
+        // precision: isMobile ? 'mediump' : 'highp'
+    });
+    // const magnify3d = new Magnify3d();
+    // const magnify3dTarget = new THREE.WebGLRenderTarget(0, 0); 
+    renderer.setClearColor(0x000000, 0);
+    const rendereroff = new WebGLRenderer({
+        canvas: canvas3,
+        antialias: false,
+        alpha: false,
+        powerPreference: 'high-performance',
+        stencil: false
+        // precision: isMobile ? 'mediump' : 'highp'
+    });
+    // const rendererMagnify = new THREE.WebGLRenderer({
+    // 	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
+    // 	// logarithmicDepthBuffer: true,
+    // 	antialias: AA,
+    // 	alpha: true,
+    // 	powerPreference: 'high-performance',
+    // 	stencil: false,
+    // 	depth: false
+    // 	// precision: isMobile ? 'mediump' : 'highp'
+    // });
+    const pointBufferTarget = new WebGLRenderTarget(0, 0);
+    pointBufferTarget.texture.minFilter = NearestFilter;
+    pointBufferTarget.texture.magFilter = NearestFilter;
+    pointBufferTarget.texture.generateMipmaps = false;
+    pointBufferTarget.stencilBuffer = false;
+    // pointBufferTarget.texture.format = THREE.RGBFormat;
+    const composer = new postprocessing.exports.EffectComposer(renderer);
     function shouldComputeNormals() {
         return exports.drawNormals || (exports.debug || exports.mapMap) && (exports.computeNormals || exports.dayNightCycle);
     }
@@ -65248,48 +65147,6 @@ var webapp = (function (exports) {
             });
         }
     }
-    const canvas = document.getElementById('canvas');
-    const canvas3 = document.getElementById('canvas3');
-    const canvas4 = document.getElementById('canvas4');
-    const video = document.getElementById('video');
-    const ctx2d = canvas4.getContext('2d');
-    const renderer = new WebGLRenderer({
-        canvas: canvas,
-        // logarithmicDepthBuffer: true,
-        antialias: AA,
-        alpha: true,
-        powerPreference: 'high-performance',
-        stencil: false
-        // depth: false
-        // precision: isMobile ? 'mediump' : 'highp'
-    });
-    new Magnify3d();
-    const magnify3dTarget = new WebGLRenderTarget(0, 0);
-    renderer.setClearColor(0x000000, 0);
-    const rendereroff = new WebGLRenderer({
-        canvas: canvas3,
-        antialias: false,
-        alpha: false,
-        powerPreference: 'high-performance',
-        stencil: false
-        // precision: isMobile ? 'mediump' : 'highp'
-    });
-    const rendererMagnify = new WebGLRenderer({
-        canvas: document.getElementById('canvas5'),
-        // logarithmicDepthBuffer: true,
-        antialias: AA,
-        alpha: true,
-        powerPreference: 'high-performance',
-        stencil: false,
-        depth: false
-        // precision: isMobile ? 'mediump' : 'highp'
-    });
-    const pointBufferTarget = new WebGLRenderTarget(0, 0);
-    pointBufferTarget.texture.minFilter = NearestFilter;
-    pointBufferTarget.texture.magFilter = NearestFilter;
-    pointBufferTarget.texture.generateMipmaps = false;
-    pointBufferTarget.stencilBuffer = false;
-    // pointBufferTarget.texture.format = THREE.RGBFormat;
     function createSky() {
         // Add Sky
         const sky = new Sky();
@@ -65413,6 +65270,25 @@ var webapp = (function (exports) {
     function toggleMapMode() {
         setMapMode(!exports.mapMap);
     }
+    function setPredefinedMapMode(value) {
+        exports.mapMap = value;
+        exports.mapoutline = value;
+        sky.visible = sunLight.visible = shouldRenderSky();
+        ambientLight.visible = needsLights();
+        setupLOD();
+        if (map) {
+            map.provider = createProvider();
+            applyOnNodes((node) => {
+                node.isTextureReady = false;
+                node.material.userData.computeNormals.value = shouldComputeNormals();
+                node.material.userData.drawTexture.value = (exports.debug || exports.mapMap) && exports.drawTexture;
+            });
+            onControlUpdate();
+        }
+    }
+    function togglePredefinedMapMode() {
+        setPredefinedMapMode(!exports.mapMap);
+    }
     function setDrawTexture(value) {
         exports.drawTexture = value;
         if (map) {
@@ -65443,7 +65319,6 @@ var webapp = (function (exports) {
         sky.visible = shouldRenderSky();
         sunLight.visible = shouldRenderSky() || exports.computeNormals;
         ambientLight.intensity = exports.computeNormals || exports.dayNightCycle ? 0.1875 : 1;
-        console.log('setComputeNormals2', value, shouldComputeNormals());
         if (map) {
             applyOnNodes((node) => {
                 node.material.userData.computeNormals.value = shouldComputeNormals();
@@ -65459,7 +65334,6 @@ var webapp = (function (exports) {
         sky.visible = shouldRenderSky();
         sunLight.visible = shouldRenderSky() || exports.computeNormals;
         ambientLight.intensity = exports.computeNormals || exports.dayNightCycle ? 0.1875 : 1;
-        console.log('setDayNightCycle', exports.dayNightCycle, shouldComputeNormals());
         if (map) {
             applyOnNodes((node) => {
                 node.material.userData.computeNormals.value = shouldComputeNormals();
@@ -65477,6 +65351,28 @@ var webapp = (function (exports) {
     }
     function toggleDebugGPUPicking() {
         setDebugGPUPicking(!debugGPUPicking);
+    }
+    function setShowStats(value) {
+        exports.showStats = value;
+        if (value) {
+            if (!stats) {
+                stats = new Stats();
+                stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+                document.body.appendChild(stats.dom);
+            }
+            else {
+                document.body.appendChild(stats.dom);
+            }
+        }
+        else {
+            if (stats) {
+                document.body.removeChild(stats.dom);
+            }
+        }
+        render();
+    }
+    function toggleShowStats() {
+        setShowStats(!exports.showStats);
     }
     function setReadFeatures(value) {
         readFeatures = value;
@@ -65499,7 +65395,7 @@ var webapp = (function (exports) {
         if (map) {
             applyOnNodes((node) => {
                 // node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
-                node.objectsHolder.visible = node.isMesh && exports.debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+                node.objectsHolder.visible = exports.debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
                 let child = node.objectsHolder.children[0];
                 if (child) {
                     child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
@@ -65559,7 +65455,7 @@ var webapp = (function (exports) {
             startCam();
         }
     }
-    let datelabel, viewingDistanceLabel, compass;
+    let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel;
     try {
         compass = document.querySelector('#compass img');
         document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
@@ -65627,6 +65523,9 @@ var webapp = (function (exports) {
         const normalsInDebugCheckbox = document.getElementById('normalsInDebug');
         normalsInDebugCheckbox.onchange = (event) => { return toggleNormalsInDebug(); };
         normalsInDebugCheckbox.value = exports.drawNormals;
+        selectedPeakLabel = document.getElementById('selectedPeakLabel');
+        elevationLabel = document.getElementById('elevationLabel');
+        selectedPeakDiv = document.getElementById('selectedPeak');
     }
     catch (err) { }
     const heightProvider = new LocalHeightProvider(devLocal);
@@ -65642,13 +65541,13 @@ var webapp = (function (exports) {
         if (window['nsWebViewBridge']) {
             window['nsWebViewBridge'].emit('controls', {
                 // distance: controls.distance,
-                azim: controls.azimuthAngle * 180 / Math.PI
+                azim: controls.azimuthAngle * TO_DEG
             });
         }
         render();
     }
     function setupLOD() {
-        heightProvider.maxOverZoom = exports.debug || exports.mapMap ? 2 : devLocal ? 1 : 0;
+        // heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
         lod.subdivideDistance = 40;
         lod.simplifyDistance = 140;
     }
@@ -65667,7 +65566,7 @@ var webapp = (function (exports) {
         }
         provider.minZoom = 5;
         provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-        provider.zoomDelta = 1;
+        // provider.zoomDelta = 1 ;
         provider.minLevelForZoomDelta = 12;
         return provider;
     }
@@ -65737,36 +65636,95 @@ var webapp = (function (exports) {
             viewingDistanceLabel.innerText = Math.round(exports.currentViewingDistance / 1000) + 'km';
         }
     }
+    function getRhumbLineBearing(originLL, destLL) {
+        // difference of longitude coords
+        let diffLon = destLL.lon * TO_RAD - originLL.lon * TO_RAD;
+        // difference latitude coords phi
+        const diffPhi = Math.log(Math.tan(destLL.lat * TO_RAD / 2 + PI_DIV4) / Math.tan(originLL.lat * TO_RAD / 2 + PI_DIV4));
+        // recalculate diffLon if it is greater than pi
+        if (Math.abs(diffLon) > Math.PI) {
+            if (diffLon > 0) {
+                diffLon = (PI_X2 - diffLon) * -1;
+            }
+            else {
+                diffLon = PI_X2 + diffLon;
+            }
+        }
+        // return the angle, normalized
+        return (Math.atan2(diffLon, diffPhi) * TO_DEG + 360) % 360;
+    }
     function setPosition(coords, animated = false) {
         const newPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
         // axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
+        const currentCoords = { lat: sunLight.coordinates.x, lon: sunLight.coordinates.y };
         sunLight.setPosition(coords.lat, coords.lon);
         sunLight.setDate(new Date());
         updateSky();
-        if (coords.altitude) {
-            elevation = coords.altitude;
-        }
         if (animated) {
-            startAnimation(currentPosition, newPosition, 500, (newPos) => {
-                currentPosition = newPos;
-                controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y, false);
-                controls.update(clock.getDelta());
-            }, () => {
-                updateCurrentViewingDistance();
+            const distance = getDistance(currentCoords, coords);
+            const startAimingAngle = controls.azimuthAngle * TO_DEG % 360;
+            let topAimingAngle = -getRhumbLineBearing(currentCoords, coords);
+            // if (Math.abs(topAimingAngle - 360 -startAimingAngle ) < Math.abs(topAimingAngle-startAimingAngle )) 
+            // {
+            // 	topAimingAngle -= 360;
+            // }
+            const startElevation = elevation * exports.exageration;
+            let endElevation = startElevation;
+            if (coords.altitude) {
+                endElevation = coords.altitude * exports.exageration;
+            }
+            const topElevation = (distance > 100000 ? 11000 : endElevation + 100) * exports.exageration;
+            startAnimation({
+                from: Object.assign(Object.assign({}, currentPosition), { progress: 0 }),
+                to: Object.assign(Object.assign({}, newPosition), { progress: 1 }),
+                duration: Math.min(distance / 20, 3000),
+                preventComputeFeatures: true,
+                onUpdate: (value) => {
+                    const { progress } = value, newPos = __rest(value, ["progress"]);
+                    currentPosition = newPos;
+                    if (progress <= 0.2) {
+                        const cProgress = 5 * progress;
+                        controls.azimuthAngle = (startAimingAngle + cProgress * (topAimingAngle - startAimingAngle)) * TO_RAD;
+                    }
+                    if (progress <= 0.5) {
+                        const cProgress = 2 * progress;
+                        controls.moveTo(currentPosition.x, startElevation + cProgress * (topElevation - startElevation), -currentPosition.y, false);
+                    }
+                    else {
+                        const cProgress = (progress - 0.5) * 2;
+                        controls.moveTo(currentPosition.x, topElevation + cProgress * (endElevation - topElevation), -currentPosition.y, false);
+                    }
+                    controls.update(clock.getDelta());
+                },
+                onEnd: () => {
+                    setElevation(Math.round(endElevation / exports.exageration), false);
+                    updateCurrentViewingDistance();
+                }
             });
         }
         else {
+            if (coords.altitude) {
+                setElevation(coords.altitude, false);
+            }
             currentPosition = newPosition;
             controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y, false);
             controls.update(clock.getDelta());
             updateCurrentViewingDistance();
         }
     }
-    function setElevation(newValue) {
+    function setElevation(newValue, updateControls = true) {
+        if (elevation === newValue) {
+            return;
+        }
         elevation = newValue;
-        controls.getTarget(tempVector);
-        controls.moveTo(tempVector.x, elevation * exports.exageration, tempVector.z);
-        controls.update(clock.getDelta());
+        if (elevationLabel) {
+            elevationLabel.innerText = newValue + 'm';
+        }
+        if (updateControls) {
+            controls.getTarget(tempVector);
+            controls.moveTo(tempVector.x, elevation * exports.exageration, tempVector.z);
+            controls.update(clock.getDelta());
+        }
     }
     function setExageration(newValue) {
         exports.exageration = newValue;
@@ -65791,7 +65749,6 @@ var webapp = (function (exports) {
         render();
     }
     function setDate(secondsInDay) {
-        console.log('setDate', secondsInDay);
         let date = new Date();
         const hours = Math.floor(secondsInDay / 3600);
         const minutes = Math.floor((secondsInDay - hours * 3600) / 60);
@@ -65809,11 +65766,14 @@ var webapp = (function (exports) {
     controls.addEventListener('update', () => {
         onControlUpdate();
     });
-    controls.addEventListener('control', () => {
+    controls.addEventListener('control', (event) => {
+        // console.log(event);
+        if (event.originalEvent.buttons) {
+            shouldClearSelectedOnClick = false;
+        }
         const delta = clock.getDelta();
         controls.update(delta);
     });
-    const composer = new postprocessing.exports.EffectComposer(renderer);
     composer.addPass(new postprocessing.exports.RenderPass(scene, camera));
     const outlineEffect = new CustomOutlineEffect();
     const pass = new postprocessing.exports.EffectPass(camera, outlineEffect);
@@ -65830,7 +65790,6 @@ var webapp = (function (exports) {
             node.material.userData.drawBlack.value = true;
             node.material.userData.computeNormals.value = false;
             node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
-            // node.objectsHolder.visible = node.isMesh;
             let child = node.objectsHolder.children[0];
             if (child) {
                 child.material.uniforms.forViewing.value = false;
@@ -65866,11 +65825,11 @@ var webapp = (function (exports) {
         let offWidth;
         let offHeight;
         if (scale > 1) {
-            offWidth = 200;
+            offWidth = Math.max(Math.floor(width / 100) * 100 / 4, 200);
             offHeight = Math.round(offWidth / scale);
         }
         else {
-            offHeight = 200;
+            offHeight = Math.max(Math.floor(height / 100) * 100 / 4, 200);
             offWidth = Math.round(offHeight * scale);
         }
         minYPx = TEXT_HEIGHT / height * offHeight;
@@ -65878,10 +65837,10 @@ var webapp = (function (exports) {
         canvas4.height = Math.floor(height * devicePixelRatio);
         const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
         renderer.setSize(width, height);
-        rendererMagnify.setSize(width, height);
+        // rendererMagnify.setSize(width, height);
         renderer.setPixelRatio(rendererScaleRatio);
-        rendererMagnify.setPixelRatio(rendererScaleRatio);
-        magnify3dTarget.setSize(width * devicePixelRatio, height * devicePixelRatio);
+        // rendererMagnify.setPixelRatio(rendererScaleRatio);
+        // magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
         pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
         rendereroff.setSize(offWidth, offHeight);
         rendereroff.setPixelRatio(1);
@@ -65939,6 +65898,47 @@ var webapp = (function (exports) {
         ctx.arcTo(x, y, x + w, y, r);
         ctx.closePath();
     }
+    function truncate(str, maxlength) {
+        return str.length > maxlength ?
+            str.slice(0, maxlength - 1) + '…' : str;
+    }
+    function updateSelectedPeakLabel() {
+        const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
+        const point2 = { lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele };
+        const distance = getDistance(point1, point2);
+        selectedPeakLabel.innerText = selectedItem.properties.name + ' ' + selectedItem.properties.ele + 'm(' + Math.round(distance / 100) / 10 + 'km)';
+    }
+    function setSelectedItem(f) {
+        selectedItem = f;
+        if (window['nsWebViewBridge']) {
+            window['nsWebViewBridge'].emit('selected', f);
+        }
+        else if (selectedPeakLabel) {
+            if (selectedItem) {
+                updateSelectedPeakLabel();
+            }
+            else {
+                selectedPeakLabel.innerText = null;
+            }
+            selectedPeakDiv.style.visibility = selectedItem ? 'visible' : 'hidden';
+        }
+    }
+    function goToSelectedItem() {
+        if (selectedItem) {
+            const point2 = { lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele };
+            setSelectedItem(null);
+            setPosition(point2, true);
+        }
+    }
+    function focusSelectedItem() {
+        if (selectedItem) {
+            controls.getPosition(tempVector);
+            const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+            const point2 = { lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0] };
+            const angle = 360 - getRhumbLineBearing({ lat: point1.latitude, lon: point1.longitude }, point2);
+            setAzimuth(angle);
+        }
+    }
     function drawFeatures() {
         if (!drawLines) {
             return;
@@ -65960,9 +65960,15 @@ var webapp = (function (exports) {
                 lastFeature = f;
             }
             else if (f.x - lastFeature.x <= minDistance) {
-                deltaY = f.properties.ele - lastFeature.properties.ele;
-                if (deltaY > 0) {
+                if (selectedItem && lastFeature.geometry.coordinates === selectedItem.geometry.coordinates) {
+                    featuresToDraw.push(lastFeature);
                     lastFeature = f;
+                }
+                else {
+                    deltaY = f.properties.ele - lastFeature.properties.ele;
+                    if (deltaY > 0) {
+                        lastFeature = f;
+                    }
                 }
             }
             else {
@@ -65977,6 +65983,8 @@ var webapp = (function (exports) {
         ctx2d.save();
         ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
         ctx2d.scale(devicePixelRatio, devicePixelRatio);
+        const rectTop = -12;
+        const rectBottom = 17;
         for (let index = 0; index < toShow; index++) {
             const f = featuresToDraw[index];
             if (f.y < TEXT_HEIGHT || f.z >= exports.FAR || f.z / f.properties.ele > exports.FAR / 3000) {
@@ -65994,7 +66002,7 @@ var webapp = (function (exports) {
             ctx2d.translate(f.x, TEXT_HEIGHT);
             ctx2d.rotate(-Math.PI / 4);
             ctx2d.font = '14px Noto Sans';
-            const text = f.properties.name;
+            const text = truncate(f.properties.name, 28);
             const textWidth = ctx2d.measureText(text).width;
             let totalWidth = textWidth + 10;
             let text2;
@@ -66003,8 +66011,25 @@ var webapp = (function (exports) {
                 const textWidth2 = ctx2d.measureText(text2).width;
                 totalWidth += textWidth2 - 5;
             }
-            ctx2d.fillStyle = color + 'cc';
-            roundRect(ctx2d, 0, -12, totalWidth, 17, 8);
+            if (mousePosition && (!selectedItem || !shouldClearSelectedOnClick)) {
+                const transform = ctx2d.getTransform().inverse();
+                var point = new DOMPoint(mousePosition.x * devicePixelRatio, mousePosition.y * devicePixelRatio);
+                const test = point.matrixTransform(transform);
+                if (test.x >= 0 && test.x < totalWidth &&
+                    test.y < -rectTop && test.y >= -rectBottom) {
+                    setSelectedItem(f);
+                    mousePosition = null;
+                }
+            }
+            if (selectedItem && f.geometry.coordinates === selectedItem.geometry.coordinates) {
+                ctx2d.font = 'bold 14px Noto Sans';
+                totalWidth *= 1.1;
+                ctx2d.fillStyle = color + 'aa';
+            }
+            else {
+                ctx2d.fillStyle = color + 'cc';
+            }
+            roundRect(ctx2d, 0, rectTop, totalWidth, rectBottom, 8);
             ctx2d.fill();
             ctx2d.fillStyle = textColor;
             ctx2d.fillText(text, 5, 0);
@@ -66022,6 +66047,7 @@ var webapp = (function (exports) {
         rendereroff.readRenderTargetPixels(pointBufferTarget, 0, 0, width, height, pixelsBuffer);
         const readColors = [];
         const rFeatures = [];
+        let needsSelectedItem = Boolean(selectedItem);
         let lastColor;
         function handleLastColor(index) {
             if (readColors.indexOf(lastColor) === -1) {
@@ -66029,6 +66055,9 @@ var webapp = (function (exports) {
                 const feature = featuresByColor[lastColor];
                 if (feature) {
                     rFeatures.push(feature);
+                    if (needsSelectedItem && feature.geometry.coordinates === selectedItem.geometry.coordinates) {
+                        needsSelectedItem = false;
+                    }
                 }
             }
         }
@@ -66058,43 +66087,60 @@ var webapp = (function (exports) {
             lastColor = null;
             // lastColorNb = 0;
         }
+        if (needsSelectedItem) {
+            rFeatures.push(selectedItem);
+        }
         featuresToShow = rFeatures;
     }
-    // window.addEventListener('mousedown', onMouseDown);
-    // window.addEventListener('touchstart', onMouseDown, {passive: true});
-    // canvas.onclick = function(event)
-    // {
-    // 	if (showMagnify) 
-    // 	{
-    // 		showMagnify = false;
-    // 	}
-    // 	else 
-    // 	{
-    // 		if (isTouchEvent(event)) 
-    // 		{
-    // 			var touchEvent = event;
-    // 			for (var i = 0; i < touchEvent.touches.length; i++) 
-    // 			{
-    // 				mousePosition.x += touchEvent.touches[i].clientX;
-    // 				mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
-    // 			}
-    // 			mousePosition.x /= touchEvent.touches.length;
-    // 			mousePosition.y /= touchEvent.touches.length;
-    // 		}
-    // 		else 
-    // 		{
-    // 			mousePosition.set(event.clientX, window.innerHeight - event.clientY);
-    // 		}
-    // 		showMagnify = true;
-    // 	}
-    // 	console.log('onMouseDown', showMagnify, mousePosition);
-    // 	render();
-    // };
+    function isTouchEvent(event) {
+        return 'TouchEvent' in window && event instanceof TouchEvent;
+    }
+    // function onMouseMove(event) 
+    // {	
+    // 	shouldClearSelectedOnClick = false;
+    // }
+    // function onMouseMove(event) 
+    // {	
+    // 	shouldClearSelectedOnClick = false;
+    // }
+    // canvas.addEventListener('touchmove', onMouseMove);
+    // canvas.addEventListener('mousemove', onMouseMove);
+    // canvas.addEventListener('touchstart', onMouseDown, {passive: true});
+    let shouldClearSelectedOnClick = true;
+    canvas.onclick = function (event) {
+        // if (showMagnify) 
+        // {
+        // 	showMagnify = false;
+        // }
+        // else 
+        // {
+        // console.log('onclick', shouldClearSelectedOnClick, Boolean(selectedItem));
+        if (shouldClearSelectedOnClick) {
+            setSelectedItem(null);
+        }
+        shouldClearSelectedOnClick = true;
+        if (isTouchEvent(event)) {
+            var touchEvent = event;
+            mousePosition = new Vector2();
+            for (var i = 0; i < touchEvent.touches.length; i++) {
+                mousePosition.x += touchEvent.touches[i].clientX;
+                mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
+            }
+            mousePosition.x /= touchEvent.touches.length;
+            mousePosition.y /= touchEvent.touches.length;
+        }
+        else {
+            mousePosition = new Vector2(event.clientX, event.clientY);
+        }
+        // showMagnify = true;
+        // }
+        render();
+    };
     function withoutComposer() {
         return (exports.debug || exports.mapMap) && !exports.mapoutline;
     }
     function actualRender(forceComputeFeatures) {
-        if (readFeatures && pixelsBuffer) {
+        if (!animating && readFeatures && pixelsBuffer) {
             if (forceComputeFeatures) {
                 actualComputeFeatures();
             }
@@ -66104,15 +66150,16 @@ var webapp = (function (exports) {
             drawFeatures();
             // scene.fog = fog;
         }
-        else {
-            applyOnNodes((node) => {
-                node.objectsHolder.visible = node.isMesh && exports.debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
-                let child = node.objectsHolder.children[0];
-                if (child) {
-                    child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
-                }
-            });
-        }
+        // else 
+        // {
+        applyOnNodes((node) => {
+            node.objectsHolder.visible = exports.debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
+            let child = node.objectsHolder.children[0];
+            if (child) {
+                child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+            }
+        });
+        // }
         if (withoutComposer()) {
             renderer.render(scene, camera);
         }
@@ -66154,7 +66201,9 @@ var webapp = (function (exports) {
         // {
         actualRender(forceComputeFeatures);
         // }
-        stats.end();
+        if (stats) {
+            stats.end();
+        }
     }
     function setInitialPosition() {
         moveToStartPoint(false);
@@ -66162,6 +66211,7 @@ var webapp = (function (exports) {
         // setElevation(100);
     }
     if (datelabel) {
+        setElevation(1000, false);
         setInitialPosition();
     }
     function moveToEndPoint(animated = true) {
@@ -66170,37 +66220,61 @@ var webapp = (function (exports) {
     function moveToStartPoint(animated = true) {
         setPosition({ lat: 45.19177, lon: 5.72831 }, animated);
     }
-    let needsAnimation = false;
-    // Setup the animation loop.
-    function animate(time) {
-        if (needsAnimation) {
-            requestAnimationFrame(animate);
-        }
+    var requestId;
+    function animationLoop(time) {
+        requestId = undefined;
         exports$1.update(time);
+        startLoop();
     }
-    function startAnimation(from, to, duration, onUpdate, onEnd) {
-        needsAnimation = true;
-        requestAnimationFrame(animate);
+    function startLoop() {
+        if (!requestId) {
+            requestId = window.requestAnimationFrame(animationLoop);
+        }
+    }
+    function stopLoop() {
+        if (requestId) {
+            window.cancelAnimationFrame(requestId);
+            requestId = undefined;
+        }
+    }
+    function startAnimation({ from, to, duration, onUpdate, onEnd, preventComputeFeatures }) {
+        startLoop();
+        animating = preventComputeFeatures;
+        ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
         new exports$1.Tween(from)
             .to(to, duration)
             .easing(exports$1.Easing.Quadratic.Out)
             .onUpdate(onUpdate).onComplete(() => {
+            animating = false;
             if (onEnd) {
                 onEnd();
             }
-            needsAnimation = false;
+            stopLoop();
+            render(true);
         }).start();
     }
     function setAzimuth(value) {
-        const current = controls.azimuthAngle * 180 / Math.PI % 360 * Math.PI / 180;
-        startAnimation({ progress: current }, { progress: value * Math.PI / 180 }, 200, function (values) {
-            controls.azimuthAngle = values.progress;
-            const delta = clock.getDelta();
-            controls.update(delta);
+        const current = controls.azimuthAngle * TO_DEG % 360;
+        if (current === value) {
+            return;
+        }
+        if (Math.abs(value - 360 - current) < Math.abs(value - current)) {
+            value = value - 360;
+        }
+        startAnimation({
+            from: { progress: current },
+            to: { progress: value },
+            duration: 200,
+            onUpdate: function (values) {
+                controls.azimuthAngle = values.progress * TO_RAD;
+                const delta = clock.getDelta();
+                controls.update(delta);
+            }
         });
     }
     function setViewingDistance(meters) {
         exports.FAR = meters / exports.currentViewingDistance * exports.FAR;
+        // console.log('setViewingDistance', meters, FAR);
         camera.far = exports.FAR;
         camera.updateProjectionMatrix();
         updateCurrentViewingDistance();
@@ -66215,10 +66289,10 @@ var webapp = (function (exports) {
         render(true);
     }
     function getDistance(start, end) {
-        const slat = start.latitude * TO_RAD;
-        const slon = start.longitude * TO_RAD;
-        const elat = end.latitude * TO_RAD;
-        const elon = end.longitude * TO_RAD;
+        const slat = (start.latitude || start.lat) * TO_RAD;
+        const slon = (start.longitude || start.lon) * TO_RAD;
+        const elat = (end.latitude || end.lat) * TO_RAD;
+        const elon = (end.longitude || end.lon) * TO_RAD;
         return Math.round(Math.acos(Math.sin(elat) * Math.sin(slat) + Math.cos(elat) * Math.cos(slat) * Math.cos(slon - elon)) * UnitsUtils.EARTH_RADIUS);
     }
     function getViewingDistance() {
@@ -66228,8 +66302,11 @@ var webapp = (function (exports) {
         const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
         return getDistance(point1, point2);
     }
+    setShowStats(exports.showStats);
 
     exports.featuresByColor = featuresByColor;
+    exports.focusSelectedItem = focusSelectedItem;
+    exports.goToSelectedItem = goToSelectedItem;
     exports.moveToEndPoint = moveToEndPoint;
     exports.moveToStartPoint = moveToStartPoint;
     exports.needsLights = needsLights;
@@ -66254,7 +66331,9 @@ var webapp = (function (exports) {
     exports.setMapOultine = setMapOultine;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
+    exports.setPredefinedMapMode = setPredefinedMapMode;
     exports.setReadFeatures = setReadFeatures;
+    exports.setShowStats = setShowStats;
     exports.setTerrarium = setTerrarium;
     exports.setViewingDistance = setViewingDistance;
     exports.setWireFrame = setWireFrame;
@@ -66275,7 +66354,9 @@ var webapp = (function (exports) {
     exports.toggleMapMode = toggleMapMode;
     exports.toggleMapOultine = toggleMapOultine;
     exports.toggleNormalsInDebug = toggleNormalsInDebug;
+    exports.togglePredefinedMapMode = togglePredefinedMapMode;
     exports.toggleReadFeatures = toggleReadFeatures;
+    exports.toggleShowStats = toggleShowStats;
     exports.toggleWireFrame = toggleWireFrame;
 
     return exports;

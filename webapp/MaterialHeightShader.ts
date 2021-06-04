@@ -3,7 +3,7 @@ import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, LOD} from './app';
 
 import {tileToBBOX} from '@mapbox/tilebelt';
 import {MapView} from '../source/MapView';
@@ -44,7 +44,7 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public static getGeometry(level: number): MapNodeGeometry
 	{
-		let size = MaterialHeightShader.GEOMETRY_SIZE;
+		let size = LOD;
 		if (level < 11) 
 		{
 			size /= Math.pow(2, Math.floor((11 - level)/2));
@@ -92,7 +92,7 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public static prepareMaterial(material: MeshPhongMaterial, level: any): MeshPhongMaterial 
 	{
-		material.precision = 'highp';
+		// material.precision = 'highp';
 		material.userData = {
 			heightMap: {value: MaterialHeightShader.EMPTY_TEXTURE},
 			drawNormals: {value: drawNormals},
@@ -342,13 +342,15 @@ export class MaterialHeightShader extends MapHeightNode
 	{
 		if (image ) 
 		{
+			let texture: Texture; 
 			if (image instanceof Texture) 
 			{
+				texture = image;
 				this.material.userData.heightMap.value = image;
 			}
 			else 
 			{
-				var texture = new Texture(image);
+				texture = new Texture(image);
 				texture.generateMipmaps = false;
 				texture.format = RGBFormat;
 				texture.magFilter = LinearFilter;
@@ -380,8 +382,6 @@ export class MaterialHeightShader extends MapHeightNode
 					const features = [];
 					var colors = [];
 					var points = [];
-					// var sizes = [];
-					var elevations = [];
 					const vec = new Vector3(
 						0,
 						0,
@@ -427,9 +427,6 @@ export class MaterialHeightShader extends MapHeightNode
 								f.localCoords.y,
 								f.localCoords.z
 							);
-							elevations.push(
-								f.properties.ele
-							);
 						}
 					});
 					if (points.length > 0) 
@@ -449,75 +446,84 @@ export class MaterialHeightShader extends MapHeightNode
 								3
 							)
 						);
-						geometry.setAttribute(
-							'elevation',
-							new Float32BufferAttribute(
-								elevations,
-								1
-							)
-						);
+						const material = new ShaderMaterial({
+							userData: 
+								{
+									heightMap: this.material.userData.heightMap,
+									exageration: this.material.userData.exageration,
+									elevationDecoder: this.material.userData.elevationDecoder,
+									heightMapLocation: this.material.userData.heightMapLocation,
+									forViewing: {value: debugFeaturePoints}, 
+									far: {value: FAR}, 
+									pointTexture: {value: new TextureLoader().load( 'disc.png' )}
+								},
+							vertexShader: `
+							attribute vec4 color;
+							uniform float exageration;
+							uniform bool forViewing;
+							uniform float far;
+							varying float depth;
+							varying vec4 vColor;
+
+							uniform sampler2D heightMap;
+							uniform vec4 elevationDecoder;
+							uniform vec4 heightMapLocation;
+
+							float getPixelElevation(vec4 e) {
+								// Convert encoded elevation value to meters
+								return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w + 10.0) * exageration;
+							}
+							float getElevation(vec2 coord) {
+								vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+								return getPixelElevation(e);
+							}
+							void main() {
+								float elevation  = getElevation(vec2(position.x + 0.5, 0.5 - position.z)) ;
+								vec4 mvPosition = modelViewMatrix * vec4( position.x,  elevation, position.z, 1.0 );
+								gl_Position = projectionMatrix * mvPosition;
+								if (forViewing) {
+									gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
+									vColor = vec4(0.0, 0.0, 1.0, 1);
+								} else {
+									gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
+									// gl_PointSize = pow(gl_Position.z, 1.2)/ far;
+									gl_PointSize = 2.0 + gl_Position.z / far;
+									vColor = color;
+								}
+								depth = gl_Position.z;
+							}
+							`,
+							fragmentShader: `
+							varying vec4 vColor;
+							varying float depth;
+							uniform float far;
+							uniform bool forViewing;
+							uniform sampler2D pointTexture;
+							void main() {
+								gl_FragColor = vColor;
+								// if (forViewing) {
+								// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+								// }
+								if (depth > far) {
+									discard;
+								}
+							}
+							`,
+							fog: true,
+							transparent: true
+						});
 						var mesh = new Points(
 							geometry,
-							new ShaderMaterial({
-								uniforms: UniformsUtils.merge([
-									// UniformsLib.fog,
-									{
-										exageration: {value: exageration},
-										forViewing: {value: debugFeaturePoints}, 
-										far: {value: FAR}, 
-										// plane: {value: debugFeaturePoints}, 
-										pointTexture: {value: new TextureLoader().load( 'disc.png' )}
-									}
-								]),
-								vertexShader: `
-								// #include <fog_pars_vertex>
-								attribute float elevation;
-								attribute vec4 color;
-								uniform float exageration;
-								uniform bool forViewing;
-								uniform float far;
-								varying float depth;
-								varying vec4 vColor;
-								// varying vec3 vClipPosition;
-								void main() {
-									float exagerated  = elevation * exageration;
-									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
-									// #include <fog_vertex>
-									gl_Position = projectionMatrix * mvPosition;
-									if (forViewing) {
-										gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
-										vColor = vec4(0.0, 0.0, 1.0, 1);
-									} else {
-										// gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
-										gl_PointSize = gl_Position.z/ far * 2.0;
-										vColor = color;
-									}
-									//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
-									depth = gl_Position.z;
-								}
-												`,
-								fragmentShader: `
-								// #include <fog_pars_fragment>
-								varying vec4 vColor;
-								varying float depth;
-								uniform float far;
-								uniform bool forViewing;
-								uniform sampler2D pointTexture;
-								void main() {
-									gl_FragColor = vColor;
-									// if (forViewing) {
-									// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
-									// }
-									if (depth > far) {
-										discard;
-									}
-									// #include <fog_fragment>
-								}
-								`,
-								fog: true,
-								transparent: true
-							})
+							material
 						);
+						material.onBeforeCompile = (shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }) => 
+						{
+							// Pass uniforms from userData to the
+							for (const i in material.userData) 
+							{
+								shader.uniforms[i] = material.userData[i];
+							}
+						};
 						// (mesh as any).features = features;
 						mesh.frustumCulled = false;
 

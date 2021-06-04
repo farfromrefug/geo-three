@@ -350,7 +350,7 @@ var webapp = (function (exports) {
                 var rotateInternal_1 = function (deltaX, deltaY) {
                     var theta = PI_2 * _this.azimuthRotateSpeed * deltaX / elementRect_1.w;
                     var phi = PI_2 * _this.polarRotateSpeed * deltaY / elementRect_1.w;
-                    _this.rotate(theta, phi, true);
+                    _this.rotate(theta / _this._zoom, phi / _this._zoom, true);
                 };
                 var dollyInternal_1 = function (delta, x, y) {
                     var dollyScale = Math.pow(0.95, -delta * _this.dollySpeed);
@@ -51646,156 +51646,6 @@ var webapp = (function (exports) {
     });
 
     /**
-     * W3C Device Orientation control (http://w3c.github.io/deviceorientation/spec-source-orientation.html)
-     */
-
-    var DeviceOrientationControls = function ( object ) {
-
-    	var scope = this;
-    	var changeEvent = { type: 'change' };
-    	var EPS = 0.000001;
-
-    	this.object = object;
-    	this.object.rotation.reorder( 'YXZ' );
-
-    	this.enabled = true;
-
-    	this.deviceOrientation = {};
-    	this.screenOrientation = 0;
-
-    	this.alphaOffset = 0; // radians
-
-    	var onDeviceOrientationChangeEvent = function ( event ) {
-
-    		scope.deviceOrientation = event;
-
-    	};
-
-    	var onScreenOrientationChangeEvent = function () {
-
-    		scope.screenOrientation = window.orientation || 0;
-
-    	};
-
-    	// The angles alpha, beta and gamma form a set of intrinsic Tait-Bryan angles of type Z-X'-Y''
-
-    	var setObjectQuaternion = function () {
-
-    		var zee = new Vector3( 0, 0, 1 );
-
-    		var euler = new Euler();
-
-    		var q0 = new Quaternion();
-
-    		var q1 = new Quaternion( - Math.sqrt( 0.5 ), 0, 0, Math.sqrt( 0.5 ) ); // - PI/2 around the x-axis
-
-    		return function ( quaternion, alpha, beta, gamma, orient ) {
-
-    			euler.set( beta, alpha, - gamma, 'YXZ' ); // 'ZXY' for the device, but 'YXZ' for us
-
-    			quaternion.setFromEuler( euler ); // orient the device
-
-    			quaternion.multiply( q1 ); // camera looks out the back of the device, not the top
-
-    			quaternion.multiply( q0.setFromAxisAngle( zee, - orient ) ); // adjust for screen orientation
-
-    		};
-
-    	}();
-
-    	this.connect = function () {
-
-    		onScreenOrientationChangeEvent(); // run once on load
-
-    		// iOS 13+
-
-    		if ( window.DeviceOrientationEvent !== undefined && typeof window.DeviceOrientationEvent.requestPermission === 'function' ) {
-
-    			window.DeviceOrientationEvent.requestPermission().then( function ( response ) {
-
-    				if ( response == 'granted' ) {
-
-    					window.addEventListener( 'orientationchange', onScreenOrientationChangeEvent );
-    					window.addEventListener( 'deviceorientation', onDeviceOrientationChangeEvent );
-
-    				}
-
-    			} ).catch( function ( error ) {
-
-    				console.error( 'THREE.DeviceOrientationControls: Unable to use DeviceOrientation API:', error );
-
-    			} );
-
-    		} else {
-
-    			window.addEventListener( 'orientationchange', onScreenOrientationChangeEvent );
-    			window.addEventListener( 'deviceorientation', onDeviceOrientationChangeEvent );
-
-    		}
-
-    		scope.enabled = true;
-
-    	};
-
-    	this.disconnect = function () {
-
-    		window.removeEventListener( 'orientationchange', onScreenOrientationChangeEvent );
-    		window.removeEventListener( 'deviceorientation', onDeviceOrientationChangeEvent );
-
-    		scope.enabled = false;
-
-    	};
-
-    	this.update = ( function () {
-
-    		var lastQuaternion = new Quaternion();
-
-    		return function () {
-
-    			if ( scope.enabled === false ) return;
-
-    			var device = scope.deviceOrientation;
-
-    			if ( device ) {
-
-    				var alpha = device.alpha ? MathUtils.degToRad( device.alpha ) + scope.alphaOffset : 0; // Z
-
-    				var beta = device.beta ? MathUtils.degToRad( device.beta ) : 0; // X'
-
-    				var gamma = device.gamma ? MathUtils.degToRad( device.gamma ) : 0; // Y''
-
-    				var orient = scope.screenOrientation ? MathUtils.degToRad( scope.screenOrientation ) : 0; // O
-
-    				setObjectQuaternion( scope.object.quaternion, alpha, beta, gamma, orient );
-
-    				if ( 8 * ( 1 - lastQuaternion.dot( scope.object.quaternion ) ) > EPS ) {
-
-    					lastQuaternion.copy( scope.object.quaternion );
-    					scope.dispatchEvent( changeEvent );
-
-    				}
-
-    			}
-
-    		};
-
-
-    	} )();
-
-    	this.dispose = function () {
-
-    		scope.disconnect();
-
-    	};
-
-    	this.connect();
-
-    };
-
-    DeviceOrientationControls.prototype = Object.create( EventDispatcher.prototype );
-    DeviceOrientationControls.prototype.constructor = DeviceOrientationControls;
-
-    /**
      * Based on "A Practical Analytic Model for Daylight"
      * aka The Preetham Model, the de facto standard analytic skydome model
      * https://www.researchgate.net/publication/220720443_A_Practical_Analytic_Model_for_Daylight
@@ -60343,7 +60193,8 @@ var webapp = (function (exports) {
             // }
             node.getWorldPosition(position);
             var distance = pov.distanceTo(position);
-            distance /= Math.pow(2, 20 - node.level);
+            distance /= Math.pow(2, 20 - node.level) * camera.zoom;
+            // distance /= Math.pow(2, 20 - node.level);
             inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
             if (canSubdivideOrSimplify && (node.level < minZoom || maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
                 node.subdivide();
@@ -60458,7 +60309,7 @@ var webapp = (function (exports) {
             this.material.flatShading = false;
         }
         static getGeometry(level) {
-            let size = MaterialHeightShader.GEOMETRY_SIZE;
+            let size = exports.LOD;
             if (level < 11) {
                 size /= Math.pow(2, Math.floor((11 - level) / 2));
                 // size /= 11 - level;
@@ -60478,7 +60329,7 @@ var webapp = (function (exports) {
             return MaterialHeightShader.getGeometry(level - 1);
         }
         static prepareMaterial(material, level) {
-            material.precision = 'highp';
+            // material.precision = 'highp';
             material.userData = {
                 heightMap: { value: MaterialHeightShader.EMPTY_TEXTURE },
                 drawNormals: { value: exports.drawNormals },
@@ -60691,11 +60542,13 @@ var webapp = (function (exports) {
         onHeightImage(image) {
             return __awaiter(this, void 0, void 0, function* () {
                 if (image) {
+                    let texture;
                     if (image instanceof Texture) {
+                        texture = image;
                         this.material.userData.heightMap.value = image;
                     }
                     else {
-                        var texture = new Texture(image);
+                        texture = new Texture(image);
                         texture.generateMipmaps = false;
                         texture.format = RGBFormat;
                         texture.magFilter = LinearFilter;
@@ -60718,8 +60571,6 @@ var webapp = (function (exports) {
                             const features = [];
                             var colors = [];
                             var points = [];
-                            // var sizes = [];
-                            var elevations = [];
                             const vec = new Vector3(0, 0, 0);
                             result.forEach((f, index) => {
                                 var coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
@@ -60744,73 +60595,84 @@ var webapp = (function (exports) {
                                         255, (color >> 8 & 255) /
                                         255, (color & 255) / 255);
                                     points.push(f.localCoords.x, f.localCoords.y, f.localCoords.z);
-                                    elevations.push(f.properties.ele);
                                 }
                             });
                             if (points.length > 0) {
                                 const geometry = new BufferGeometry();
                                 geometry.setAttribute('position', new Float32BufferAttribute(points, 3));
                                 geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
-                                geometry.setAttribute('elevation', new Float32BufferAttribute(elevations, 1));
-                                var mesh = new Points(geometry, new ShaderMaterial({
-                                    uniforms: UniformsUtils.merge([
-                                        // UniformsLib.fog,
-                                        {
-                                            exageration: { value: exports.exageration },
-                                            forViewing: { value: exports.debugFeaturePoints },
-                                            far: { value: exports.FAR },
-                                            // plane: {value: debugFeaturePoints}, 
-                                            pointTexture: { value: new TextureLoader().load('disc.png') }
-                                        }
-                                    ]),
+                                const material = new ShaderMaterial({
+                                    userData: {
+                                        heightMap: this.material.userData.heightMap,
+                                        exageration: this.material.userData.exageration,
+                                        elevationDecoder: this.material.userData.elevationDecoder,
+                                        heightMapLocation: this.material.userData.heightMapLocation,
+                                        forViewing: { value: exports.debugFeaturePoints },
+                                        far: { value: exports.FAR },
+                                        pointTexture: { value: new TextureLoader().load('disc.png') }
+                                    },
                                     vertexShader: `
-								// #include <fog_pars_vertex>
-								attribute float elevation;
-								attribute vec4 color;
-								uniform float exageration;
-								uniform bool forViewing;
-								uniform float far;
-								varying float depth;
-								varying vec4 vColor;
-								// varying vec3 vClipPosition;
-								void main() {
-									float exagerated  = elevation * exageration;
-									vec4 mvPosition = modelViewMatrix * vec4( position + vec3(0,exagerated,0), 1.0 );
-									// #include <fog_vertex>
-									gl_Position = projectionMatrix * mvPosition;
-									if (forViewing) {
-										gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
-										vColor = vec4(0.0, 0.0, 1.0, 1);
-									} else {
-										// gl_Position.z -= (exagerated / 1000.0 - floor(exagerated / 1000.0)) * gl_Position.z / 1000.0;
-										gl_PointSize = gl_Position.z/ far * 2.0;
-										vColor = color;
-									}
-									//  gl_PointSize =  floor(exagerated / 1000.0)* 1.0;
-									depth = gl_Position.z;
+							attribute vec4 color;
+							uniform float exageration;
+							uniform bool forViewing;
+							uniform float far;
+							varying float depth;
+							varying vec4 vColor;
+
+							uniform sampler2D heightMap;
+							uniform vec4 elevationDecoder;
+							uniform vec4 heightMapLocation;
+
+							float getPixelElevation(vec4 e) {
+								// Convert encoded elevation value to meters
+								return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w + 10.0) * exageration;
+							}
+							float getElevation(vec2 coord) {
+								vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+								return getPixelElevation(e);
+							}
+							void main() {
+								float elevation  = getElevation(vec2(position.x + 0.5, 0.5 - position.z)) ;
+								vec4 mvPosition = modelViewMatrix * vec4( position.x,  elevation, position.z, 1.0 );
+								gl_Position = projectionMatrix * mvPosition;
+								if (forViewing) {
+									gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
+									vColor = vec4(0.0, 0.0, 1.0, 1);
+								} else {
+									gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
+									// gl_PointSize = pow(gl_Position.z, 1.2)/ far;
+									gl_PointSize = 2.0 + gl_Position.z / far;
+									vColor = color;
 								}
-												`,
+								depth = gl_Position.z;
+							}
+							`,
                                     fragmentShader: `
-								// #include <fog_pars_fragment>
-								varying vec4 vColor;
-								varying float depth;
-								uniform float far;
-								uniform bool forViewing;
-								uniform sampler2D pointTexture;
-								void main() {
-									gl_FragColor = vColor;
-									// if (forViewing) {
-									// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
-									// }
-									if (depth > far) {
-										discard;
-									}
-									// #include <fog_fragment>
+							varying vec4 vColor;
+							varying float depth;
+							uniform float far;
+							uniform bool forViewing;
+							uniform sampler2D pointTexture;
+							void main() {
+								gl_FragColor = vColor;
+								// if (forViewing) {
+								// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+								// }
+								if (depth > far) {
+									discard;
 								}
-								`,
+							}
+							`,
                                     fog: true,
                                     transparent: true
-                                }));
+                                });
+                                var mesh = new Points(geometry, material);
+                                material.onBeforeCompile = (shader) => {
+                                    // Pass uniforms from userData to the
+                                    for (const i in material.userData) {
+                                        shader.uniforms[i] = material.userData[i];
+                                    }
+                                };
                                 // (mesh as any).features = features;
                                 mesh.frustumCulled = false;
                                 mesh.updateMatrix();
@@ -64975,6 +64837,111 @@ var webapp = (function (exports) {
     function getURLParameter(name) {
         return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
     }
+    class CameraControlsWithOrientation extends CameraControls {
+        constructor() {
+            super(...arguments);
+            this.screenOrientation = 0;
+            this.deviceOrientation = {};
+            this.deviceOrientationEnabled = false;
+            this.alpha = 0;
+            this.alphaOffsetAngle = 0;
+            this.betaOffsetAngle = 0;
+            this.gammaOffsetAngle = 0;
+        }
+        onDeviceOrientationChangeEvent(event) {
+            this.deviceOrientation = event;
+            this.dispatchEvent({
+                type: 'control',
+                originalEvent: event
+            });
+        }
+        onCompassNeedsCalibrationEvent() {
+            console.log('onCompassNeedsCalibrationEvent');
+        }
+        onScreenOrientationChangeEvent(event) {
+            this.screenOrientation = window.orientation || 0;
+            console.log('onScreenOrientationChangeEvent', this.screenOrientation);
+            this.dispatchEvent({
+                type: 'control',
+                originalEvent: event
+            });
+        }
+        startDeviceOrientation() {
+            if (this.deviceOrientationEnabled) {
+                return;
+            }
+            this.deviceOrientationEnabled = true;
+            this.screenOrientation = window.orientation || 0;
+            this.onDeviceOrientationChangeEventBound = this.onDeviceOrientationChangeEvent.bind(this);
+            this.onScreenOrientationChangeEventBound = this.onScreenOrientationChangeEvent.bind(this);
+            this.onCompassNeedsCalibrationEventBound = this.onCompassNeedsCalibrationEvent.bind(this);
+            window.addEventListener('orientationchange', this.onScreenOrientationChangeEventBound, false);
+            window.addEventListener('deviceorientation', this.onDeviceOrientationChangeEventBound, false);
+            window.addEventListener('compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false);
+        }
+        stopDeviceOrientation() {
+            if (!this.deviceOrientationEnabled) {
+                return;
+            }
+            this.deviceOrientationEnabled = false;
+            window.removeEventListener('orientationchange', this.onScreenOrientationChangeEventBound, false);
+            window.removeEventListener('deviceorientation', this.onDeviceOrientationChangeEventBound, false);
+            window.addEventListener('compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false);
+        }
+        setObjectQuaternion(quaternion, alpha, beta, gamma, orient) {
+            var zee = new Vector3(0, 0, 1);
+            var euler = new Euler();
+            var q0 = new Quaternion();
+            var q1 = new Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // - PI/2 around the x-axis
+            euler.set(beta, alpha, -gamma, 'YXZ'); // 'ZXY' for the device, but 'YXZ' for us
+            quaternion.setFromEuler(euler); // orient the device
+            quaternion.multiply(q1); // camera looks out the back of the device, not the top
+            quaternion.multiply(q0.setFromAxisAngle(zee, -orient)); // adjust for screen orientation
+        }
+        rotate(azimuthAngle, polarAngle, enableTransition) {
+            if (this.deviceOrientationEnabled) {
+                this.updateAlphaOffsetAngle(this.alphaOffsetAngle + azimuthAngle);
+                this.updateBetaOffsetAngle(this.betaOffsetAngle + polarAngle);
+            }
+            else {
+                return super.rotate(azimuthAngle, polarAngle, enableTransition);
+            }
+        }
+        update(delta) {
+            if (this.deviceOrientationEnabled) {
+                var alpha = this.deviceOrientation.alpha ? this.deviceOrientation.alpha * TO_RAD + this.alphaOffsetAngle : 0; // Z
+                var beta = this.deviceOrientation.beta ? this.deviceOrientation.beta * TO_RAD + this.betaOffsetAngle : 0; // X'
+                var gamma = this.deviceOrientation.gamma ? this.deviceOrientation.gamma * TO_RAD + this.gammaOffsetAngle : 0; // Y''
+                var orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
+                if (this.screenOrientation % 180 === 0) {
+                    if (Math.abs(this.deviceOrientation.beta) < 10 && Math.abs(this.deviceOrientation.gamma) > 80) ;
+                }
+                this.setObjectQuaternion(this._camera.quaternion, alpha, beta, gamma, orient);
+                this.alpha = alpha;
+                this.dispatchEvent({
+                    type: 'update',
+                    originalEvent: null
+                });
+                return true;
+            }
+            else {
+                return super.update(delta);
+            }
+        }
+        updateAlphaOffsetAngle(angle) {
+            this.alphaOffsetAngle = angle;
+        }
+        updateBetaOffsetAngle(angle) {
+            this.betaOffsetAngle = angle;
+        }
+        updateGammaOffsetAngle(angle) {
+            this.gammaOffsetAngle = angle;
+        }
+        dispose() {
+            this.stopDeviceOrientation();
+            super.dispose();
+        }
+    }
     const devLocal = (getURLParameter('local') || 'false') === 'true';
     class CustomOutlineEffect extends postprocessing.exports.Effect {
         constructor() {
@@ -65041,6 +65008,7 @@ var webapp = (function (exports) {
         });
     }
     const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     exports.debug = false;
     exports.showStats = false;
     exports.mapMap = false;
@@ -65050,6 +65018,7 @@ var webapp = (function (exports) {
     exports.wireframe = false;
     exports.mapoutline = false;
     exports.dayNightCycle = false;
+    exports.LOD = isMobile ? 102 : 256;
     let debugGPUPicking = false;
     let readFeatures = true;
     let drawLines = true;
@@ -65062,31 +65031,35 @@ var webapp = (function (exports) {
     exports.depthBiais = 0.6;
     exports.depthMultiplier = 30;
     const featuresByColor = {};
-    // export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
-    exports.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
+    exports.elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
+    // export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
     exports.currentViewingDistance = 0;
     exports.FAR = 173000;
     const TEXT_HEIGHT = 180;
+    let currentPositionAltitude = -1;
     let currentPosition;
     let elevation = -1;
     const clock = new Clock();
     let selectedItem = null;
     let map;
     const EPS = 1e-5;
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     let pixelsBuffer;
     const AA = devicePixelRatio <= 1;
     let showingCamera = false;
     // let showMagnify = false;
     let mousePosition = null;
+    new Vector2();
     let animating = false;
     // Setup the animation loop.
+    let viewWidth = window.innerWidth;
+    let viewHeight = window.innerHeight;
     let stats;
     const canvas = document.getElementById('canvas');
     const canvas3 = document.getElementById('canvas3');
     const canvas4 = document.getElementById('canvas4');
     const video = document.getElementById('video');
     const ctx2d = canvas4.getContext('2d');
+    canvas.addEventListener('touchstart', () => { return clock.getDelta(); }, { passive: true });
     const renderer = new WebGLRenderer({
         canvas: canvas,
         // logarithmicDepthBuffer: true,
@@ -65178,32 +65151,17 @@ var webapp = (function (exports) {
     const scene = new Scene();
     const sky = createSky();
     scene.add(sky);
-    let devicecontrols;
-    let listeningForDeviceSensors = false;
-    function onSensorUpdate() {
-        if (!listeningForDeviceSensors) {
-            return;
-        }
-        devicecontrols && devicecontrols.update();
-        onControlUpdate();
-    }
     function toggleDeviceSensors() {
-        if (!listeningForDeviceSensors) {
-            listeningForDeviceSensors = true;
-            devicecontrols = new DeviceOrientationControls(camera);
-            devicecontrols.alphaOffset = Math.PI;
-            window.addEventListener('orientationchange', onSensorUpdate);
-            window.addEventListener('deviceorientation', onSensorUpdate);
+        if (controls.deviceOrientationEnabled) {
+            controls.stopDeviceOrientation();
+            setElevation(elevation, true);
+            controls.polarAngle = 0;
         }
         else {
-            window.removeEventListener('orientationchange', onSensorUpdate);
-            window.removeEventListener('deviceorientation', onSensorUpdate);
-            listeningForDeviceSensors = false;
-            if (devicecontrols) {
-                devicecontrols.dispose();
-                devicecontrols = null;
+            if (currentPositionAltitude !== -1) {
+                setElevation(currentPositionAltitude, true);
             }
-            controls.polarAngle = 0;
+            controls.startDeviceOrientation();
         }
     }
     function startCam() {
@@ -65219,7 +65177,6 @@ var webapp = (function (exports) {
                 video.onloadedmetadata = function (e) {
                     video.play();
                 };
-                // video.play();
                 toggleDeviceSensors();
             })
                 .catch(function (error) {
@@ -65271,6 +65228,7 @@ var webapp = (function (exports) {
         setMapMode(!exports.mapMap);
     }
     function setPredefinedMapMode(value) {
+        console.log('setPredefinedMapMode', value);
         exports.mapMap = value;
         exports.mapoutline = value;
         sky.visible = sunLight.visible = shouldRenderSky();
@@ -65287,7 +65245,13 @@ var webapp = (function (exports) {
         }
     }
     function togglePredefinedMapMode() {
-        setPredefinedMapMode(!exports.mapMap);
+        console.log('togglePredefinedMapMode', exports.mapMap);
+        try {
+            setPredefinedMapMode(!exports.mapMap);
+        }
+        catch (error) {
+            console.error(error);
+        }
     }
     function setDrawTexture(value) {
         exports.drawTexture = value;
@@ -65398,7 +65362,7 @@ var webapp = (function (exports) {
                 node.objectsHolder.visible = exports.debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
                 let child = node.objectsHolder.children[0];
                 if (child) {
-                    child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+                    child.material.userData.forViewing.value = exports.debugFeaturePoints;
                 }
             });
         }
@@ -65455,7 +65419,7 @@ var webapp = (function (exports) {
             startCam();
         }
     }
-    let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider;
+    let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider, lodLabel;
     try {
         compass = document.querySelector('#compass img');
         document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
@@ -65523,9 +65487,13 @@ var webapp = (function (exports) {
         const normalsInDebugCheckbox = document.getElementById('normalsInDebug');
         normalsInDebugCheckbox.onchange = (event) => { return toggleNormalsInDebug(); };
         normalsInDebugCheckbox.value = exports.drawNormals;
+        const lodSlider = document.getElementById('lodSlider');
+        lodSlider.oninput = (event) => { return setLOD(event.target.value); };
         selectedPeakLabel = document.getElementById('selectedPeakLabel');
         elevationLabel = document.getElementById('elevationLabel');
         selectedPeakDiv = document.getElementById('selectedPeak');
+        lodLabel = document.getElementById('lodLabel');
+        lodLabel.innerText = exports.LOD;
     }
     catch (err) { }
     const heightProvider = new LocalHeightProvider(devLocal);
@@ -65587,14 +65555,14 @@ var webapp = (function (exports) {
         // renderer.shadowMap.enabled = mapMap;
     }
     createMap();
-    const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 100, exports.FAR);
+    const camera = new PerspectiveCamera(40, viewWidth / viewHeight, 100, exports.FAR);
     camera.position.set(0, 0, EPS);
-    const controls = new CameraControls(camera, canvas);
+    const controls = new CameraControlsWithOrientation(camera, canvas);
     controls.azimuthRotateSpeed = -0.15; // negative value to invert rotation direction
     controls.polarRotateSpeed = -0.15; // negative value to invert rotation direction
     controls.minZoom = 1;
-    controls.minDistance = -10000;
-    controls.maxDistance = 1000;
+    // controls.minDistance = -10000;
+    // controls.maxDistance = 1000;
     // controls.dollyToCursor = true;
     controls.truckSpeed = 1 / EPS * 60000;
     controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
@@ -65671,7 +65639,11 @@ var webapp = (function (exports) {
             const startElevation = elevation * exports.exageration;
             let endElevation = startElevation;
             if (coords.altitude) {
+                currentPositionAltitude = coords.altitude;
                 endElevation = coords.altitude * exports.exageration;
+            }
+            else {
+                currentPositionAltitude = -1;
             }
             const topElevation = (distance > 100000 ? 11000 : endElevation + 100) * exports.exageration;
             startAnimation({
@@ -65694,7 +65666,7 @@ var webapp = (function (exports) {
                         const cProgress = (progress - 0.5) * 2;
                         controls.moveTo(currentPosition.x, topElevation + cProgress * (endElevation - topElevation), -currentPosition.y, false);
                     }
-                    controls.update(clock.getDelta());
+                    controls.update(1);
                 },
                 onEnd: () => {
                     setElevation(Math.round(endElevation / exports.exageration), false);
@@ -65704,11 +65676,15 @@ var webapp = (function (exports) {
         }
         else {
             if (coords.altitude) {
-                setElevation(coords.altitude, false);
+                currentPositionAltitude = coords.altitude;
+                setElevation(coords.altitude, true);
+            }
+            else {
+                currentPositionAltitude = -1;
             }
             currentPosition = newPosition;
             controls.moveTo(currentPosition.x, elevation * exports.exageration, -currentPosition.y, false);
-            controls.update(clock.getDelta());
+            controls.update(1);
             updateCurrentViewingDistance();
         }
     }
@@ -65724,7 +65700,7 @@ var webapp = (function (exports) {
         if (updateControls) {
             controls.getTarget(tempVector);
             controls.moveTo(tempVector.x, elevation * exports.exageration, tempVector.z);
-            controls.update(clock.getDelta());
+            controls.update(1);
         }
     }
     function setExageration(newValue) {
@@ -65749,6 +65725,18 @@ var webapp = (function (exports) {
         outlineEffect.uniforms.get('multiplierParameters').value.set(exports.depthBiais, exports.depthMultiplier);
         render();
     }
+    function setLOD(level) {
+        exports.LOD = level;
+        if (map) {
+            applyOnNodes((node) => {
+                node.geometry = MaterialHeightShader.getGeometry(node.level);
+            });
+        }
+        if (lodLabel) {
+            lodLabel.innerText = level;
+        }
+        render();
+    }
     function setDate(secondsInDay) {
         let date = new Date();
         const hours = Math.floor(secondsInDay / 3600);
@@ -65767,13 +65755,16 @@ var webapp = (function (exports) {
     controls.addEventListener('update', () => {
         onControlUpdate();
     });
+    controls.addEventListener('controlend', () => {
+        render(true);
+    });
     controls.addEventListener('control', (event) => {
         // console.log(event);
-        if (event.originalEvent.buttons) {
+        if (event.originalEvent && event.originalEvent.buttons) {
             shouldClearSelectedOnClick = false;
         }
-        const delta = clock.getDelta();
-        controls.update(delta);
+        controls.update(1);
+        render();
     });
     composer.addPass(new postprocessing.exports.RenderPass(scene, camera));
     const outlineEffect = new CustomOutlineEffect();
@@ -65793,7 +65784,7 @@ var webapp = (function (exports) {
             node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
             let child = node.objectsHolder.children[0];
             if (child) {
-                child.material.uniforms.forViewing.value = false;
+                child.material.userData.forViewing.value = false;
             }
         });
         if (debugGPUPicking) {
@@ -65811,7 +65802,7 @@ var webapp = (function (exports) {
             // node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
             let child = node.objectsHolder.children[0];
             if (child) {
-                child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+                child.material.userData.forViewing.value = exports.debugFeaturePoints;
             }
         });
         sky.visible = oldSyVisible;
@@ -65820,24 +65811,24 @@ var webapp = (function (exports) {
     }
     const computeFeatures = throttle(actualComputeFeatures, 100);
     document.body.onresize = function () {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const scale = width / height;
+        viewWidth = window.innerWidth;
+        viewHeight = window.innerHeight;
+        const scale = viewWidth / viewHeight;
         let offWidth;
         let offHeight;
         if (scale > 1) {
-            offWidth = Math.max(Math.floor(width / 100) * 100 / 4, 200);
+            offWidth = Math.max(Math.floor(viewWidth / 100) * 100 / 4, 200);
             offHeight = Math.round(offWidth / scale);
         }
         else {
-            offHeight = Math.max(Math.floor(height / 100) * 100 / 4, 200);
+            offHeight = Math.max(Math.floor(viewHeight / 100) * 100 / 4, 200);
             offWidth = Math.round(offHeight * scale);
         }
-        minYPx = TEXT_HEIGHT / height * offHeight;
-        canvas4.width = Math.floor(width * devicePixelRatio);
-        canvas4.height = Math.floor(height * devicePixelRatio);
+        minYPx = TEXT_HEIGHT / viewHeight * offHeight;
+        canvas4.width = Math.floor(viewWidth * devicePixelRatio);
+        canvas4.height = Math.floor(viewHeight * devicePixelRatio);
         const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
-        renderer.setSize(width, height);
+        renderer.setSize(viewWidth, viewHeight);
         // rendererMagnify.setSize(width, height);
         renderer.setPixelRatio(rendererScaleRatio);
         // rendererMagnify.setPixelRatio(rendererScaleRatio);
@@ -65846,20 +65837,19 @@ var webapp = (function (exports) {
         rendereroff.setSize(offWidth, offHeight);
         rendereroff.setPixelRatio(1);
         pointBufferTarget.setSize(offWidth, offHeight);
-        composer.setSize(width, height);
+        composer.setSize(viewWidth, viewHeight);
         // composer.setPixelRatio(rendererScaleRatio);
-        camera.aspect = width / height;
+        camera.aspect = scale;
         camera.updateProjectionMatrix();
         render();
     };
     // @ts-ignore
     document.body.onresize();
-    controls.update(clock.getDelta());
+    controls.update(0);
     function toScreenXY(pos3D) {
         const pos = pos3D.clone();
         pos.project(camera);
-        const width = window.innerWidth, height = window.innerHeight;
-        const widthHalf = width / 2, heightHalf = height / 2;
+        const widthHalf = viewWidth / 2, heightHalf = viewHeight / 2;
         pos.x = pos.x * widthHalf + widthHalf;
         pos.y = -(pos.y * heightHalf) + heightHalf;
         pos.z = camera.position.distanceTo(pos3D);
@@ -65940,6 +65930,9 @@ var webapp = (function (exports) {
             setAzimuth(angle);
         }
     }
+    function isSelectedFeature(f) {
+        return selectedItem && f.properties.osmid === selectedItem.properties.osmid;
+    }
     function drawFeatures() {
         if (!drawLines) {
             return;
@@ -65948,7 +65941,7 @@ var webapp = (function (exports) {
         const minDistance = 24;
         featuresToShow = featuresToShow.map((f) => {
             const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-            tempVector.set(coords.x, f.properties.ele * exports.exageration, -coords.y);
+            tempVector.set(coords.x, (f.properties.ele || 0) * exports.exageration, -coords.y);
             const vector = toScreenXY(tempVector);
             return Object.assign(Object.assign({}, f), { x: vector.x, y: vector.y, z: vector.z });
         });
@@ -65956,18 +65949,25 @@ var webapp = (function (exports) {
         featuresToShow = ArraySortOn(featuresToShow, 'x');
         const featuresToDraw = [];
         featuresToShow.forEach((f, index) => {
+            if (mousePosition) {
+                const distance = Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
+                if (distance < 10) {
+                    setSelectedItem(f);
+                    mousePosition = null;
+                }
+            }
             if (!lastFeature) {
                 // first
                 lastFeature = f;
             }
             else if (f.x - lastFeature.x <= minDistance) {
-                if (selectedItem && lastFeature.geometry.coordinates === selectedItem.geometry.coordinates) {
+                if (isSelectedFeature(lastFeature)) {
                     featuresToDraw.push(lastFeature);
-                    lastFeature = f;
+                    // lastFeature = f;
                 }
                 else {
                     deltaY = f.properties.ele - lastFeature.properties.ele;
-                    if (deltaY > 0) {
+                    if (isSelectedFeature(f) || deltaY > 0) {
                         lastFeature = f;
                     }
                 }
@@ -65988,7 +65988,9 @@ var webapp = (function (exports) {
         const rectBottom = 17;
         for (let index = 0; index < toShow; index++) {
             const f = featuresToDraw[index];
-            if (f.y < TEXT_HEIGHT || f.z >= exports.FAR || f.z / f.properties.ele > exports.FAR / 3000) {
+            // const y = f.screenY ?? f.y;
+            const y = f.y;
+            if (y < TEXT_HEIGHT || f.z >= exports.FAR || f.z / f.properties.ele > exports.FAR / 3000) {
                 continue;
             }
             const textColor = darkTheme ? 'white' : 'black';
@@ -65996,7 +65998,7 @@ var webapp = (function (exports) {
             ctx2d.beginPath();
             ctx2d.strokeStyle = textColor;
             ctx2d.moveTo(f.x, TEXT_HEIGHT);
-            ctx2d.lineTo(f.x, f.y);
+            ctx2d.lineTo(f.x, y);
             ctx2d.closePath();
             ctx2d.stroke();
             ctx2d.save();
@@ -66022,7 +66024,7 @@ var webapp = (function (exports) {
                     mousePosition = null;
                 }
             }
-            if (selectedItem && f.geometry.coordinates === selectedItem.geometry.coordinates) {
+            if (selectedItem && isSelectedFeature(f)) {
                 ctx2d.font = 'bold 14px Noto Sans';
                 totalWidth *= 1.1;
                 ctx2d.fillStyle = color + 'aa';
@@ -66045,6 +66047,8 @@ var webapp = (function (exports) {
     function readShownFeatures() {
         const width = pointBufferTarget.width;
         const height = pointBufferTarget.height;
+        const hScale = viewHeight / height;
+        const lineWidth = 4 * width;
         rendereroff.readRenderTargetPixels(pointBufferTarget, 0, 0, width, height, pixelsBuffer);
         const readColors = [];
         const rFeatures = [];
@@ -66052,11 +66056,12 @@ var webapp = (function (exports) {
         let lastColor;
         function handleLastColor(index) {
             if (readColors.indexOf(lastColor) === -1) {
+                const y = viewHeight - Math.floor(index / lineWidth) * hScale;
                 readColors.push(lastColor);
                 const feature = featuresByColor[lastColor];
                 if (feature) {
-                    rFeatures.push(feature);
-                    if (needsSelectedItem && feature.geometry.coordinates === selectedItem.geometry.coordinates) {
+                    rFeatures.push(Object.assign(Object.assign({}, feature), { screenY: y }));
+                    if (needsSelectedItem && isSelectedFeature(feature)) {
                         needsSelectedItem = false;
                     }
                 }
@@ -66069,7 +66074,7 @@ var webapp = (function (exports) {
                 if (lastColor === color) ;
                 else {
                     if (lastColor) {
-                        handleLastColor();
+                        handleLastColor(index - 1);
                     }
                     lastColor = color;
                     // lastColorNb = 1;
@@ -66077,7 +66082,7 @@ var webapp = (function (exports) {
             }
             else {
                 if (lastColor) {
-                    handleLastColor();
+                    handleLastColor(index - 1);
                     lastColor = null;
                     // lastColorNb = 0;
                 }
@@ -66089,7 +66094,7 @@ var webapp = (function (exports) {
             // lastColorNb = 0;
         }
         if (needsSelectedItem) {
-            rFeatures.push(selectedItem);
+            rFeatures.push(Object.assign(Object.assign({}, selectedItem), { screenY: null }));
         }
         featuresToShow = rFeatures;
     }
@@ -66135,7 +66140,7 @@ var webapp = (function (exports) {
         }
         // showMagnify = true;
         // }
-        render();
+        render(true);
     };
     function withoutComposer() {
         return (exports.debug || exports.mapMap) && !exports.mapoutline;
@@ -66149,18 +66154,14 @@ var webapp = (function (exports) {
                 computeFeatures();
             }
             drawFeatures();
-            // scene.fog = fog;
         }
-        // else 
-        // {
         applyOnNodes((node) => {
             node.objectsHolder.visible = exports.debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
             let child = node.objectsHolder.children[0];
             if (child) {
-                child.material.uniforms.forViewing.value = exports.debugFeaturePoints;
+                child.material.userData.forViewing.value = exports.debugFeaturePoints;
             }
         });
-        // }
         if (withoutComposer()) {
             renderer.render(scene, camera);
         }
@@ -66212,7 +66213,7 @@ var webapp = (function (exports) {
         // setElevation(100);
     }
     if (datelabel) {
-        setElevation(1000, false);
+        setElevation(277, false);
         setInitialPosition();
     }
     function moveToEndPoint(animated = true) {
@@ -66262,20 +66263,20 @@ var webapp = (function (exports) {
         if (Math.abs(value - 360 - current) < Math.abs(value - current)) {
             value = value - 360;
         }
+        clock.getDelta(); // to reset to 0;
         startAnimation({
             from: { progress: current },
             to: { progress: value },
             duration: 200,
             onUpdate: function (values) {
                 controls.azimuthAngle = values.progress * TO_RAD;
-                const delta = clock.getDelta();
-                controls.update(delta);
+                render();
             }
         });
     }
     function setViewingDistance(meters) {
         exports.FAR = meters / exports.currentViewingDistance * exports.FAR;
-        // console.log('setViewingDistance', meters, FAR);
+        console.log('setViewingDistance', meters, exports.FAR);
         camera.far = exports.FAR;
         camera.updateProjectionMatrix();
         updateCurrentViewingDistance();
@@ -66328,6 +66329,7 @@ var webapp = (function (exports) {
     exports.setElevation = setElevation;
     exports.setExageration = setExageration;
     exports.setInitialPosition = setInitialPosition;
+    exports.setLOD = setLOD;
     exports.setMapMode = setMapMode;
     exports.setMapOultine = setMapOultine;
     exports.setNormalsInDebug = setNormalsInDebug;

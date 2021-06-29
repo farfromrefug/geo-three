@@ -374,7 +374,7 @@ export class MaterialHeightShader extends MapHeightNode
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
 				result = result.filter(
-					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name && f.properties.class === 'peak'; }
+					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name && f.properties.class === 'peak' && f.properties['ele'] !== undefined; }
 				);
 				
 				if (result.length > 0) 

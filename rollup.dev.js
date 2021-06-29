@@ -10,14 +10,16 @@ export default [{
 	input: 'webapp/app.ts',
 	plugins: [
 		typescript({tsconfig: 'webapp/tsconfig.json'}),
-		nodeResolve(),
+		nodeResolve({
+			mainFields: ['browser', 'module', 'main'],
+		}),
 		commonjs(),
 		serve({
 			open: true,
 			contentBase: '.',
 			openPage: '/example',
-			// host: '0.0.0.0',
-			host: '127.0.0.1',
+			host: '0.0.0.0',
+			// host: '127.0.0.1',
 			port: 8081,
 			headers: {'Access-Control-Allow-Origin': '*'},
 			https: {

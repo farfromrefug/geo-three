@@ -4,9 +4,15 @@
 import CameraControls from 'camera-controls';
 import Stats from 'stats.js';
 import TWEEN from '@tweenjs/tween.js';
+import Hammer from 'hammerjs';
 
 import * as THREE from 'three';
 import Magnify3d from './Magnify3d';
+
+import {
+	Gyroscope,
+	AbsoluteOrientationSensor
+} from 'motion-sensors-polyfill';
 
 // @ts-ignore
 window.THREE = THREE;
@@ -17,7 +23,7 @@ const PI_X2 = Math.PI * 2;
 const TO_DEG = 180 / Math.PI;
 
 import {Sky} from 'three/examples/jsm/objects/Sky';
-import * as POSTPROCESSING from 'postprocessing';
+import * as POSTPROCESSING from 'postprocessing/build/postprocessing.esm';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapView} from '../source/MapView';
 import {MapNode} from '../source/nodes/MapNode';
@@ -31,11 +37,328 @@ import {SunLight} from './SunLight';
 
 let wrongOrientation = false;
 
+export function stopEventPropagation(event) 
+{
+	if (event.stopPropagation) 
+	{
+		event.stopPropagation();
+	}
+	else if (window.event) 
+	{
+		window.event.cancelBubble=true;
+	}
+}    
+
 function getURLParameter(name) 
 {
 	return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
 }
 
+// class CameraControlsWithOrientation extends CameraControls 
+// {
+
+// 	sensor:AbsoluteOrientationSensor;
+// 	screenOrientation: number = 0
+
+// 	deviceOrientation: DeviceOrientationEvent = {} as any
+
+// 	deviceOrientationEnabled =false
+
+// 	alpha = 0;
+
+// 	beta = 0;
+
+// 	gamma = 0;
+
+// 	alphaOffsetAngle = 0;
+
+// 	betaOffsetAngle = 0;
+
+// 	gammaOffsetAngle = 0;
+
+// 	onDeviceOrientationChangeEventBound
+
+// 	onDeviceOrientationChangeEvent( event ) 
+// 	{
+
+// 		this.deviceOrientation = event;
+// 		this.dispatchEvent( {
+// 			type: 'control',
+// 			originalEvent: event
+// 		} );
+// 	}
+
+// 	onScreenOrientationChangeEventBound
+
+// 	onCompassNeedsCalibrationEventBound
+
+// 	onCompassNeedsCalibrationEvent() 
+// 	{
+// 		console.log('onCompassNeedsCalibrationEvent');
+// 	}
+
+// 	onScreenOrientationChangeEvent(event) 
+// 	{
+
+// 		this.screenOrientation = window.orientation as any || 0;
+// 		this.dispatchEvent( {
+// 			type: 'control',
+// 			originalEvent: event
+// 		} );
+
+// 	}
+// 	quaternion:THREE.Quaternion = new THREE.Quaternion();
+// 	euler:THREE.Euler = new THREE.Euler();
+// 	onSensorReading(){
+// 		const q = this.sensor.quaternion;
+// 		let quaternion = new THREE.Quaternion(q[0], q[1],
+// 			q[2], q[3]).invert();
+
+// // euler will hold the Euler angles corresponding to the quaternion
+// let euler = new THREE.Euler(0, 0, 0);
+
+// // Order of rotations must be adapted depending on orientation
+// // for portrait ZYX, for landscape ZXY
+// // const angleOrder = screen.orientation.angle === 0 ? 'ZYX' : 'ZXY';
+// const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1,0,0 ), Math.PI / 2 ); // - PI/2 around the x-axis
+// quaternion.multiply(q1);
+// euler.setFromQuaternion(quaternion);
+// euler.set(euler.z, euler.y, -euler.x);
+// // euler.x = -euler.x;
+// // euler.y = -euler.y;
+// this._camera.quaternion.setFromEuler(euler);
+// 		// const euler = quaternionToEuler(q);
+// 		// const alpha = euler[0];
+// 		// const beta = 180 - euler[2];
+// 		// const gamma = euler[1] + 90;
+// 		// this.euler.set(alpha * TO_RAD, beta * TO_RAD, gamma * TO_RAD);
+// 		// const orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
+// 		// this._camera.quaternion.setFromEuler(this.euler)
+// 		// this.setObjectQuaternion(this._camera.quaternion, q);
+// 		// this._camera.quaternion.fromArray(this.sensor.quaternion);
+// 		// this._camera.quaternion.setFromEuler(this.euler);
+// 		// let  [alpha, beta, gamma] = this.anglesFromQuaternion({
+// 		// 	x:this.quaternion[0],
+// 		// 	y:this.quaternion[1],
+// 		// 	z:this.quaternion[2],
+// 		// 	w:this.quaternion[3],
+// 		// });
+// 		// alpha *= TO_RAD ; // Z
+// 		// beta *= TO_RAD ; // Z
+// 		// gamma  *= TO_RAD ; // Z
+// 		// this.alpha = alpha;
+// 		// this.beta = beta;
+// 		// this.gamma = -gamma;
+// 		// console.log('onSensorReading', this.quaternion, this.euler, this.alphaOffsetAngle,this.betaOffsetAngle );
+// 		// this.rotateTo(this.euler.z + this.alphaOffsetAngle, -this.euler.x + this.betaOffsetAngle);
+// 		// this.update(1);
+// 		this.dispatchEvent( {
+// 			type: 'update',
+// 			originalEvent: null
+// 		} );
+	
+// 	}
+// 	startDeviceOrientation() 
+// 	{
+// 		if (this.deviceOrientationEnabled) 
+// 		{
+// 			return;
+// 		}
+// 		this.deviceOrientationEnabled = true;
+// 		this.screenOrientation = window.orientation as any || 0;
+// 		if (!this.sensor) {
+// 			this.sensor = new AbsoluteOrientationSensor({ frequency: 60 , referenceFrame:'screen'});
+// 			this.sensor.onreading = () => this.onSensorReading();
+// 		}
+// 		// this.onDeviceOrientationChangeEventBound = this.onDeviceOrientationChangeEvent.bind(this);
+// 		this.onScreenOrientationChangeEventBound = this.onScreenOrientationChangeEvent.bind(this);
+// 		// this.onCompassNeedsCalibrationEventBound = this.onCompassNeedsCalibrationEvent.bind(this);
+
+// 		window.addEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
+// 		// window.addEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+// 		// window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
+// 		this.sensor.start();
+
+// 	}
+
+// 	stopDeviceOrientation() 
+// 	{
+// 		if (!this.deviceOrientationEnabled) 
+// 		{
+// 			return;
+// 		}
+// 		this.deviceOrientationEnabled = false;
+// 		this.sensor.stop();
+// 		const euler = new THREE.Euler();
+// 		euler.setFromQuaternion(this._camera.quaternion);
+// 		window.removeEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
+// 		// window.removeEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+// 		// window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
+
+
+// 	}
+
+// 	// anglesFromQuaternion(quaternion) {
+
+// 	// 	let _alpha, _beta, _gamma;
+
+
+// 	// 		var sqw = quaternion.w * quaternion.w;
+// 	// 		var sqx = quaternion.x * quaternion.x;
+// 	// 		var sqy = quaternion.y * quaternion.y;
+// 	// 		var sqz = quaternion.z * quaternion.z;
+
+// 	// 		var unitLength = sqw + sqx + sqy + sqz; // Normalised == 1, otherwise correction divisor.
+// 	// 		var wxyz = quaternion.w * quaternion.x + quaternion.y * quaternion.z;
+// 	// 		var epsilon = 1e-6; // rounding factor
+
+// 	// 		if (wxyz > (0.5 - epsilon) * unitLength) {
+
+// 	// 			_alpha = 2 * Math.atan2(quaternion.y, quaternion.w);
+// 	// 			_beta = PI_X2;
+// 	// 			_gamma = 0;
+
+// 	// 		} else if (wxyz < (-0.5 + epsilon) * unitLength) {
+
+// 	// 			_alpha = -2 * Math.atan2(quaternion.y, quaternion.w);
+// 	// 			_beta = -PI_X2;
+// 	// 			_gamma = 0;
+
+// 	// 		} else {
+
+// 	// 			var aX = sqw - sqx + sqy - sqz;
+// 	// 			var aY = 2 * (quaternion.w * quaternion.z - quaternion.x * quaternion.y);
+
+// 	// 			var gX = sqw - sqx - sqy + sqz;
+// 	// 			var gY = 2 * (quaternion.w * quaternion.y - quaternion.x * quaternion.z);
+
+// 	// 			if (gX > 0) {
+
+// 	// 				_alpha = Math.atan2(aY, aX);
+// 	// 				_beta  = Math.asin(2 * wxyz / unitLength);
+// 	// 				_gamma = Math.atan2(gY, gX);
+
+// 	// 			} else {
+
+// 	// 				_alpha = Math.atan2(-aY, -aX);
+// 	// 				_beta  = -Math.asin(2 * wxyz / unitLength);
+// 	// 				_beta  += _beta < 0 ? Math.PI : - Math.PI;
+// 	// 				_gamma = Math.atan2(-gY, -gX);
+
+// 	// 			}
+
+// 	// 		}
+
+// 	// 		// alpha is in [-pi, pi], make sure it is in [0, 2*pi).
+// 	// 		if (_alpha < 0) {
+// 	// 			_alpha += PI_X2; // alpha [0, 2*pi)
+// 	// 		}
+
+// 	// 		// Convert to degrees
+// 	// 		_alpha *= TO_DEG;
+// 	// 		_beta  *= TO_DEG;
+// 	// 		_gamma *= TO_DEG;
+
+// 	// 		// apply derived euler angles to current object
+// 	// 		return [_alpha, _beta, _gamma];
+
+// 	// }
+
+// 	setObjectQuaternion(quaternion:THREE.Quaternion, q) 
+// 	{
+// 		var zee = new THREE.Vector3( 0, 0, 1 );
+// 		// var euler = new THREE.Euler();
+// 		var q0 = new THREE.Quaternion();
+// 		var q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1,0,0 ), Math.PI / 2 ); // - PI/2 around the x-axis
+// 		// euler.set( beta, alpha, - gamma, 'YXZ' ); // 'ZXY' for the device, but 'YXZ' for us
+// 		quaternion.fromArray( q ).invert(); // orient the device
+// 		// quaternion.fromArray( q ); // orient the device
+// 		quaternion.multiply( q1 ); // camera looks out the back of the device, not the top
+// 		const orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
+// 		quaternion.multiply( q0.setFromAxisAngle( zee, - orient ) ); // adjust for screen orientation
+// 	}
+
+// 	rotate(azimuthAngle: number, polarAngle: number, enableTransition?: boolean) 
+// 	{
+// 		if ( this.deviceOrientationEnabled && this.quaternion) 
+// 		{
+// 			this.alphaOffsetAngle+=azimuthAngle;
+// 			this.betaOffsetAngle+=polarAngle;
+// 			// this.updateAlphaOffsetAngle(this.alphaOffsetAngle + azimuthAngle);
+// 			// this.updateBetaOffsetAngle(this.betaOffsetAngle + polarAngle);
+// 		}
+// 		// else 
+// 		// {
+// 			return super.rotate(azimuthAngle, polarAngle, enableTransition);
+
+// 		// }
+// 	}
+
+// 	// update(delta: number)
+// 	// {
+// 	// 	if ( this.deviceOrientationEnabled && this.quaternion) 
+// 	// 	{
+// 	// 		// alpha += this.alphaOffsetAngle ; // Z
+// 	// 		// beta +=this.betaOffsetAngle ; // Z
+// 	// 		// gamma +=  - this.gammaOffsetAngle ; // Z
+// 	// 		// var alpha = this.deviceOrientation.alpha ? this.deviceOrientation.alpha * TO_RAD + this.alphaOffsetAngle : 0; // Z
+// 	// 		// var beta = this.deviceOrientation.beta ? this.deviceOrientation.beta * TO_RAD + this.betaOffsetAngle : 0; // X'
+// 	// 		// var gamma = this.deviceOrientation.gamma ? this.deviceOrientation.gamma * TO_RAD + this.gammaOffsetAngle : 0; // Y''
+// 	// 		var orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
+
+// 	// 		// if (this.screenOrientation % 180 === 0) 
+// 	// 		// {
+// 	// 		// 	if (Math.abs(this.deviceOrientation.beta) <10 && Math.abs(this.deviceOrientation.gamma) >80) 
+// 	// 		// 	{
+// 	// 		// 		wrongOrientation = true;
+// 	// 		// 	}
+// 	// 		// 	else 
+// 	// 		// 	{
+// 	// 		// 		wrongOrientation = false;
+// 	// 		// 	}
+// 	// 		// } 
+// 	// 		// this.setObjectQuaternion( this._camera.quaternion, alpha, beta, gamma, orient );
+// 	// 		// this._camera.quaternion.fromArray([alpha, beta, gamma, orient]);
+// 	// 		// this.dispatchEvent( {
+// 	// 		// 	type: 'update',
+// 	// 		// 	originalEvent: null
+// 	// 		// });
+// 	// 		return true;
+// 	// 	}
+// 	// 	else 
+// 	// 	{
+// 	// 		return super.update(delta);
+// 	// 	}
+// 	// }
+
+// 	updateAlphaOffsetAngle( angle ) 
+// 	{
+
+// 		this.alphaOffsetAngle = angle;
+
+// 	}
+
+// 	updateBetaOffsetAngle( angle ) 
+// 	{
+
+// 		this.betaOffsetAngle = angle;
+
+// 	}
+
+// 	updateGammaOffsetAngle( angle ) 
+// 	{
+
+// 		this.gammaOffsetAngle = angle;
+
+// 	}
+
+// 	dispose() 
+// 	{
+// 		this.stopDeviceOrientation();
+// 		super.dispose();
+// 	}
+
+// }
 class CameraControlsWithOrientation extends CameraControls 
 {
 	screenOrientation: number = 0
@@ -44,7 +367,9 @@ class CameraControlsWithOrientation extends CameraControls
 
 	deviceOrientationEnabled =false
 
-	alpha = 0;
+	orientationAzimuth = 0;
+
+	orientationPolar = 0;
 
 	alphaOffsetAngle = 0;
 
@@ -54,12 +379,37 @@ class CameraControlsWithOrientation extends CameraControls
 
 	onDeviceOrientationChangeEventBound
 
+	updateDeviceOrientationQuaternion() 
+	{
+		var alpha = this.deviceOrientation.alpha ? this.deviceOrientation.alpha * TO_RAD + this.alphaOffsetAngle : 0; // Z
+		var beta = this.deviceOrientation.beta ? this.deviceOrientation.beta * TO_RAD + this.betaOffsetAngle : 0; // X'
+		var gamma = this.deviceOrientation.gamma ? this.deviceOrientation.gamma * TO_RAD + this.gammaOffsetAngle : 0; // Y''
+		var orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
+
+		if (this.screenOrientation % 180 === 0) 
+		{
+			if (Math.abs(this.deviceOrientation.beta) <10 && Math.abs(this.deviceOrientation.gamma) >80) 
+			{
+				wrongOrientation = true;
+			}
+			else 
+			{
+				wrongOrientation = false;
+			}
+		} 
+
+		this.setObjectQuaternion( this._camera.quaternion, alpha, beta, gamma, orient );
+		this._camera.getWorldDirection( this.wordVec );
+		this.orientationAzimuth = Math.atan2(this.wordVec.x, this.wordVec.z) + Math.PI;
+		this.orientationPolar = Math.atan2(this.wordVec.z, this.wordVec.y) + Math.PI;
+	}
+
 	onDeviceOrientationChangeEvent( event ) 
 	{
-
 		this.deviceOrientation = event;
+		this.updateDeviceOrientationQuaternion();
 		this.dispatchEvent( {
-			type: 'control',
+			type: 'update',
 			originalEvent: event
 		} );
 	}
@@ -77,7 +427,6 @@ class CameraControlsWithOrientation extends CameraControls
 	{
 
 		this.screenOrientation = window.orientation as any || 0;
-		console.log('onScreenOrientationChangeEvent', this.screenOrientation);
 		this.dispatchEvent( {
 			type: 'control',
 			originalEvent: event
@@ -98,10 +447,15 @@ class CameraControlsWithOrientation extends CameraControls
 		this.onCompassNeedsCalibrationEventBound = this.onCompassNeedsCalibrationEvent.bind(this);
 
 		window.addEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
-		window.addEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+		if ('ondeviceorientationabsolute' in window) 
+		{
+			window.addEventListener( 'deviceorientationabsolute', this.onDeviceOrientationChangeEventBound, false );
+		}
+		else 
+		{
+			window.addEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+		}
 		window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
-
-
 	}
 
 	stopDeviceOrientation() 
@@ -111,23 +465,37 @@ class CameraControlsWithOrientation extends CameraControls
 			return;
 		}
 		this.deviceOrientationEnabled = false;
+		this.rotateTo(this.orientationAzimuth, this.orientationPolar);
 		window.removeEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
-		window.removeEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+		if ('ondeviceorientationabsolute' in window) 
+		{
+			window.removeEventListener( 'deviceorientationabsolute', this.onDeviceOrientationChangeEventBound, false );
+		}
+		else 
+		{
+			window.removeEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
+		}
 		window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
-
-
 	}
+
+	zee = new THREE.Vector3( 0, 0, 1 );
+
+	euler = new THREE.Euler();
+
+	q0 = new THREE.Quaternion();
+
+	q1 = new THREE.Quaternion();
+
+	wordVec = new THREE.Vector3();
 
 	setObjectQuaternion(quaternion, alpha, beta, gamma, orient) 
 	{
-		var zee = new THREE.Vector3( 0, 0, 1 );
-		var euler = new THREE.Euler();
-		var q0 = new THREE.Quaternion();
-		var q1 = new THREE.Quaternion( - Math.sqrt( 0.5 ), 0, 0, Math.sqrt( 0.5 ) ); // - PI/2 around the x-axis
-		euler.set( beta, alpha, - gamma, 'YXZ' ); // 'ZXY' for the device, but 'YXZ' for us
-		quaternion.setFromEuler( euler ); // orient the device
-		quaternion.multiply( q1 ); // camera looks out the back of the device, not the top
-		quaternion.multiply( q0.setFromAxisAngle( zee, - orient ) ); // adjust for screen orientation
+		this.q0.identity();
+		this.q1.set( - Math.sqrt( 0.5 ), 0, 0, Math.sqrt( 0.5 ) ); // - PI/2 around the x-axis
+		this.euler.set( beta, alpha, - gamma, 'YXZ' ); // 'ZXY' for the device, but 'YXZ' for us
+		quaternion.setFromEuler( this.euler ); // orient the device
+		quaternion.multiply( this.q1 ); // camera looks out the back of the device, not the top
+		quaternion.multiply( this.q0.setFromAxisAngle( this.zee, - orient ) ); // adjust for screen orientation
 	}
 
 	rotate(azimuthAngle: number, polarAngle: number, enableTransition?: boolean) 
@@ -140,7 +508,44 @@ class CameraControlsWithOrientation extends CameraControls
 		else 
 		{
 			return super.rotate(azimuthAngle, polarAngle, enableTransition);
+		}
+	}
 
+	trucking = false;
+
+	truck(x: number, y: number, enableTransition?: boolean) 
+	{
+		this.trucking = true;
+		return super.truck(x, y, enableTransition);
+	}
+
+	zooming = false;
+
+	zoom(zoomStep: number, enableTransition?: boolean) 
+	{
+		this.zooming = true;
+		return super.zoom(zoomStep, enableTransition);
+	}
+
+	zoomTo(zoom: number, enableTransition?: boolean) 
+	{
+		this.zooming = true;
+		return super.zoomTo(zoom, enableTransition);
+	}
+
+	ignoreUpdateDispatch = false;
+
+	dispatchEvent(event) 
+	{
+		if (this.ignoreUpdateDispatch && event.type === 'update' ) 
+		{
+			return;
+		}
+		super.dispatchEvent(event);
+		if (event.type === 'update') 
+		{
+			this.trucking = false;
+			this.zooming = false;
 		}
 	}
 
@@ -148,25 +553,10 @@ class CameraControlsWithOrientation extends CameraControls
 	{
 		if ( this.deviceOrientationEnabled) 
 		{
-			var alpha = this.deviceOrientation.alpha ? this.deviceOrientation.alpha * TO_RAD + this.alphaOffsetAngle : 0; // Z
-			var beta = this.deviceOrientation.beta ? this.deviceOrientation.beta * TO_RAD + this.betaOffsetAngle : 0; // X'
-			var gamma = this.deviceOrientation.gamma ? this.deviceOrientation.gamma * TO_RAD + this.gammaOffsetAngle : 0; // Y''
-			var orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
-
-			if (this.screenOrientation % 180 === 0) 
-			{
-				if (Math.abs(this.deviceOrientation.beta) <10 && Math.abs(this.deviceOrientation.gamma) >80) 
-				{
-					wrongOrientation = true;
-				}
-				else 
-				{
-					wrongOrientation = false;
-				}
-			} 
-
-			this.setObjectQuaternion( this._camera.quaternion, alpha, beta, gamma, orient );
-			this.alpha = alpha;
+			this.ignoreUpdateDispatch = true;
+			super.update(delta);
+			this.updateDeviceOrientationQuaternion();
+			this.ignoreUpdateDispatch = false;
 			this.dispatchEvent( {
 				type: 'update',
 				originalEvent: null
@@ -181,23 +571,17 @@ class CameraControlsWithOrientation extends CameraControls
 
 	updateAlphaOffsetAngle( angle ) 
 	{
-
 		this.alphaOffsetAngle = angle;
-
 	}
 
 	updateBetaOffsetAngle( angle ) 
 	{
-
 		this.betaOffsetAngle = angle;
-
 	}
 
 	updateGammaOffsetAngle( angle ) 
 	{
-
 		this.gammaOffsetAngle = angle;
-
 	}
 
 	dispose() 
@@ -205,7 +589,6 @@ class CameraControlsWithOrientation extends CameraControls
 		this.stopDeviceOrientation();
 		super.dispose();
 	}
-
 }
 const devLocal = (getURLParameter('local') || 'false') === 'true';
 
@@ -255,7 +638,7 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 		);
 	}
 }
-
+'';
 CameraControls.install({THREE: THREE});
 // @ts-ignore
 function throttle(callback, limit) 
@@ -290,9 +673,9 @@ function ArraySortOn(array, key)
 		return 0;
 	});
 }
-const devicePixelRatio = window.devicePixelRatio; // Change to 1 on retina screens to see blurry canvas.
+const devicePixelRatio = window.devicePixelRatio;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
+// console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
 export let showStats = false;
 export let mapMap = false;
@@ -302,7 +685,7 @@ export let debugFeaturePoints = false;
 export let wireframe = false;
 export let mapoutline = false;
 export let dayNightCycle = false;
-export let LOD = isMobile ? 102 :256;
+export let LOD = isMobile ? 104 :256;
 let debugGPUPicking = false;
 let readFeatures = true;
 let drawLines = true;
@@ -472,15 +855,15 @@ export function toggleDeviceSensors()
 	if (controls.deviceOrientationEnabled) 
 	{
 		controls.stopDeviceOrientation();
-		setElevation(elevation, true);
-		controls.polarAngle = 0;
+		// setElevation(elevation, true);
+		controls.polarAngle = Math.PI / 2;
 	}
 	else 
 	{
-		if (currentPositionAltitude !== -1) 
-		{
-			setElevation(currentPositionAltitude, true);
-		}
+		// if (currentPositionAltitude !== -1) 
+		// {
+		// 	setElevation(currentPositionAltitude, true);
+		// }
 		controls.startDeviceOrientation();
 	}
 }
@@ -569,7 +952,6 @@ export function toggleMapMode()
 }
 export function setPredefinedMapMode(value) 
 {
-	console.log('setPredefinedMapMode', value);
 	mapMap = value;
 	mapoutline = value;
 	
@@ -590,7 +972,6 @@ export function setPredefinedMapMode(value)
 }
 export function togglePredefinedMapMode() 
 {
-	console.log('togglePredefinedMapMode', mapMap);
 	try 
 	{
 		setPredefinedMapMode(!mapMap);
@@ -821,34 +1202,65 @@ export function toggleCamera()
 		startCam();
 	}
 }
+let shouldClearSelectedOnClick = true;
 
-let datelabel, viewingDistanceLabel, compass, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider, lodLabel;
+export function setMousPosition(x, y) 
+{
+	// console.log('setMousPosition', x, y, Boolean(selectedItem));
+	mousePosition = new THREE.Vector2(x, y);
+	render(true);
+}
+let datelabel, viewingDistanceLabel, compass: HTMLDivElement, compassSlice: HTMLDivElement, compassLabel: HTMLLabelElement, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider, lodLabel;
 try 
 {
-	compass = document.querySelector('#compass img');
+	compass = document.getElementById('compass') as HTMLDivElement;
+	compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
 	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
+
+	const cameraButton = document.getElementById('camera_button');
+	if (isMobile) 
+	{
+		cameraButton.style.visibility = 'visible';
+	}
+
+	compassLabel = document.getElementById('compass_label') as HTMLLabelElement;
 	const debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
-	debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
-	debugMapCheckBox.value = debug as any;
+	if (debugMapCheckBox) 
+	{
+		debugMapCheckBox.onchange = (event: any) => {return setDebugMode(event.target.checked);};
+		debugMapCheckBox.value = debug as any;
+	}
 	
 	
 	const mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
-	mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
-	mapMapCheckBox.checked = mapMap as any;
+	if (mapMapCheckBox) 
+	{
+		mapMapCheckBox.onchange = (event: any) => {return setMapMode(event.target.checked);};
+		mapMapCheckBox.checked = mapMap as any;
+	}
 	
 	const dayNightCycleCheckBox = document.getElementById('dayNightCycle') as HTMLInputElement;
-	dayNightCycleCheckBox.onchange = (event: any) => {return setDayNightCycle(event.target.checked);};
-	dayNightCycleCheckBox.checked = dayNightCycle as any;
+	if (dayNightCycleCheckBox) 
+	{
+		dayNightCycleCheckBox.onchange = (event: any) => {return setDayNightCycle(event.target.checked);};
+		dayNightCycleCheckBox.checked = dayNightCycle as any;
+	}
 	
 	const debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
-	debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
-	debugGPUPickingCheckbox.checked = debugGPUPicking as any;
-	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+	if (debugGPUPickingCheckbox) 
+	{
+		debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
+		debugGPUPickingCheckbox.checked = debugGPUPicking as any;
+		canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+	}
 	
 	const readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
-	readFeaturesCheckbox.onchange = (event: any) => {return setReadFeatures(event.target.checked);};
-	readFeaturesCheckbox.checked = readFeatures as any;
-	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+	if (readFeaturesCheckbox) 
+	{
+		readFeaturesCheckbox.onchange = (event: any) => {return setReadFeatures(event.target.checked);};
+		readFeaturesCheckbox.checked = readFeatures as any;
+		canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
+	}
 	
 	// const drawLinesCheckbox = document.getElementById('drawLines') as HTMLInputElement;
 	// drawLinesCheckbox.onchange = (event: any) => {return setDrawLines(event.target.checked);};
@@ -856,68 +1268,119 @@ try
 	// canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
 	
 	const debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints') as HTMLInputElement;
-	debugFeaturePointsCheckbox.onchange = (event: any) => {return setDebugFeaturePoints(event.target.checked);};
-	debugFeaturePointsCheckbox.checked = debugFeaturePoints as any;
+	if (debugFeaturePointsCheckbox) 
+	{
+		debugFeaturePointsCheckbox.onchange = (event: any) => {return setDebugFeaturePoints(event.target.checked);};
+		debugFeaturePointsCheckbox.checked = debugFeaturePoints as any;
+	}
 	
 	const darkmodeCheckbox = document.getElementById('darkmode') as HTMLInputElement;
-	darkmodeCheckbox.onchange = (event: any) => {return setDarkMode(event.target.checked);};
-	darkmodeCheckbox.checked = darkTheme as any;
+	if (darkmodeCheckbox) 
+	{
+		darkmodeCheckbox.onchange = (event: any) => {return setDarkMode(event.target.checked);};
+		darkmodeCheckbox.checked = darkTheme as any;
+	}
 	const wireframeCheckbox = document.getElementById('wireframe') as HTMLInputElement;
-	wireframeCheckbox.onchange = (event: any) => {return setWireFrame(event.target.checked);};
-	wireframeCheckbox.checked = wireframe as any;
+	if (wireframeCheckbox) 
+	{
+		wireframeCheckbox.onchange = (event: any) => {return setWireFrame(event.target.checked);};
+		wireframeCheckbox.checked = wireframe as any;
+	}
 
 	const mapoutlineCheckbox = document.getElementById('mapoutline') as HTMLInputElement;
-	mapoutlineCheckbox.onchange = (event: any) => {return setMapOultine(event.target.checked);};
-	mapoutlineCheckbox.checked = mapoutline as any;
+	if (mapoutlineCheckbox) 
+	{
+		mapoutlineCheckbox.onchange = (event: any) => {return setMapOultine(event.target.checked);};
+		mapoutlineCheckbox.checked = mapoutline as any;
+	}
 	
 	elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
-	elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
-	elevationSlider.value = elevation as any;
+	if (elevationSlider) 
+	{
+		elevationSlider.oninput = (event: any) => {return setElevation(event.target.value);};
+		elevationSlider.value = elevation as any;
+	}
 	
 	const exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
-	exagerationSlider.oninput = (event: any) => {return setExageration(event.target.value);};
-	exagerationSlider.value = exageration as any;
+	if (exagerationSlider) 
+	{
+		exagerationSlider.oninput = (event: any) => {return setExageration(event.target.value);};
+		exagerationSlider.value = exageration as any;
+	}
 	const depthMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
-	depthMultiplierSlider.oninput = (event: any) => {return setDepthMultiplier(event.target.value);};
-	depthMultiplierSlider.value = depthMultiplier as any;
+	if (depthMultiplierSlider) 
+	{
+		depthMultiplierSlider.oninput = (event: any) => {return setDepthMultiplier(event.target.value);};
+		depthMultiplierSlider.value = depthMultiplier as any;
+	}
 	const depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInputElement;
-	depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
-	depthBiaisSlider.value = depthBiais as any;
-	
-	const now = new Date();
-	const secondsInDay = now.getHours() * 3600 + now.getMinutes()* 60 + now.getSeconds();
+	if (depthBiaisSlider) 
+	{
+		depthBiaisSlider.oninput = (event: any) => {return setDepthBiais(event.target.value);};
+		depthBiaisSlider.value = depthBiais as any;
+	}
 	
 	const dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
-	dateSlider.oninput = (event: any) => {return setDate(event.target.value);};
-	dateSlider.value = secondsInDay as any;
-	datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
-	datelabel.innerText = new Date().toLocaleString();
+	if (dateSlider) 
+	{
+	
+		const now = new Date();
+		const secondsInDay = now.getHours() * 3600 + now.getMinutes()* 60 + now.getSeconds();
+		dateSlider.oninput = (event: any) => {return setDate(event.target.value);};
+		dateSlider.value = secondsInDay as any;
+		datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
+		datelabel.innerText = new Date().toLocaleString();
+	}
 	viewingDistanceLabel = document.getElementById('viewingDistanceLabel') as HTMLLabelElement;
 
 	const viewingDistanceSlider = document.getElementById('viewingDistanceSlider') as HTMLInputElement;
-	viewingDistanceSlider.oninput = (event: any) => {return setViewingDistance(event.target.value);};
+	if (viewingDistanceSlider) 
+	{
+		viewingDistanceSlider.oninput = (event: any) => {return setViewingDistance(event.target.value);};
+	}
 	
 	const cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
-	cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
-	cameraCheckbox.value = showingCamera as any;
+	if (cameraCheckbox) 
+	{
+		cameraCheckbox.onchange = (event: any) => {return toggleCamera();};
+		cameraCheckbox.value = showingCamera as any;
+	}
 	
 	const drawElevationsCheckbox = document.getElementById('drawElevations') as HTMLInputElement;
-	drawElevationsCheckbox.onchange = (event: any) => {return toggleDrawElevations();};
-	drawElevationsCheckbox.value = drawElevations as any;
-	
+	if (drawElevationsCheckbox) 
+	{
+		drawElevationsCheckbox.onchange = (event: any) => {return toggleDrawElevations();};
+		drawElevationsCheckbox.value = drawElevations as any;
+	}
 	const normalsInDebugCheckbox = document.getElementById('normalsInDebug') as HTMLInputElement;
-	normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
-	normalsInDebugCheckbox.value = drawNormals as any;
-
+	if (normalsInDebugCheckbox) 
+	{
+		normalsInDebugCheckbox.onchange = (event: any) => {return toggleNormalsInDebug();};
+		normalsInDebugCheckbox.value = drawNormals as any;
+	}
 
 	const lodSlider = document.getElementById('lodSlider') as HTMLInputElement;
-	lodSlider.oninput = (event: any) => {return setLOD(event.target.value);};
+	if (lodSlider) 
+	{
+		lodSlider.oninput = (event: any) => {return setLOD(event.target.value);};
+	}
 
 	selectedPeakLabel = document.getElementById('selectedPeakLabel') as HTMLLabelElement;
 	elevationLabel = document.getElementById('elevationLabel') as HTMLLabelElement;
 	selectedPeakDiv = document.getElementById('selectedPeak') as HTMLDivElement;
 	lodLabel = document.getElementById('lodLabel') as HTMLLabelElement;
-	lodLabel.innerText = LOD;
+	if (lodLabel) 
+	{
+		lodLabel.innerText = LOD;
+	}
+
+	
+	var hammertime = new Hammer(canvas);
+	hammertime.on('tap', function(event ) 
+	{
+		mousePosition = new THREE.Vector2(event.center.x, event.center.y);
+		render(true);
+	});
 }
 catch (err) {}
 
@@ -929,24 +1392,38 @@ function onControlUpdate()
 	map.lod.updateLOD(map, camera, renderer, scene);
 	if (compass) 
 	{
-		const angle = controls.azimuthAngle * 180 / Math.PI % 360;
-		const pitch = controls.polarAngle * 180 / Math.PI % 360;
-		const styling =
-				'translate(-50%, -50%) rotateX(' + (90 - pitch) + 'deg) rotateZ(' + angle + 'deg)';
-		compass.style['-webkit-transform'] = styling;
+		let angle, pitch;
+		if (controls.deviceOrientationEnabled) 
+		{
+			angle = controls.orientationAzimuth * TO_DEG % 360;
+			pitch = controls.orientationPolar * TO_DEG % 360;
+		}
+		else 
+		{
+			angle = controls.azimuthAngle * TO_DEG % 360;
+			pitch = controls.polarAngle * TO_DEG % 360;
+		}
+		if (compassLabel) 
+		{
+			compassLabel.innerText = angle.toFixed() + '°';
+
+		}
+		compassSlice.style.backgroundImage = `conic-gradient(transparent 0deg,transparent ${180 - cameraFOV/2}deg, #15BFCCaa ${180 - cameraFOV/2}deg, #15BFCCaa ${180 + cameraFOV/2}deg, transparent ${180 + cameraFOV/2}deg)`;
+		compassSlice.style.transform = `rotateZ(${-angle - 180}deg)`;
+		// compass.style.transform = `rotateX(${90 - pitch}deg)`;
 	}
-	if (window['nsWebViewBridge']) 
-	{
-		window['nsWebViewBridge'].emit('controls', {
-			// distance: controls.distance,
-			azim: controls.azimuthAngle * TO_DEG
-		});
-	}
+	// if (window['nsWebViewBridge']) 
+	// {
+	// 	window['nsWebViewBridge'].emit('controls', {
+	// 		// distance: controls.distance,
+	// 		azim: controls.azimuthAngle * TO_DEG
+	// 	});
+	// }
 	render();
 }
 function setupLOD() 
 {
-	// heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
+	heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
 	lod.subdivideDistance = 40;
 	lod.simplifyDistance = 140;
 }
@@ -970,11 +1447,10 @@ function createProvider()
 	}
 	provider.minZoom = 5;
 	provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-	// provider.zoomDelta = 1 ;
-	provider.minLevelForZoomDelta = 12 ;
+	provider.zoomDelta = 1 ;
+	provider.minLevelForZoomDelta = 10 ;
 	return provider;
 }
-
 function createMap() 
 {
 	if (map !== undefined)
@@ -996,12 +1472,12 @@ function createMap()
 }
 
 createMap();
-
-const camera = new THREE.PerspectiveCamera(40, viewWidth / viewHeight, 100, FAR);
+const cameraFOV = 40;
+const camera = new THREE.PerspectiveCamera(cameraFOV, viewWidth / viewHeight, 100, FAR);
 camera.position.set(0, 0, EPS);
 const controls = new CameraControlsWithOrientation(camera, canvas);
-controls.azimuthRotateSpeed = -0.15; // negative value to invert rotation direction
-controls.polarRotateSpeed = -0.15; // negative value to invert rotation direction
+controls.azimuthRotateSpeed = -0.2; // negative value to invert rotation direction
+controls.polarRotateSpeed = -0.2; // negative value to invert rotation direction
 controls.minZoom = 1;
 // controls.minDistance = -10000;
 // controls.maxDistance = 1000;
@@ -1043,7 +1519,7 @@ ambientLight.visible = needsLights();
 // sunLight.directionalLight.castShadow = true;
 
 const axesHelper = new THREE.AxesHelper( 50 );
-scene.add( axesHelper );
+// scene.add( axesHelper );
 
 function updateSky() 
 {
@@ -1058,6 +1534,10 @@ function updateSky()
 function updateCurrentViewingDistance() 
 {
 	currentViewingDistance = getViewingDistance();
+	if (window['nsWebViewBridge']) 
+	{
+		window['nsWebViewBridge'].emit('viewingDistance', currentViewingDistance);
+	}
 	if (viewingDistanceLabel) 
 	{
 		viewingDistanceLabel.innerText = Math.round(currentViewingDistance/1000) + 'km';
@@ -1093,12 +1573,12 @@ function getRhumbLineBearing(originLL, destLL)
 export function setPosition(coords, animated = false) 
 {
 	const newPosition= UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
-	// axesHelper.position.set(currentPosition.x, 1300, -currentPosition.y - 1000);
+	// axesHelper.position.set(newPosition.x, 1300, -newPosition.y - 1000);
 	const currentCoords ={lat: sunLight.coordinates.x, lon: sunLight.coordinates.y};
 	sunLight.setPosition(coords.lat, coords.lon);
 	sunLight.setDate(new Date());
 	updateSky();
-
+	setSelectedItem(null);
 	
 	if (animated) 
 	{
@@ -1113,14 +1593,15 @@ export function setPosition(coords, animated = false)
 		let endElevation = startElevation;
 		if (coords.altitude) 
 		{
-			currentPositionAltitude = coords.altitude;
-			endElevation = coords.altitude * exageration;
+			currentPositionAltitude = coords.altitude + 100;
+			endElevation = currentPositionAltitude * exageration;
 		}
-		else 
-		{
-			currentPositionAltitude = -1;
-		}
-		const topElevation = (distance > 100000? 11000: endElevation + 100) * exageration;
+		// else 
+		// {
+		// 	currentPositionAltitude = -1;
+		// }
+		// always move to be "over" the peak
+		const topElevation = distance > 100000? 11000 * exageration: endElevation ;
 		startAnimation({
 			from: {...currentPosition, progress: 0},
 			to: {...newPosition, progress: 1},
@@ -1151,6 +1632,10 @@ export function setPosition(coords, animated = false)
 			{
 				setElevation(Math.round(endElevation / exageration), false);
 				updateCurrentViewingDistance();
+				if (window['nsWebViewBridge']) 
+				{
+					window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: endElevation});
+				}
 			}
 		});
 	}
@@ -1158,13 +1643,13 @@ export function setPosition(coords, animated = false)
 	{
 		if (coords.altitude) 
 		{
-			currentPositionAltitude = coords.altitude;
-			setElevation(coords.altitude, true);
+			// currentPositionAltitude = coords.altitude + 100;
+			setElevation(coords.altitude + 100, false);
 		}
-		else 
-		{
-			currentPositionAltitude = -1;
-		}
+		// else 
+		// {
+		// 	currentPositionAltitude = -1;
+		// }
 		currentPosition = newPosition;
 
 		controls.moveTo(currentPosition.x, elevation * exageration, -currentPosition.y, false);
@@ -1183,7 +1668,7 @@ export function setElevation(newValue, updateControls = true)
 	{
 		elevationSlider.value = elevation as any;
 		elevationLabel.innerText = newValue + 'm';
-	}
+	}	
 	if (updateControls) 
 	{
 		controls.getTarget(tempVector);
@@ -1262,16 +1747,31 @@ controls.addEventListener('update', () =>
 });
 controls.addEventListener('controlend', () => 
 {
+	// force a render at the end of the movement to make sure we show the correct peaks
 	render(true);
 });
 controls.addEventListener('control', (event) => 
 {
-	// console.log(event);
+	const zooming = controls.zooming;
+	const trucking = controls.trucking;
 	if (event.originalEvent && event.originalEvent.buttons) 
 	{
 		shouldClearSelectedOnClick = false;
 	}
+	controls.azimuthRotateSpeed = -0.2 / camera.zoom ; // negative value to invert rotation direction
+	controls.polarRotateSpeed = -0.2 / camera.zoom ; // negative value to invert rotation direction
 	controls.update(1);
+	if (selectedItem && trucking) 
+	{
+		sendSelectedToNS();
+	}
+	if (zooming) 
+	{
+		if (window['nsWebViewBridge']) 
+		{
+			window['nsWebViewBridge'].emit('zoom', camera.zoom);
+		}
+	}
 	render();
 });
 composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
@@ -1470,14 +1970,33 @@ function updateSelectedPeakLabel()
 	const distance = getDistance(point1, point2) ;
 	selectedPeakLabel.innerText = selectedItem.properties.name + ' ' + selectedItem.properties.ele +'m(' + Math.round(distance/100) / 10 +'km)';
 }
-function setSelectedItem(f) 
+
+function sendSelectedToNS() 
 {
-	selectedItem = f;
 	if (window['nsWebViewBridge']) 
 	{
-		window['nsWebViewBridge'].emit('selected', f);
+		let distance = 0;
+		if (selectedItem) 
+		{
+			controls.getPosition(tempVector);
+			const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+			const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
+			distance = getDistance(point1, point2) ;
+		}
+		
+		window['nsWebViewBridge'].emit('selected', selectedItem ? {...selectedItem, distance: distance} : null);
 	}
-	else if (selectedPeakLabel)
+}
+function setSelectedItem(f) 
+{
+	if (f === selectedItem) 
+	{
+		return;
+	}
+	selectedItem = f;
+	// console.log('setSelectedItem', f && f.properties.name);
+	sendSelectedToNS();
+	if (selectedPeakLabel)
 	{
 		if (selectedItem) 
 		{
@@ -1494,8 +2013,8 @@ export function goToSelectedItem()
 {
 	if (selectedItem) 
 	{
-		const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
-		setSelectedItem(null);
+		// ensure we dont end up in the mesh
+		const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele + 100};
 		setPosition(point2, true);
 	}
 
@@ -1508,14 +2027,17 @@ export function focusSelectedItem()
 		const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
 		const point2= {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0]};
 		const angle = 360 - getRhumbLineBearing({lat: point1.latitude, lon: point1.longitude}, point2) ;
-		
 		setAzimuth(angle);
 	}
 }
 
 function isSelectedFeature(f) 
 {
-	return selectedItem && f.properties.osmid === selectedItem.properties.osmid;
+	if (devLocal ) 
+	{
+		return selectedItem && f.properties.osmid === selectedItem.properties.osmid;
+	}
+	return selectedItem && f.properties.name === selectedItem.properties.name && f.properties.ele === selectedItem.properties.ele;
 }
 function drawFeatures() 
 {
@@ -1538,13 +2060,15 @@ function drawFeatures()
 
 	const featuresToDraw = [];
 	let canTestHeight = true;
+	let newlySelectedItem = null;
 	featuresToShow.forEach((f, index) => 
 	{	
-		if (mousePosition) {
+		if (mousePosition) 
+		{
 			const distance = Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
 			if (distance < 10) 
 			{
-				setSelectedItem(f);
+				newlySelectedItem = f;
 				mousePosition = null;
 			}
 		}
@@ -1622,7 +2146,7 @@ function drawFeatures()
 			const textWidth2 = ctx2d.measureText(text2).width;
 			totalWidth += textWidth2 - 5;
 		}
-		if (mousePosition && (!selectedItem || !shouldClearSelectedOnClick)) 
+		if (mousePosition) 
 		{
 			const transform = ctx2d.getTransform().inverse();
 			var point = new DOMPoint(mousePosition.x * devicePixelRatio, mousePosition.y * devicePixelRatio);
@@ -1630,7 +2154,7 @@ function drawFeatures()
 			if (test.x >= 0 && test.x < totalWidth && 
 			test.y < -rectTop && test.y>=-rectBottom ) 
 			{
-				setSelectedItem(f);
+				newlySelectedItem = f;
 				mousePosition = null;
 			}
 		}
@@ -1656,7 +2180,16 @@ function drawFeatures()
 		}
 		ctx2d.restore();
 	}
+	if (newlySelectedItem) 
+	{
+		setSelectedItem(newlySelectedItem);
+	}
+	else if (mousePosition) 
+	{
+		setSelectedItem(null);
+	}
 	ctx2d.restore();
+	mousePosition = null;
 }
 
 function readShownFeatures() 
@@ -1730,59 +2263,7 @@ function readShownFeatures()
 	}
 	featuresToShow = rFeatures;
 }
-function isTouchEvent(event) 
-{
-	return 'TouchEvent' in window && event instanceof TouchEvent;
-}
-// function onMouseMove(event) 
-// {	
-// 	shouldClearSelectedOnClick = false;
-// }
-// function onMouseMove(event) 
-// {	
-// 	shouldClearSelectedOnClick = false;
-// }
-// canvas.addEventListener('touchmove', onMouseMove);
-// canvas.addEventListener('mousemove', onMouseMove);
-// canvas.addEventListener('touchstart', onMouseDown, {passive: true});
 
-let shouldClearSelectedOnClick = true;
-canvas.onclick = function(event)
-{
-	// if (showMagnify) 
-	// {
-	// 	showMagnify = false;
-	// }
-	// else 
-	// {
-
-	// console.log('onclick', shouldClearSelectedOnClick, Boolean(selectedItem));
-	if (shouldClearSelectedOnClick) 
-	{
-		setSelectedItem(null);
-	}
-
-	shouldClearSelectedOnClick = true;
-	if (isTouchEvent(event)) 
-	{
-		var touchEvent = event;
-		mousePosition = new THREE.Vector2();
-		for (var i = 0; i < touchEvent.touches.length; i++) 
-		{
-			mousePosition.x += touchEvent.touches[i].clientX;
-			mousePosition.y += window.innerHeight - touchEvent.touches[i].clientY;
-		}
-		mousePosition.x /= touchEvent.touches.length;
-		mousePosition.y /= touchEvent.touches.length;
-	}
-	else 
-	{
-		mousePosition = new THREE.Vector2(event.clientX, event.clientY);
-	}
-	// showMagnify = true;
-	// }
-	render(true);
-};
 function withoutComposer() 
 {
 	return (debug || mapMap) && !mapoutline;
@@ -1822,7 +2303,7 @@ function actualRender(forceComputeFeatures)
 		composer.render(clock.getDelta());
 	}
 }
-export function render(forceComputeFeatures = false	) 
+export function render(forceComputeFeatures = false) 
 {
 	if (!renderer || !composer) 
 	{
@@ -1884,7 +2365,8 @@ export function moveToEndPoint(animated = true)
 
 export function moveToStartPoint(animated = true) 
 {
-	setPosition({lat: 45.19177, lon: 5.72831}, animated);
+	// setPosition({lat: 45.19177, lon: 5.72831}, animated);
+	setPosition({lat: 44.86056, lon: 6.05242}, animated);
 }
 
 var requestId;
@@ -1945,7 +2427,6 @@ export function setAzimuth(value: number)
 	{
 		value = value - 360;
 	}
-	clock.getDelta(); // to reset to 0;
 	startAnimation({
 		from: {progress: current},
 		to: {progress: value},
@@ -1953,14 +2434,13 @@ export function setAzimuth(value: number)
 		onUpdate: function( values ) 
 		{
 			controls.azimuthAngle = values.progress* TO_RAD;
-			render();
+			controls.update(1);
 		}
 	});
 }
 export function setViewingDistance(meters: number) 
 {
 	FAR = meters / currentViewingDistance * FAR;
-	console.log('setViewingDistance', meters, FAR);
 	camera.far = FAR;
 	camera.updateProjectionMatrix();
 	updateCurrentViewingDistance();

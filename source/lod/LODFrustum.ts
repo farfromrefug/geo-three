@@ -65,7 +65,7 @@ export class LODFrustum extends LODRadial
 
 		node.getWorldPosition(position);
 		var distance = pov.distanceTo(position);
-		distance /= Math.pow(2, 20 - node.level) * camera.zoom;
+		distance /= Math.pow(2, 20 - node.level) * Math.max(camera.zoom/2, 1);
 		// distance /= Math.pow(2, 20 - node.level);
 
 		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));

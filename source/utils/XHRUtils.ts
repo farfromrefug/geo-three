@@ -52,7 +52,14 @@ export class XHRUtils
 		{
 			xhr.onload = function()
 			{
-				onLoad(xhr.response);
+				if ( xhr.status === 200) 
+				{
+					onLoad(xhr.response);
+				}
+				else 
+				{
+					onError('tile not found');
+				}
 			};
 		}
 

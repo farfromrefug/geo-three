@@ -25,7 +25,7 @@ export class LocalHeightTerrainProvider extends MapProvider
 			new CancelablePromise<ArrayBuffer>((resolve, reject) => 
 			{
 				XHRUtils.getRaw(
-					`http://localhost:8084/tilesets/tin/${zoom}/${x}/${Math.pow(2, zoom) - y - 1}.terrain`,
+					`http://localhost:8084/tilesets/test/${zoom}/${x}/${Math.pow(2, zoom) - y - 1}.terrain`,
 					async(data) => 
 					{
 						resolve(data);

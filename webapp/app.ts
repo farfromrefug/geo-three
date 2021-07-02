@@ -31,7 +31,9 @@ import {DebugProvider} from '../source/providers/DebugProvider';
 import {LODFrustum} from '../source/lod/LODFrustum';
 import {EmptyProvider} from './EmptyProvider';
 import {MaterialHeightShader} from './MaterialHeightShader';
+import {MapQuantizedMeshHeightNode} from './MapQuantizedMeshHeightNode';
 import {LocalHeightProvider} from './LocalHeightProvider';
+import {LocalHeightTerrainProvider} from './LocalHeightTerrainProvider';
 import RasterMapProvider from './RasterMapProvider';
 import {SunLight} from './SunLight';
 
@@ -677,12 +679,12 @@ const devicePixelRatio = window.devicePixelRatio;
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
-export let showStats = false;
+export let showStats = true;
 export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
 export let debugFeaturePoints = false;
-export let wireframe = false;
+export let wireframe = true;
 export let mapoutline = false;
 export let dayNightCycle = false;
 export let LOD = isMobile ? 104 :256;
@@ -1385,6 +1387,7 @@ try
 catch (err) {}
 
 const heightProvider = new LocalHeightProvider(devLocal);
+// const heightProvider = new LocalHeightTerrainProvider(devLocal);
 setTerrarium(heightProvider.terrarium);
 
 function onControlUpdate() 
@@ -1461,8 +1464,8 @@ function createMap()
 	map = new MapView(null, provider, heightProvider, false, render);
 	// map.lowMemoryUsage = isMobile;
 	map.lowMemoryUsage = true;
+	// map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
-	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
@@ -1504,6 +1507,7 @@ scene.add( ambientLight );
 scene.add(camera );
 sky.visible = sunLight.visible = shouldRenderSky();
 ambientLight.visible = needsLights();
+// setComputeNormals(!computeNormals);
 
 // const fog = new THREE.Fog(0xffffff, camera.near, camera.far * 2);
 
@@ -2366,7 +2370,8 @@ export function moveToEndPoint(animated = true)
 export function moveToStartPoint(animated = true) 
 {
 	// setPosition({lat: 45.19177, lon: 5.72831}, animated);
-	setPosition({lat: 44.86056, lon: 6.05242}, animated);
+	setPosition({lat: 44.86098, lon: 6.05276}, animated);
+	// setPosition({lat: 44.86056, lon: 6.05242}, animated);
 }
 
 var requestId;

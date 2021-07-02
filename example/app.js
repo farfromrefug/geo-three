@@ -58683,7 +58683,12 @@ var webapp = (function (exports) {
             xhr.open('GET', url, true);
             if (onLoad !== undefined) {
                 xhr.onload = function () {
-                    onLoad(xhr.response);
+                    if (xhr.status === 200) {
+                        onLoad(xhr.response);
+                    }
+                    else {
+                        onError('tile not found');
+                    }
                 };
             }
             if (onError !== undefined) {
@@ -63089,12 +63094,12 @@ var webapp = (function (exports) {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
     exports.debug = false;
-    exports.showStats = false;
+    exports.showStats = true;
     exports.mapMap = false;
     exports.drawTexture = true;
     exports.computeNormals = false;
     exports.debugFeaturePoints = false;
-    exports.wireframe = false;
+    exports.wireframe = true;
     exports.mapoutline = false;
     exports.dayNightCycle = false;
     exports.LOD = isMobile ? 104 : 256;
@@ -63631,6 +63636,7 @@ var webapp = (function (exports) {
     }
     catch (err) { }
     const heightProvider = new LocalHeightProvider(devLocal);
+    // const heightProvider = new LocalHeightTerrainProvider(devLocal);
     setTerrarium(heightProvider.terrarium);
     function onControlUpdate() {
         map.lod.updateLOD(map, camera, renderer, scene);
@@ -63692,8 +63698,8 @@ var webapp = (function (exports) {
         map = new MapView(null, provider, heightProvider, false, render);
         // map.lowMemoryUsage = isMobile;
         map.lowMemoryUsage = true;
+        // map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
         map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
-        // map.setRoot(new MapMartiniHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
         map.lod = lod;
         map.updateMatrixWorld(true);
         scene.add(map);
@@ -63725,6 +63731,7 @@ var webapp = (function (exports) {
     scene.add(camera);
     sky.visible = sunLight.visible = shouldRenderSky();
     ambientLight.visible = needsLights();
+    // setComputeNormals(!computeNormals);
     // const fog = new THREE.Fog(0xffffff, camera.near, camera.far * 2);
     // Adjust the directional light's shadow camera dimensions
     // sunLight.directionalLight.shadow.camera.right = 30.0;
@@ -64369,7 +64376,8 @@ var webapp = (function (exports) {
     }
     function moveToStartPoint(animated = true) {
         // setPosition({lat: 45.19177, lon: 5.72831}, animated);
-        setPosition({ lat: 44.86056, lon: 6.05242 }, animated);
+        setPosition({ lat: 44.86098, lon: 6.05276 }, animated);
+        // setPosition({lat: 44.86056, lon: 6.05242}, animated);
     }
     var requestId;
     function animationLoop(time) {

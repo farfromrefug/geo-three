@@ -1309,6 +1309,10 @@ var webapp = (function (exports) {
 
     var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
+    function getDefaultExportFromCjs (x) {
+    	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+    }
+
     function getAugmentedNamespace(n) {
     	if (n.__esModule) return n;
     	var a = Object.defineProperty({}, '__esModule', {value: true});
@@ -56733,6 +56737,10 @@ var webapp = (function (exports) {
      * Map node geometry is a geometry used to represent the map nodes.
      *
      * Consists of a XZ plane with normals facing +Y.
+     *
+     * The geometry points start in XZ plane that can be manipulated for example for height adjustment.
+     *
+     * Geometry can also include skirts to mask off missalignments between tiles.
      */
     class MapNodeGeometry extends BufferGeometry {
         /**
@@ -56742,14 +56750,21 @@ var webapp = (function (exports) {
          * @param height - Height of the node.
          * @param widthSegments - Number of subdivisions along the width.
          * @param heightSegments - Number of subdivisions along the height.
+         * @param skirt - Skirt around the plane to mask gaps between tiles.
          */
-        constructor(width, height, widthSegments, heightSegments) {
+        constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0) {
             super();
+            // Half width X 
             const widthHalf = width / 2;
+            // Half width Z
             const heightHalf = height / 2;
+            // Size of the grid in X
             const gridX = widthSegments + 1;
+            // Size of the grid in Z
             const gridZ = heightSegments + 1;
+            // Width of each segment X
             const segmentWidth = width / widthSegments;
+            // Height of each segment Z
             const segmentHeight = height / heightSegments;
             // Buffers
             const indices = [];
@@ -56761,8 +56776,7 @@ var webapp = (function (exports) {
                 for (let ix = 0; ix < gridX; ix++) {
                     const x = ix * segmentWidth - widthHalf;
                     vertices.push(x, 0, z);
-                    uvs.push(ix / widthSegments);
-                    uvs.push(1 - iz / heightSegments);
+                    uvs.push(ix / widthSegments, 1 - iz / heightSegments);
                 }
             }
             // Indices
@@ -56772,9 +56786,74 @@ var webapp = (function (exports) {
                     const b = ix + gridX * (iz + 1);
                     const c = ix + 1 + gridX * (iz + 1);
                     const d = ix + 1 + gridX * iz;
-                    // faces
-                    indices.push(a, b, d);
-                    indices.push(b, c, d);
+                    // Faces
+                    indices.push(a, b, d, b, c, d);
+                }
+            }
+            // Generate the skirt
+            if (skirt) {
+                let start = vertices.length / 3;
+                // Down X
+                for (let ix = 0; ix < gridX; ix++) {
+                    const x = ix * segmentWidth - widthHalf;
+                    const z = -heightHalf;
+                    vertices.push(x, -skirtDepth, z);
+                    uvs.push(ix / widthSegments, 1);
+                }
+                // Indices
+                for (let ix = 0; ix < widthSegments; ix++) {
+                    const a = ix;
+                    const d = ix + 1;
+                    const b = ix + start;
+                    const c = ix + start + 1;
+                    indices.push(d, b, a, d, c, b);
+                }
+                start = vertices.length / 3;
+                // Up X
+                for (let ix = 0; ix < gridX; ix++) {
+                    const x = ix * segmentWidth - widthHalf;
+                    const z = heightSegments * segmentHeight - heightHalf;
+                    vertices.push(x, -skirtDepth, z);
+                    uvs.push(ix / widthSegments, 0);
+                }
+                // Index of the beginning of the last X row
+                let offset = gridX * gridZ - widthSegments - 1;
+                for (let ix = 0; ix < widthSegments; ix++) {
+                    const a = offset + ix;
+                    const d = offset + ix + 1;
+                    const b = ix + start;
+                    const c = ix + start + 1;
+                    indices.push(a, b, d, b, c, d);
+                }
+                start = vertices.length / 3;
+                // Down Z
+                for (let iz = 0; iz < gridZ; iz++) {
+                    const z = iz * segmentHeight - heightHalf;
+                    const x = -widthHalf;
+                    vertices.push(x, -skirtDepth, z);
+                    uvs.push(0, 1 - iz / heightSegments);
+                }
+                for (let iz = 0; iz < heightSegments; iz++) {
+                    const a = iz * gridZ;
+                    const d = (iz + 1) * gridZ;
+                    const b = iz + start;
+                    const c = iz + start + 1;
+                    indices.push(a, b, d, b, c, d);
+                }
+                start = vertices.length / 3;
+                // Up Z
+                for (let iz = 0; iz < gridZ; iz++) {
+                    const z = iz * segmentHeight - heightHalf;
+                    const x = widthSegments * segmentWidth - widthHalf;
+                    vertices.push(x, -skirtDepth, z);
+                    uvs.push(1.0, 1 - iz / heightSegments);
+                }
+                for (let iz = 0; iz < heightSegments; iz++) {
+                    const a = iz * gridZ + heightSegments;
+                    const d = (iz + 1) * gridZ + heightSegments;
+                    const b = iz + start;
+                    const c = iz + start + 1;
+                    indices.push(d, b, a, d, c, b);
                 }
             }
             this.setIndex(indices);
@@ -56791,7 +56870,7 @@ var webapp = (function (exports) {
      * It is intended to be used as a base class for other map node implementations.
      */
     class MapNode extends Mesh {
-        constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = null, material = null) {
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = null, material = null) {
             super(geometry, material);
             /**
              * The map view object where the node is placed.
@@ -56838,6 +56917,7 @@ var webapp = (function (exports) {
             this.y = y;
             const autoLoad = mapView.nodeShouldAutoLoad();
             this.isMesh = false;
+            this.matrixAutoUpdate = false;
             this.isTextureReady = autoLoad;
             this.objectsHolder = new Group();
             this.objectsHolder.visible = !autoLoad;
@@ -56879,7 +56959,7 @@ var webapp = (function (exports) {
                     }
                 });
                 this.children = this.childrenCache;
-                if (this.nodesLoaded >= MapNode.CHILDRENS) {
+                if (this.nodesLoaded >= MapNode.childrens) {
                     this.isMesh = false;
                     this.objectsHolder.visible = false;
                 }
@@ -56979,7 +57059,7 @@ var webapp = (function (exports) {
             const parentNode = this.parentNode;
             if (parentNode !== null) {
                 parentNode.nodesLoaded++;
-                if (parentNode.nodesLoaded >= MapNode.CHILDRENS) {
+                if (parentNode.nodesLoaded >= MapNode.childrens) {
                     parentNode.children.forEach((child, index) => {
                         if (child !== parentNode.objectsHolder) {
                             let theNode = child;
@@ -57026,52 +57106,52 @@ var webapp = (function (exports) {
      *
      * It should have the full size of the world so that operations over the MapView bounding box/sphere work correctly.
      */
-    MapNode.BASE_GEOMETRY = null;
+    MapNode.baseGeometry = null;
     /**
      * Base scale applied to the map viewer object.
      */
-    MapNode.BASE_SCALE = null;
+    MapNode.baseScale = null;
     /**
      * How many children each branch of the tree has.
      *
      * For a quad-tree this value is 4.
      */
-    MapNode.CHILDRENS = 4;
+    MapNode.childrens = 4;
     /**
      * Root node has no location.
      */
-    MapNode.ROOT = -1;
+    MapNode.root = -1;
     /**
      * Index of top left quad-tree branch node.
      *
      * Can be used to navigate the children array looking for neighbors.
      */
-    MapNode.TOP_LEFT = 0;
+    MapNode.topLeft = 0;
     /**
      * Index of top left quad-tree branch node.
      *
      * Can be used to navigate the children array looking for neighbors.
      */
-    MapNode.TOP_RIGHT = 1;
+    MapNode.topRight = 1;
     /**
      * Index of top left quad-tree branch node.
      *
      * Can be used to navigate the children array looking for neighbors.
      */
-    MapNode.BOTTOM_LEFT = 2;
+    MapNode.bottomLeft = 2;
     /**
      * Index of top left quad-tree branch node.
      *
      * Can be used to navigate the children array looking for neighbors.
      */
-    MapNode.BOTTOM_RIGHT = 3;
+    MapNode.bottomRight = 3;
 
     /**
      * Represents a basic plane tile node.
      */
     class MapPlaneNode extends MapNode {
-        constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
-            super(parentNode, mapView, location, level, x, y, MapPlaneNode.GEOMETRY, new MeshBasicMaterial({ wireframe: false }));
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
+            super(parentNode, mapView, location, level, x, y, MapPlaneNode.geometry, new MeshBasicMaterial({ wireframe: false }));
             this.matrixAutoUpdate = false;
         }
         initialize() {
@@ -57081,26 +57161,27 @@ var webapp = (function (exports) {
             const level = this.level + 1;
             const x = this.x * 2;
             const y = this.y * 2;
-            let node = new MapPlaneNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
-            node.scale.set(0.5, 1, 0.5);
+            const Constructor = Object.getPrototypeOf(this).constructor;
+            let node = new Constructor(this, this.mapView, MapNode.topLeft, level, x, y);
+            node.scale.set(0.5, 1.0, 0.5);
             node.position.set(-0.25, 0, -0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new MapPlaneNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
-            node.scale.set(0.5, 1, 0.5);
+            node = new Constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
+            node.scale.set(0.5, 1.0, 0.5);
             node.position.set(0.25, 0, -0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
-            node.scale.set(0.5, 1, 0.5);
+            node = new Constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
+            node.scale.set(0.5, 1.0, 0.5);
             node.position.set(-0.25, 0, 0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
-            node.scale.set(0.5, 1, 0.5);
+            node = new Constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
+            node.scale.set(0.5, 1.0, 0.5);
             node.position.set(0.25, 0, 0.25);
             this.add(node);
             node.updateMatrix();
@@ -57120,9 +57201,9 @@ var webapp = (function (exports) {
     /**
      * Map node plane geometry.
      */
-    MapPlaneNode.GEOMETRY = new MapNodeGeometry(1, 1, 1, 1);
-    MapPlaneNode.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
-    MapPlaneNode.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+    MapPlaneNode.geometry = new MapNodeGeometry(1, 1, 1, 1, false);
+    MapPlaneNode.baseGeometry = MapPlaneNode.geometry;
+    MapPlaneNode.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1.0, UnitsUtils.EARTH_PERIMETER);
 
     /**
      * Represents a height map tile node that can be subdivided into other height nodes.
@@ -57144,7 +57225,7 @@ var webapp = (function (exports) {
          * @param material - Material used to render this height node.
          * @param geometry - Geometry used to render this height node.
          */
-        constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = MapHeightNode.GEOMETRY, material = new MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = MapHeightNode.geometry, material = new MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
             super(parentNode, mapView, location, level, x, y, geometry, material);
             /**
              * Flag indicating if the tile height data was loaded (even if failed).
@@ -57201,25 +57282,25 @@ var webapp = (function (exports) {
             var prototype = Object.getPrototypeOf(this);
             const x = this.x * 2;
             const y = this.y * 2;
-            let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+            let node = new prototype.constructor(this, this.mapView, MapNode.topLeft, level, x, y);
             node.scale.set(0.5, 1, 0.5);
             node.position.set(-0.25, 0, -0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+            node = new prototype.constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
             node.scale.set(0.5, 1, 0.5);
             node.position.set(0.25, 0, -0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+            node = new prototype.constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
             node.scale.set(0.5, 1, 0.5);
             node.position.set(-0.25, 0, 0.25);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+            node = new prototype.constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
             node.scale.set(0.5, 1, 0.5);
             node.position.set(0.25, 0, 0.25);
             this.add(node);
@@ -57276,12 +57357,12 @@ var webapp = (function (exports) {
          * @returns Returns a promise indicating when the geometry generation has finished.
          */
         onHeightImage(image) {
-            const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+            const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
             const vertices = geometry.attributes.position.array;
-            const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+            const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
             const context = canvas.getContext('2d');
             context.imageSmoothingEnabled = false;
-            context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
@@ -57308,16 +57389,16 @@ var webapp = (function (exports) {
     /**
      * Original tile size of the images retrieved from the height provider.
      */
-    MapHeightNode.TILE_SIZE = 256;
+    MapHeightNode.tileSize = 256;
     /**
      * Size of the grid of the geometry displayed on the scene for each tile.
      */
-    MapHeightNode.GEOMETRY_SIZE = 16;
+    MapHeightNode.geometrySize = 16;
     /**
      * Map node plane geometry.
      */
-    MapHeightNode.GEOMETRY = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-    MapHeightNode.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
+    MapHeightNode.geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
+    MapHeightNode.baseGeometry = MapPlaneNode.geometry;
     MapHeightNode.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
     /**
@@ -57392,7 +57473,7 @@ var webapp = (function (exports) {
      * A map node can be subdivided into other nodes (Quadtree).
      */
     class MapSphereNode extends MapNode {
-        constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
             super(parentNode, mapView, location, level, x, y, MapSphereNode.createGeometry(level, x, y), new MeshBasicMaterial({ wireframe: false }));
             this.applyScaleNode();
             this.matrixAutoUpdate = false;
@@ -57410,7 +57491,7 @@ var webapp = (function (exports) {
         static createGeometry(zoom, x, y) {
             const range = Math.pow(2, zoom);
             const max = 40;
-            const segments = Math.floor(MapSphereNode.SEGMENTS * (max / (zoom + 1)) / max);
+            const segments = Math.floor(MapSphereNode.segments * (max / (zoom + 1)) / max);
             // X
             const phiLength = 1 / range * 2 * Math.PI;
             const phiStart = x * phiLength;
@@ -57447,20 +57528,20 @@ var webapp = (function (exports) {
             const level = this.level + 1;
             const x = this.x * 2;
             const y = this.y * 2;
-            var prototype = Object.getPrototypeOf(this);
-            let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+            const Constructor = Object.getPrototypeOf(this).constructor;
+            let node = new Constructor(this, this.mapView, MapNode.topLeft, level, x, y);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+            node = new Constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+            node = new Constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
-            node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+            node = new Constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
             this.add(node);
             node.updateMatrix();
             node.updateMatrixWorld(true);
@@ -57476,14 +57557,14 @@ var webapp = (function (exports) {
             return false;
         }
     }
-    MapSphereNode.BASE_GEOMETRY = new MapSphereNodeGeometry(UnitsUtils.EARTH_RADIUS, 64, 64, 0, 2 * Math.PI, 0, Math.PI);
-    MapSphereNode.BASE_SCALE = new Vector3(1, 1, 1);
+    MapSphereNode.baseGeometry = new MapSphereNodeGeometry(UnitsUtils.EARTH_RADIUS, 64, 64, 0, 2 * Math.PI, 0, Math.PI);
+    MapSphereNode.baseScale = new Vector3(1, 1, 1);
     /**
      * Number of segments per node geometry.
      *
      * Can be configured globally and is applied to all nodes.
      */
-    MapSphereNode.SEGMENTS = 80;
+    MapSphereNode.segments = 80;
 
     /**
      * Map height node that uses GPU height calculation to generate the deformed plane mesh.
@@ -57498,8 +57579,8 @@ var webapp = (function (exports) {
      * @param y - Y position of the node in the tile tree.
      */
     class MapHeightNodeShader extends MapHeightNode {
-        constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
-            super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE })));
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
+            super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.geometry, MapHeightNodeShader.prepareMaterial(new MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE })));
             /**
              * Variable used to get correct height map location while using maxOverZoom
              */
@@ -57591,9 +57672,9 @@ var webapp = (function (exports) {
          */
         raycast(raycaster, intersects) {
             if (this.isMesh === true) {
-                this.geometry = MapPlaneNode.GEOMETRY;
+                this.geometry = MapPlaneNode.geometry;
                 const result = super.raycast(raycaster, intersects);
-                this.geometry = MapHeightNodeShader.GEOMETRY;
+                this.geometry = MapHeightNodeShader.geometry;
                 return result;
             }
             // @ts-ignore
@@ -57608,12 +57689,12 @@ var webapp = (function (exports) {
     /**
      * Size of the grid of the geometry displayed on the scene for each tile.
      */
-    MapHeightNodeShader.GEOMETRY_SIZE = 256;
+    MapHeightNodeShader.geometrySize = 256;
     /**
      * Map node plane geometry.
      */
-    MapHeightNodeShader.GEOMETRY = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-    MapHeightNodeShader.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
+    MapHeightNodeShader.geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
+    MapHeightNodeShader.baseGeometry = MapPlaneNode.geometry;
     MapHeightNodeShader.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
     /**
@@ -57693,6 +57774,520 @@ var webapp = (function (exports) {
     }
 
     /**
+     * Martini mesh tile generator (Mapbox's Awesome Right-Triangulated Irregular Networks, Improved).
+     *
+     * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
+     *
+     * Based off the library https://github.com/mapbox/martini.
+     */
+    class Martini {
+        /**
+         * Constructor for the generator.
+         *
+         * @param gridSize - Size of the grid.
+         */
+        constructor(gridSize = 257) {
+            this.gridSize = gridSize;
+            const tileSize = gridSize - 1;
+            if (tileSize & tileSize - 1) {
+                throw new Error(`Expected grid size to be 2^n+1, got ${gridSize}.`);
+            }
+            this.numTriangles = tileSize * tileSize * 2 - 2;
+            this.numParentTriangles = this.numTriangles - tileSize * tileSize;
+            this.indices = new Uint32Array(this.gridSize * this.gridSize);
+            // coordinates for all possible triangles in an RTIN tile
+            this.coords = new Uint16Array(this.numTriangles * 4);
+            // get triangle coordinates from its index in an implicit binary tree
+            for (let i = 0; i < this.numTriangles; i++) {
+                let id = i + 2;
+                let ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0;
+                if (id & 1) {
+                    bx = by = cx = tileSize; // bottom-left triangle
+                }
+                else {
+                    ax = ay = cy = tileSize; // top-right triangle
+                }
+                while ((id >>= 1) > 1) {
+                    const mx = ax + bx >> 1;
+                    const my = ay + by >> 1;
+                    if (id & 1) { // left half
+                        bx = ax;
+                        by = ay;
+                        ax = cx;
+                        ay = cy;
+                    }
+                    else { // right half
+                        ax = bx;
+                        ay = by;
+                        bx = cx;
+                        by = cy;
+                    }
+                    cx = mx;
+                    cy = my;
+                }
+                const k = i * 4;
+                this.coords[k + 0] = ax;
+                this.coords[k + 1] = ay;
+                this.coords[k + 2] = bx;
+                this.coords[k + 3] = by;
+            }
+        }
+        createTile(terrain) {
+            return new Tile(terrain, this);
+        }
+    }
+    /**
+     * Class describes the generation of a tile using the Martini method.
+     */
+    class Tile {
+        constructor(terrain, martini) {
+            const size = martini.gridSize;
+            if (terrain.length !== size * size) {
+                throw new Error(`Expected terrain data of length ${size * size} (${size} x ${size}), got ${terrain.length}.`);
+            }
+            this.terrain = terrain;
+            this.martini = martini;
+            this.errors = new Float32Array(terrain.length);
+            this.update();
+        }
+        update() {
+            const { numTriangles, numParentTriangles, coords, gridSize: size } = this.martini;
+            const { terrain, errors } = this;
+            // iterate over all possible triangles, starting from the smallest level
+            for (let i = numTriangles - 1; i >= 0; i--) {
+                const k = i * 4;
+                const ax = coords[k + 0];
+                const ay = coords[k + 1];
+                const bx = coords[k + 2];
+                const by = coords[k + 3];
+                const mx = ax + bx >> 1;
+                const my = ay + by >> 1;
+                const cx = mx + my - ay;
+                const cy = my + ax - mx;
+                // calculate error in the middle of the long edge of the triangle
+                const interpolatedHeight = (terrain[ay * size + ax] + terrain[by * size + bx]) / 2;
+                const middleIndex = my * size + mx;
+                const middleError = Math.abs(interpolatedHeight - terrain[middleIndex]);
+                errors[middleIndex] = Math.max(errors[middleIndex], middleError);
+                if (i < numParentTriangles) { // bigger triangles; accumulate error with children
+                    const leftChildIndex = (ay + cy >> 1) * size + (ax + cx >> 1);
+                    const rightChildIndex = (by + cy >> 1) * size + (bx + cx >> 1);
+                    errors[middleIndex] = Math.max(errors[middleIndex], errors[leftChildIndex], errors[rightChildIndex]);
+                }
+            }
+        }
+        getMesh(maxError = 0, withSkirts = false) {
+            const { gridSize: size, indices } = this.martini;
+            const { errors } = this;
+            let numVertices = 0;
+            let numTriangles = 0;
+            const max = size - 1;
+            let aIndex, bIndex, cIndex = 0;
+            // Skirt indices
+            const leftSkirtIndices = [];
+            const rightSkirtIndices = [];
+            const bottomSkirtIndices = [];
+            const topSkirtIndices = [];
+            // use an index grid to keep track of vertices that were already used to avoid duplication
+            indices.fill(0);
+            // retrieve mesh in two stages that both traverse the error map:
+            // - countElements: find used vertices (and assign each an index), and count triangles (for minimum allocation)
+            // - processTriangle: fill the allocated vertices & triangles typed arrays
+            function countElements(ax, ay, bx, by, cx, cy) {
+                const mx = ax + bx >> 1;
+                const my = ay + by >> 1;
+                if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) {
+                    countElements(cx, cy, ax, ay, mx, my);
+                    countElements(bx, by, cx, cy, mx, my);
+                }
+                else {
+                    aIndex = ay * size + ax;
+                    bIndex = by * size + bx;
+                    cIndex = cy * size + cx;
+                    if (indices[aIndex] === 0) {
+                        if (withSkirts) {
+                            if (ax === 0) {
+                                leftSkirtIndices.push(numVertices);
+                            }
+                            else if (ax === max) {
+                                rightSkirtIndices.push(numVertices);
+                            }
+                            if (ay === 0) {
+                                bottomSkirtIndices.push(numVertices);
+                            }
+                            else if (ay === max) {
+                                topSkirtIndices.push(numVertices);
+                            }
+                        }
+                        indices[aIndex] = ++numVertices;
+                    }
+                    if (indices[bIndex] === 0) {
+                        if (withSkirts) {
+                            if (bx === 0) {
+                                leftSkirtIndices.push(numVertices);
+                            }
+                            else if (bx === max) {
+                                rightSkirtIndices.push(numVertices);
+                            }
+                            if (by === 0) {
+                                bottomSkirtIndices.push(numVertices);
+                            }
+                            else if (by === max) {
+                                topSkirtIndices.push(numVertices);
+                            }
+                        }
+                        indices[bIndex] = ++numVertices;
+                    }
+                    if (indices[cIndex] === 0) {
+                        if (withSkirts) {
+                            if (cx === 0) {
+                                leftSkirtIndices.push(numVertices);
+                            }
+                            else if (cx === max) {
+                                rightSkirtIndices.push(numVertices);
+                            }
+                            if (cy === 0) {
+                                bottomSkirtIndices.push(numVertices);
+                            }
+                            else if (cy === max) {
+                                topSkirtIndices.push(numVertices);
+                            }
+                        }
+                        indices[cIndex] = ++numVertices;
+                    }
+                    numTriangles++;
+                }
+            }
+            countElements(0, 0, max, max, max, 0);
+            countElements(max, max, 0, 0, 0, max);
+            let numTotalVertices = numVertices * 2;
+            let numTotalTriangles = numTriangles * 3;
+            if (withSkirts) {
+                numTotalVertices += (leftSkirtIndices.length + rightSkirtIndices.length + bottomSkirtIndices.length + topSkirtIndices.length) * 2;
+                numTotalTriangles += ((leftSkirtIndices.length - 1) * 2 + (rightSkirtIndices.length - 1) * 2 + (bottomSkirtIndices.length - 1) * 2 + (topSkirtIndices.length - 1) * 2) * 3;
+            }
+            const vertices = new Uint16Array(numTotalVertices);
+            const triangles = new Uint32Array(numTotalTriangles);
+            let triIndex = 0;
+            function processTriangle(ax, ay, bx, by, cx, cy) {
+                const mx = ax + bx >> 1;
+                const my = ay + by >> 1;
+                if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) {
+                    // triangle doesn't approximate the surface well enough; drill down further
+                    processTriangle(cx, cy, ax, ay, mx, my);
+                    processTriangle(bx, by, cx, cy, mx, my);
+                }
+                else {
+                    // add a triangle
+                    const a = indices[ay * size + ax] - 1;
+                    const b = indices[by * size + bx] - 1;
+                    const c = indices[cy * size + cx] - 1;
+                    vertices[2 * a] = ax;
+                    vertices[2 * a + 1] = ay;
+                    vertices[2 * b] = bx;
+                    vertices[2 * b + 1] = by;
+                    vertices[2 * c] = cx;
+                    vertices[2 * c + 1] = cy;
+                    triangles[triIndex++] = a;
+                    triangles[triIndex++] = b;
+                    triangles[triIndex++] = c;
+                }
+            }
+            processTriangle(0, 0, max, max, max, 0);
+            processTriangle(max, max, 0, 0, 0, max);
+            if (withSkirts) {
+                // Sort skirt indices to create adjacent triangles
+                leftSkirtIndices.sort((a, b) => { return vertices[2 * a + 1] - vertices[2 * b + 1]; });
+                // Reverse (b - a) to match triangle winding
+                rightSkirtIndices.sort((a, b) => { return vertices[2 * b + 1] - vertices[2 * a + 1]; });
+                bottomSkirtIndices.sort((a, b) => { return vertices[2 * b] - vertices[2 * a]; });
+                // Reverse (b - a) to match triangle winding
+                topSkirtIndices.sort((a, b) => { return vertices[2 * a] - vertices[2 * b]; });
+                let skirtIndex = numVertices * 2;
+                // Add skirt vertices from index of last mesh vertex
+                function constructSkirt(skirt) {
+                    const skirtLength = skirt.length;
+                    // Loop through indices in groups of two to generate triangles
+                    for (let i = 0; i < skirtLength - 1; i++) {
+                        const currIndex = skirt[i];
+                        const nextIndex = skirt[i + 1];
+                        const currentSkirt = skirtIndex / 2;
+                        const nextSkirt = (skirtIndex + 2) / 2;
+                        vertices[skirtIndex++] = vertices[2 * currIndex];
+                        vertices[skirtIndex++] = vertices[2 * currIndex + 1];
+                        triangles[triIndex++] = currIndex;
+                        triangles[triIndex++] = currentSkirt;
+                        triangles[triIndex++] = nextIndex;
+                        triangles[triIndex++] = currentSkirt;
+                        triangles[triIndex++] = nextSkirt;
+                        triangles[triIndex++] = nextIndex;
+                    }
+                    // Add vertices of last skirt not added above (i < skirtLength - 1)
+                    vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1]];
+                    vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1] + 1];
+                }
+                constructSkirt(leftSkirtIndices);
+                constructSkirt(rightSkirtIndices);
+                constructSkirt(bottomSkirtIndices);
+                constructSkirt(topSkirtIndices);
+            }
+            // Return vertices and triangles and index into vertices array where skirts start
+            return { vertices: vertices, triangles: triangles, numVerticesWithoutSkirts: numVertices };
+        }
+    }
+
+    /**
+     * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
+     *
+     * Based off the library https://github.com/mapbox/martini (Mapbox's Awesome Right-Triangulated Irregular Networks, Improved)
+     *
+     * @param parentNode  -The parent node of this node.
+     * @param mapView - Map view object where this node is placed.
+     * @param location - Position in the node tree relative to the parent.
+     * @param level - Zoom level in the tile tree of the node.
+     * @param x - X position of the node in the tile tree.
+     * @param y - Y position of the node in the tile tree.
+     * @param material   -Material used to render this height node.
+     * @param geometry - Geometry used to render this height node.
+     */
+    class MapMartiniHeightNode extends MapHeightNode {
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, { elevationDecoder = null, meshMaxError = 10, exageration = 1 } = {}) {
+            super(parentNode, mapView, location, level, x, y, MapMartiniHeightNode.geometry, MapMartiniHeightNode.prepareMaterial(new MeshPhongMaterial({
+                map: MapMartiniHeightNode.emptyTexture,
+                color: 0xFFFFFF,
+                side: DoubleSide
+            }), level, exageration));
+            /**
+             * Elevation decoder configuration.
+             *
+             * Indicates how the pixels should be unpacked and transformed into height data.
+             */
+            this.elevationDecoder = {
+                rScaler: 256,
+                gScaler: 1,
+                bScaler: 1 / 256,
+                offset: -32768
+            };
+            /**
+             * Exageration (scale) of the terrain height.
+             */
+            this.exageration = 1.0;
+            this.meshMaxError = 10;
+            if (elevationDecoder) {
+                this.elevationDecoder = elevationDecoder;
+            }
+            this.meshMaxError = meshMaxError;
+            this.exageration = exageration;
+            this.frustumCulled = false;
+        }
+        static prepareMaterial(material, level, exageration = 1.0) {
+            material.userData = {
+                heightMap: { value: MapMartiniHeightNode.emptyTexture },
+                drawNormals: { value: 0 },
+                drawBlack: { value: 0 },
+                zoomlevel: { value: level },
+                computeNormals: { value: 1 },
+                drawTexture: { value: 1 }
+            };
+            material.onBeforeCompile = (shader) => {
+                // Pass uniforms from userData to the
+                for (let i in material.userData) {
+                    shader.uniforms[i] = material.userData[i];
+                }
+                // Vertex variables
+                shader.vertexShader =
+                    `
+				uniform bool computeNormals;
+				uniform float zoomlevel;
+				uniform sampler2D heightMap;
+				` + shader.vertexShader;
+                shader.fragmentShader =
+                    `
+				uniform bool drawNormals;
+				uniform bool drawTexture;
+				uniform bool drawBlack;
+				` + shader.fragmentShader;
+                // Vertex depth logic
+                shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
+				if(drawBlack) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
+				} else if(drawNormals) {
+					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+				} else if (!drawTexture) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
+				}
+					`);
+                shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
+					#include <fog_vertex>
+
+					// queried pixels:
+					// +-----------+
+					// |   |   |   |
+					// | a | b | c |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | d | e | f |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | g | h | i |
+					// |   |   |   |
+					// +-----------+
+
+					if (computeNormals) {
+						float e = getElevation(vUv, 0.0);
+						ivec2 size = textureSize(heightMap, 0);
+						float offset = 1.0 / float(size.x);
+						float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
+						float b = getElevation(vUv + vec2(0, -offset), 0.0);
+						float c = getElevation(vUv + vec2(offset, -offset), 0.0);
+						float d = getElevation(vUv + vec2(-offset, 0), 0.0);
+						float f = getElevation(vUv + vec2(offset, 0), 0.0);
+						float g = getElevation(vUv + vec2(-offset, offset), 0.0);
+						float h = getElevation(vUv + vec2(0, offset), 0.0);
+						float i = getElevation(vUv + vec2(offset,offset), 0.0);
+
+
+						float normalLength = 500.0 / zoomlevel;
+
+						vec3 v0 = vec3(0.0, 0.0, 0.0);
+						vec3 v1 = vec3(0.0, normalLength, 0.0);
+						vec3 v2 = vec3(normalLength, 0.0, 0.0);
+						v0.z = (e + d + g + h) / 4.0;
+						v1.z = (e+ b + a + d) / 4.0;
+						v2.z = (e+ h + i + f) / 4.0;
+						vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
+					}
+					`);
+            };
+            return material;
+        }
+        static getTerrain(imageData, tileSize, elevation) {
+            const { rScaler, bScaler, gScaler, offset } = elevation;
+            const gridSize = tileSize + 1;
+            // From Martini demo
+            // https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+            const terrain = new Float32Array(gridSize * gridSize);
+            // Decode terrain values
+            for (let i = 0, y = 0; y < tileSize; y++) {
+                for (let x = 0; x < tileSize; x++, i++) {
+                    const k = i * 4;
+                    const r = imageData[k + 0];
+                    const g = imageData[k + 1];
+                    const b = imageData[k + 2];
+                    terrain[i + y] = r * rScaler + g * gScaler + b * bScaler + offset;
+                }
+            }
+            // Backfill bottom border
+            for (let i = gridSize * (gridSize - 1), x = 0; x < gridSize - 1; x++, i++) {
+                terrain[i] = terrain[i - gridSize];
+            }
+            // Backfill right border
+            for (let i = gridSize - 1, y = 0; y < gridSize; y++, i += gridSize) {
+                terrain[i] = terrain[i - 1];
+            }
+            return terrain;
+        }
+        /**
+         * Get the attributes that compose the mesh.
+         *
+         * @param vertices - Vertices.
+         * @param terrain  - Terrain
+         * @param tileSize - Size of each tile.
+         * @param bounds - Array with the bound of the map.
+         * @param exageration - Vertical exageration of the map scale.
+         * @returns The position and UV coordinates of the mesh.
+         */
+        static getMeshAttributes(vertices, terrain, tileSize, bounds, exageration) {
+            const gridSize = tileSize + 1;
+            const numOfVerticies = vertices.length / 2;
+            // vec3. x, y in pixels, z in meters
+            const positions = new Float32Array(numOfVerticies * 3);
+            // vec2. 1 to 1 relationship with position. represents the uv on the texture image. 0,0 to 1,1.
+            const texCoords = new Float32Array(numOfVerticies * 2);
+            const [minX, minY, maxX, maxY] = bounds || [0, 0, tileSize, tileSize];
+            const xScale = (maxX - minX) / tileSize;
+            const yScale = (maxY - minY) / tileSize;
+            for (let i = 0; i < numOfVerticies; i++) {
+                const x = vertices[i * 2];
+                const y = vertices[i * 2 + 1];
+                const pixelIdx = y * gridSize + x;
+                positions[3 * i + 0] = x * xScale + minX;
+                positions[3 * i + 1] = -terrain[pixelIdx] * exageration;
+                positions[3 * i + 2] = -y * yScale + maxY;
+                texCoords[2 * i + 0] = x / tileSize;
+                texCoords[2 * i + 1] = y / tileSize;
+            }
+            return {
+                position: { value: positions, size: 3 },
+                uv: { value: texCoords, size: 2 }
+            };
+        }
+        /**
+         * Process the height texture received from the tile data provider.
+         *
+         * @param image - Image element received by the tile provider.
+         */
+        onHeightImage(image) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const tileSize = image.width;
+                const gridSize = tileSize + 1;
+                var canvas = new OffscreenCanvas(tileSize, tileSize);
+                var context = canvas.getContext('2d');
+                context.imageSmoothingEnabled = false;
+                context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+                var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                var data = imageData.data;
+                const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+                const martini = new Martini(gridSize);
+                const tile = martini.createTile(terrain);
+                const { vertices, triangles } = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError);
+                const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+                this.geometry = new BufferGeometry();
+                this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+                this.geometry.setAttribute('position', new Float32BufferAttribute(attributes.position.value, attributes.position.size));
+                this.geometry.setAttribute('uv', new Float32BufferAttribute(attributes.uv.value, attributes.uv.size));
+                this.geometry.rotateX(Math.PI);
+                var texture = new Texture(image);
+                texture.generateMipmaps = false;
+                texture.format = RGBFormat;
+                texture.magFilter = NearestFilter;
+                texture.minFilter = NearestFilter;
+                texture.needsUpdate = true;
+                this.material.userData.heightMap.value = texture;
+            });
+        }
+        /**
+         * Load height texture from the server and create a geometry to match it.
+         */
+        loadHeightGeometry() {
+            if (this.mapView.heightProvider === null) {
+                throw new Error('GeoThree: MapView.heightProvider provider is null.');
+            }
+            return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => __awaiter(this, void 0, void 0, function* () {
+                this.onHeightImage(image);
+            })).finally(() => {
+                this.heightLoaded = true;
+                this.nodeReady();
+            });
+        }
+    }
+    /**
+     * Geometry size to be used for each martini height node.
+     */
+    MapMartiniHeightNode.geometrySize = 16;
+    /**
+     * Empty texture used as a placeholder for missing textures.
+     */
+    MapMartiniHeightNode.emptyTexture = new Texture();
+    MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, MapMartiniHeightNode.geometrySize, MapMartiniHeightNode.geometrySize);
+    /**
+     * Original tile size of the images retrieved from the height provider.
+     */
+    MapMartiniHeightNode.tileSize = 256;
+
+    /**
      * Map viewer is used to read and display map tiles from a server.
      *
      * It was designed to work with a OpenMapTiles but can also be used with another map tiles.
@@ -57733,6 +58328,14 @@ var webapp = (function (exports) {
              * Used mostly for mobile devices
              */
             this.lowMemoryUsage = false;
+            /**
+             * Ajust node configuration depending on the camera distance.
+             *
+             * Called everytime before render.
+             */
+            this.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+                this.lod.updateLOD(this, camera, renderer, scene);
+            };
             this.lod = new LODRaycast();
             this.provider = provider;
             this.heightProvider = heightProvider;
@@ -57776,9 +58379,9 @@ var webapp = (function (exports) {
             this.root = root;
             if (this.root !== null) {
                 // @ts-ignore
-                this.geometry = this.root.constructor.BASE_GEOMETRY;
+                this.geometry = this.root.constructor.baseGeometry;
                 // @ts-ignore
-                this.scale.copy(this.root.constructor.BASE_SCALE);
+                this.scale.copy(this.root.constructor.baseScale);
                 this.root.mapView = this;
                 this.add(this.root);
             }
@@ -57818,7 +58421,7 @@ var webapp = (function (exports) {
                     children.childrenCache = null;
                 }
                 // @ts-ignore
-                if (children.initialize !== undefined) {
+                if (!!children.initialize) {
                     // @ts-ignore
                     children.initialize();
                 }
@@ -57852,13 +58455,18 @@ var webapp = (function (exports) {
      */
     MapView.HEIGHT_SHADER = 203;
     /**
+     * RTIN map mode.
+     */
+    MapView.MARTINI = 204;
+    /**
      * Map of the map node types available.
      */
     MapView.mapModes = new Map([
         [MapView.PLANAR, MapPlaneNode],
         [MapView.SPHERICAL, MapSphereNode],
         [MapView.HEIGHT, MapHeightNode],
-        [MapView.HEIGHT_SHADER, MapHeightNodeShader]
+        [MapView.HEIGHT_SHADER, MapHeightNodeShader],
+        [MapView.MARTINI, MapMartiniHeightNode]
     ]);
 
     /**
@@ -57977,7 +58585,8 @@ var webapp = (function (exports) {
             distance /= Math.pow(2, 20 - node.level) * Math.max(camera.zoom / 2, 1);
             // distance /= Math.pow(2, 20 - node.level);
             inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
-            if (canSubdivideOrSimplify && (node.level < minZoom || maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
+            // console.log('test', node.level, node.x, node.y, distance, inFrustum);
+            if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
                 node.subdivide();
                 // console.log('subdivide', node.x, node.y, node.level);
                 const children = node.children;
@@ -58003,7 +58612,7 @@ var webapp = (function (exports) {
                 this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
                 // }
             }
-            else if (inFrustum && minZoom <= node.level) {
+            else if ((inFrustum || distance < this.subdivideDistance) && minZoom <= node.level) {
                 if (!this.isChildReady(node)) {
                     node.initialize();
                 }
@@ -58065,10 +58674,10 @@ var webapp = (function (exports) {
         }
     }
 
-    let currentColor = 0xffffff;
+    let currentColor$1 = 0xffffff;
     class MaterialHeightShader extends MapHeightNode {
         constructor(parentNode, mapView, location, level, x, y) {
-            super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
+            super(parentNode, mapView, location, level, x, y, MaterialHeightShader.geometry, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
                 map: MaterialHeightShader.EMPTY_TEXTURE,
                 color: 0xffffff,
                 wireframe: exports.wireframe,
@@ -58102,7 +58711,7 @@ var webapp = (function (exports) {
             }
             let geo = MaterialHeightShader.geometries[size];
             if (!MaterialHeightShader.geometries[size]) {
-                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size);
+                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, true, 300);
             }
             return geo;
         }
@@ -58369,7 +58978,7 @@ var webapp = (function (exports) {
                                     f.level = this.level;
                                     f.x = this.x;
                                     f.y = this.y;
-                                    const color = f.color = currentColor--;
+                                    const color = f.color = currentColor$1--;
                                     featuresByColor[color] = f;
                                     f.localCoords.y = 1;
                                     colors.push((color >> 16 & 255) /
@@ -58493,7 +59102,7 @@ var webapp = (function (exports) {
         raycast(raycaster, intersects) {
             if (this.isMesh === true) {
                 const oldGeometry = this.geometry;
-                this.geometry = MapPlaneNode.GEOMETRY;
+                this.geometry = MapPlaneNode.geometry;
                 const result = Mesh.prototype.raycast.call(this, raycaster, intersects);
                 this.geometry = oldGeometry;
                 return result;
@@ -58501,8 +59110,8 @@ var webapp = (function (exports) {
             return false;
         }
     }
-    MaterialHeightShader.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
-    MaterialHeightShader.BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+    MaterialHeightShader.baseGeometry = MapPlaneNode.geometry;
+    MaterialHeightShader.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
     /**
     * Empty texture used as a placeholder for missing textures.
     */
@@ -58510,8 +59119,666 @@ var webapp = (function (exports) {
     /**
     * Size of the grid of the geometry displayed on the scene for each tile.
     */
-    MaterialHeightShader.GEOMETRY_SIZE = 200;
+    MaterialHeightShader.geometrySize = 200;
     MaterialHeightShader.geometries = {};
+
+    var quantizedMeshDecoder = {exports: {}};
+
+    (function (module, exports) {
+    (function (global, factory) {
+    factory(exports) ;
+    }(commonjsGlobal, (function (exports) {
+    const QUANTIZED_MESH_HEADER = new Map([
+      ['centerX', Float64Array.BYTES_PER_ELEMENT],
+      ['centerY', Float64Array.BYTES_PER_ELEMENT],
+      ['centerZ', Float64Array.BYTES_PER_ELEMENT],
+
+      ['minHeight', Float32Array.BYTES_PER_ELEMENT],
+      ['maxHeight', Float32Array.BYTES_PER_ELEMENT],
+
+      ['boundingSphereCenterX', Float64Array.BYTES_PER_ELEMENT],
+      ['boundingSphereCenterY', Float64Array.BYTES_PER_ELEMENT],
+      ['boundingSphereCenterZ', Float64Array.BYTES_PER_ELEMENT],
+      ['boundingSphereRadius', Float64Array.BYTES_PER_ELEMENT],
+
+      ['horizonOcclusionPointX', Float64Array.BYTES_PER_ELEMENT],
+      ['horizonOcclusionPointY', Float64Array.BYTES_PER_ELEMENT],
+      ['horizonOcclusionPointZ', Float64Array.BYTES_PER_ELEMENT]
+    ]);
+
+    function decodeZigZag (value) {
+      return (value >> 1) ^ (-(value & 1))
+    }
+
+    function decodeHeader (dataView) {
+      let position = 0;
+      const header = {};
+
+      for (let [key, bytesCount] of QUANTIZED_MESH_HEADER) {
+        const getter = bytesCount === 8 ? dataView.getFloat64 : dataView.getFloat32;
+        header[key] = getter.call(dataView, position, true);
+        position += bytesCount;
+      }
+
+      return { header, headerEndPosition: position }
+    }
+
+    function decodeVertexData (dataView, headerEndPosition) {
+      let position = headerEndPosition;
+      const elementsPerVertex = 3;
+      const vertexCount = dataView.getUint32(position, true);
+      const vertexData = new Uint16Array(vertexCount * elementsPerVertex);
+
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const bytesPerArrayElement = Uint16Array.BYTES_PER_ELEMENT;
+      const elementArrayLength = vertexCount * bytesPerArrayElement;
+      const uArrayStartPosition = position;
+      const vArrayStartPosition = uArrayStartPosition + elementArrayLength;
+      const heightArrayStartPosition = vArrayStartPosition + elementArrayLength;
+
+      let u = 0;
+      let v = 0;
+      let height = 0;
+
+      for (let i = 0; i < vertexCount; i++) {
+        u += decodeZigZag(dataView.getUint16(uArrayStartPosition + bytesPerArrayElement * i, true));
+        v += decodeZigZag(dataView.getUint16(vArrayStartPosition + bytesPerArrayElement * i, true));
+        height += decodeZigZag(dataView.getUint16(heightArrayStartPosition + bytesPerArrayElement * i, true));
+
+        vertexData[i] = u;
+        vertexData[i + vertexCount] = v;
+        vertexData[i + vertexCount * 2] = height;
+      }
+
+      position += elementArrayLength * 3;
+
+      return { vertexData, vertexDataEndPosition: position }
+    }
+
+    function decodeIndex (buffer, position, indicesCount, bytesPerIndex, encoded = true) {
+      let indices;
+
+      if (bytesPerIndex === 2) {
+        indices = new Uint16Array(buffer, position, indicesCount);
+      } else {
+        indices = new Uint32Array(buffer, position, indicesCount);
+      }
+
+      if (!encoded) {
+        return indices
+      }
+
+      let highest = 0;
+
+      for (let i = 0; i < indices.length; ++i) {
+        let code = indices[i];
+
+        indices[i] = highest - code;
+
+        if (code === 0) {
+          ++highest;
+        }
+      }
+
+      return indices
+    }
+
+    function decodeTriangleIndices (dataView, vertexData, vertexDataEndPosition) {
+      let position = vertexDataEndPosition;
+      const elementsPerVertex = 3;
+      const vertexCount = vertexData.length / elementsPerVertex;
+      const bytesPerIndex = vertexCount > 65536
+        ? Uint32Array.BYTES_PER_ELEMENT
+        : Uint16Array.BYTES_PER_ELEMENT;
+
+      if (position % bytesPerIndex !== 0) {
+        position += bytesPerIndex - (position % bytesPerIndex);
+      }
+
+      const triangleCount = dataView.getUint32(position, true);
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const triangleIndicesCount = triangleCount * 3;
+      const triangleIndices = decodeIndex(
+        dataView.buffer,
+        position,
+        triangleIndicesCount,
+        bytesPerIndex
+      );
+      position += triangleIndicesCount * bytesPerIndex;
+
+      return {
+        triangleIndicesEndPosition: position,
+        triangleIndices
+      }
+    }
+
+    function decodeEdgeIndices (dataView, vertexData, triangleIndicesEndPosition) {
+      let position = triangleIndicesEndPosition;
+      const elementsPerVertex = 3;
+      const vertexCount = vertexData.length / elementsPerVertex;
+      const bytesPerIndex = vertexCount > 65536
+        ? Uint32Array.BYTES_PER_ELEMENT
+        : Uint16Array.BYTES_PER_ELEMENT;
+
+      const westVertexCount = dataView.getUint32(position, true);
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const westIndices = decodeIndex(dataView.buffer, position, westVertexCount, bytesPerIndex, false);
+      position += westVertexCount * bytesPerIndex;
+
+      const southVertexCount = dataView.getUint32(position, true);
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const southIndices = decodeIndex(dataView.buffer, position, southVertexCount, bytesPerIndex, false);
+      position += southVertexCount * bytesPerIndex;
+
+      const eastVertexCount = dataView.getUint32(position, true);
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const eastIndices = decodeIndex(dataView.buffer, position, eastVertexCount, bytesPerIndex, false);
+      position += eastVertexCount * bytesPerIndex;
+
+      const northVertexCount = dataView.getUint32(position, true);
+      position += Uint32Array.BYTES_PER_ELEMENT;
+
+      const northIndices = decodeIndex(dataView.buffer, position, northVertexCount, bytesPerIndex, false);
+      position += northVertexCount * bytesPerIndex;
+
+      return {
+        edgeIndicesEndPosition: position,
+        westIndices,
+        southIndices,
+        eastIndices,
+        northIndices
+      }
+    }
+
+    function decodeVertexNormalsExtension (extensionDataView) {
+      return new Uint8Array(
+        extensionDataView.buffer, extensionDataView.byteOffset, extensionDataView.byteLength
+      )
+    }
+
+    function decodeWaterMaskExtension (extensionDataView) {
+      return extensionDataView.buffer.slice(
+        extensionDataView.byteOffset,
+        extensionDataView.byteOffset + extensionDataView.byteLength
+      )
+    }
+
+    function decodeMetadataExtension (extensionDataView) {
+      const jsonLength = extensionDataView.getUint32(0, true);
+
+      let jsonString = '';
+      for (let i = 0; i < jsonLength; ++i) {
+        jsonString += String.fromCharCode(extensionDataView.getUint8(Uint32Array.BYTES_PER_ELEMENT + i));
+      }
+
+      return JSON.parse(jsonString)
+    }
+
+    function decodeExtensions (dataView, indicesEndPosition) {
+      const extensions = {};
+
+      if (dataView.byteLength <= indicesEndPosition) {
+        return { extensions, extensionsEndPosition: indicesEndPosition }
+      }
+
+      let position = indicesEndPosition;
+
+      while (position < dataView.byteLength) {
+        const extensionId = dataView.getUint8(position, true);
+        position += Uint8Array.BYTES_PER_ELEMENT;
+
+        const extensionLength = dataView.getUint32(position, true);
+        position += Uint32Array.BYTES_PER_ELEMENT;
+
+        const extensionView = new DataView(dataView.buffer, position, extensionLength);
+
+        switch (extensionId) {
+          case 1: {
+            extensions.vertexNormals = decodeVertexNormalsExtension(extensionView);
+
+            break
+          }
+          case 2: {
+            extensions.waterMask = decodeWaterMaskExtension(extensionView);
+
+            break
+          }
+          case 4: {
+            extensions.metadata = decodeMetadataExtension(extensionView);
+
+            break
+          }
+          default: {
+            console.warn(`Unknown extension with id ${extensionId}`);
+          }
+        }
+
+        position += extensionLength;
+      }
+
+      return { extensions, extensionsEndPosition: position }
+    }
+
+    const DECODING_STEPS = {
+      header: 0,
+      vertices: 1,
+      triangleIndices: 2,
+      edgeIndices: 3,
+      extensions: 4
+    };
+
+    const DEFAULT_OPTIONS = {
+      maxDecodingStep: DECODING_STEPS.extensions
+    };
+
+    function decode (data, userOptions) {
+      const options = Object.assign({}, DEFAULT_OPTIONS, userOptions);
+      const view = new DataView(data);
+      const { header, headerEndPosition } = decodeHeader(view);
+      if (options.maxDecodingStep < DECODING_STEPS.vertices) {
+        return { header }
+      }
+
+      const { vertexData, vertexDataEndPosition } = decodeVertexData(view, headerEndPosition);
+
+      if (options.maxDecodingStep < DECODING_STEPS.triangleIndices) {
+        return { header, vertexData }
+      }
+
+      const {
+        triangleIndices,
+        triangleIndicesEndPosition
+      } = decodeTriangleIndices(view, vertexData, vertexDataEndPosition);
+
+      if (options.maxDecodingStep < DECODING_STEPS.edgeIndices) {
+        return { header, vertexData, triangleIndices }
+      }
+
+      const {
+        westIndices,
+        southIndices,
+        eastIndices,
+        northIndices,
+        edgeIndicesEndPosition
+      } = decodeEdgeIndices(view, vertexData, triangleIndicesEndPosition);
+
+      if (options.maxDecodingStep < DECODING_STEPS.extensions) {
+        return {
+          header,
+          vertexData,
+          triangleIndices,
+          westIndices,
+          northIndices,
+          eastIndices,
+          southIndices
+        }
+      }
+
+      const { extensions } = decodeExtensions(view, edgeIndicesEndPosition);
+
+      return {
+        header,
+        vertexData,
+        triangleIndices,
+        westIndices,
+        northIndices,
+        eastIndices,
+        southIndices,
+        extensions
+      }
+    }
+
+    exports.DECODING_STEPS = DECODING_STEPS;
+    exports.default = decode;
+
+    Object.defineProperty(exports, '__esModule', { value: true });
+
+    })));
+    }(quantizedMeshDecoder, quantizedMeshDecoder.exports));
+
+    var decode = /*@__PURE__*/getDefaultExportFromCjs(quantizedMeshDecoder.exports);
+
+    let currentColor = 0xffffff;
+    const container = new Box3(new Vector3(-1, -1, 0), new Vector3(1, 1, 1));
+    function constructPositionAttribute(vertexData, header) {
+        const elementsPerVertex = 3;
+        const vertexCount = vertexData.length / elementsPerVertex;
+        const positionAttributeArray = new Float32Array(vertexData.length);
+        const vertexMaxPosition = 32767;
+        const containerSize = new Vector3();
+        container.getSize(containerSize);
+        const xScale = 1 / vertexMaxPosition;
+        const yScale = 1 / vertexMaxPosition;
+        const zScale = 1 / vertexMaxPosition;
+        const minHeight = header.minHeight;
+        const maxHeight = header.maxHeight;
+        // const xScale = 1;
+        // const yScale = 1;
+        // const zScale = 1;
+        for (let i = 0; i < vertexData.length; i++) {
+            positionAttributeArray[i * elementsPerVertex] = vertexData[i] * xScale - 0.5;
+            positionAttributeArray[i * elementsPerVertex + 1] = vertexData[i + vertexCount * 2] * yScale * (maxHeight - minHeight) + minHeight;
+            positionAttributeArray[i * elementsPerVertex + 2] = 1 - vertexData[i + vertexCount] * zScale - 0.5;
+        }
+        return new BufferAttribute(positionAttributeArray, elementsPerVertex);
+    }
+    /**
+     * Drops Z-coordinate of each vertex and scales
+     * X and Y to the [0, 1] range
+     */
+    function constructUvAttribute(verticesArray) {
+        const containerSize = new Vector3();
+        const elementsPerVertex = 3;
+        const elementsPerUv = 2;
+        const uvArray = new Float32Array(verticesArray.length / elementsPerVertex * elementsPerUv);
+        container.getSize(containerSize);
+        for (let i = 0, uvIndex = 0; i < verticesArray.length; i += elementsPerVertex) {
+            uvArray[uvIndex++] = verticesArray[i + 0] + 0.5;
+            uvArray[uvIndex++] = -(verticesArray[i + 2] - 0.5);
+        }
+        return new BufferAttribute(uvArray, elementsPerUv);
+    }
+    function constructGeometry({ header, vertexData, triangleIndices, extensions }) {
+        const planeGeometry = new BufferGeometry();
+        const positionAttribute = constructPositionAttribute(vertexData, header);
+        const uvAttribute = constructUvAttribute(positionAttribute.array);
+        planeGeometry.setAttribute('position', positionAttribute);
+        planeGeometry.setAttribute('uv', uvAttribute);
+        if (triangleIndices !== undefined) {
+            const indexAttribute = new BufferAttribute(triangleIndices, 1);
+            planeGeometry.setIndex(indexAttribute);
+        }
+        // if (extensions !== undefined && extensions.vertexNormals !== undefined) 
+        // {
+        // 	const normalAttribute = constructNormalAttribute(extensions.vertexNormals, vertexData);
+        // 	planeGeometry.setAttribute('normal', normalAttribute);
+        // }
+        // else 
+        // {
+        planeGeometry.computeVertexNormals();
+        // }
+        return planeGeometry;
+    }
+    /**
+     * Represents a height map tile node that can be subdivided into other height nodes.
+     *
+     * Its important to update match the height of the tile with the neighbors nodes edge heights to ensure proper continuity of the surface.
+     *
+     * The height node is designed to use MapBox elevation tile encoded data as described in https://www.mapbox.com/help/access-elevation-data/
+     *
+     * @param parentNode  -The parent node of this node.
+     * @param mapView - Map view object where this node is placed.
+     * @param location - Position in the node tree relative to the parent.
+     * @param level - Zoom level in the tile tree of the node.
+     * @param x - X position of the node in the tile tree.
+     * @param y - Y position of the node in the tile tree.
+     * @param material   -Material used to render this height node.
+     * @param geometry - Geometry used to render this height node.
+     */
+    class MapQuantizedMeshHeightNode extends MapHeightNode {
+        constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
+            super(parentNode, mapView, location, level, x, y, MapQuantizedMeshHeightNode.geometry, MapQuantizedMeshHeightNode.prepareMaterial(new MeshPhongMaterial({
+                map: MapQuantizedMeshHeightNode.EMPTY_TEXTURE,
+                color: 0xffffff,
+                side: DoubleSide
+            }), level, exports.exageration));
+            this.exageration = 1.0;
+            this.exageration = exports.exageration;
+            this.frustumCulled = false;
+        }
+        static prepareMaterial(material, level, exageration) {
+            // not all are used
+            // but for now it helps in fast switching between martini and height shader
+            material.userData = {
+                heightMap: { value: MapQuantizedMeshHeightNode.EMPTY_TEXTURE },
+                drawNormals: { value: 0 },
+                drawBlack: { value: 0 },
+                zoomlevel: { value: level },
+                exageration: { value: exageration },
+                computeNormals: { value: 1 },
+                drawTexture: { value: 1 },
+                elevationDecoder: { value: null }
+            };
+            material.onBeforeCompile = (shader) => {
+                // Pass uniforms from userData to the
+                for (let i in material.userData) {
+                    shader.uniforms[i] = material.userData[i];
+                }
+                // Vertex variables
+                shader.vertexShader =
+                    `
+				uniform float exageration;
+				
+				` + shader.vertexShader;
+                shader.fragmentShader =
+                    `
+				uniform bool drawNormals;
+				uniform bool drawTexture;
+				uniform bool drawBlack;
+				` + shader.fragmentShader;
+                // Vertex depth logic
+                shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
+				if(drawBlack) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
+				} else if(drawNormals) {
+					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+				} else if (!drawTexture) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
+				}
+					`);
+                shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
+					#include <fog_vertex>
+					mvPosition = modelViewMatrix * vec4( position.x,  position.y * exageration, position.z, 1.0 );
+					gl_Position = projectionMatrix * mvPosition;
+					// gl_Position.y *= exageration;
+					`);
+            };
+            return material;
+        }
+        // public async onHeightImage(image): Promise<void> 
+        // {
+        // 	if (image) 
+        // 	{
+        // 		const tileSize = image.width;
+        // 		const gridSize = tileSize + 1;
+        // 		var canvas = new OffscreenCanvas(tileSize, tileSize);
+        // 		var context = canvas.getContext('2d');
+        // 		context.imageSmoothingEnabled = false;
+        // 		context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+        // 		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        // 		var data = imageData.data;
+        // 		const terrain = getTerrain(data, tileSize, this.elevationDecoder);
+        // 		const martini = new Martini(gridSize);
+        // 		const tile = martini.createTile(terrain);
+        // 		const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError);
+        // 		const attributes = getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+        // 		this.geometry = new BufferGeometry();
+        // 		this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+        // 		this.geometry.setAttribute( 'position', new Float32BufferAttribute( attributes.position.value, attributes.position.size ) );
+        // 		this.geometry.setAttribute( 'uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size ) );
+        // 		this.geometry.rotateX(Math.PI);
+        // 		var texture = new Texture(image);
+        // 		texture.generateMipmaps = false;
+        // 		texture.format = RGBFormat;
+        // 		texture.magFilter = NearestFilter;
+        // 		texture.minFilter = NearestFilter;
+        // 		texture.needsUpdate = true;
+        // 		this.material.userData.heightMap.value = texture;
+        // 	}
+        // }
+        loadHeightGeometry() {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (this.isHeightReady) {
+                    return;
+                }
+                this.isHeightReady = true;
+                const heightProvider = this.mapView.heightProvider;
+                if (heightProvider === null) {
+                    throw new Error('GeoThree: MapView.heightProvider provider is null.');
+                }
+                try {
+                    const zoom = this.level;
+                    if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+                        const parent = this.parent;
+                        if (parent.heightLoaded) {
+                            this.handleParentOverZoomTile();
+                        }
+                        else {
+                            const promise = new Promise((resolve) => {
+                                parent.heightListeners.push(() => { return this.handleParentOverZoomTile(resolve); });
+                            });
+                            if (!parent.isHeightReady) {
+                                // ensure parent is loaded first
+                                parent.loadHeightGeometry();
+                            }
+                            yield promise;
+                        }
+                    }
+                    else {
+                        const buffer = yield this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
+                        const decodedMesh = decode(buffer, { maxDecodingStep: quantizedMeshDecoder.exports.DECODING_STEPS[quantizedMeshDecoder.exports.DECODING_STEPS.length - 1] });
+                        this.geometry = constructGeometry(decodedMesh);
+                        // this.geometry = new BufferGeometry();
+                        // this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+                        // this.geometry.setAttribute( 'position', new Float32BufferAttribute( attributes.position.value, attributes.position.size ) );
+                        // this.geometry.setAttribute( 'uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size ) );
+                        // this.geometry.rotateX(Math.PI);
+                        // this.onHeightImage(image);
+                    }
+                    if (this.level > 14) {
+                        return;
+                    }
+                    this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result) => {
+                        result = result.filter((f) => { return f.properties.name && f.properties.class === 'peak' && f.properties['ele'] !== undefined; });
+                        if (result.length > 0) {
+                            const features = [];
+                            var colors = [];
+                            var points = [];
+                            const vec = new Vector3(0, 0, 0);
+                            result.forEach((f, index) => {
+                                var coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+                                vec.set(coords.x, 0, -coords.y);
+                                f.localCoords = this.worldToLocal(vec);
+                                if (Math.abs(f.localCoords.x) <=
+                                    0.5 &&
+                                    Math.abs(f.localCoords.z) <=
+                                        0.5) {
+                                    const id = f.geometry.coordinates.join(',');
+                                    f.id = id;
+                                    f.pointIndex =
+                                        features.length;
+                                    features.push(f);
+                                    f.level = this.level;
+                                    f.x = this.x;
+                                    f.y = this.y;
+                                    const color = f.color = currentColor--;
+                                    featuresByColor[color] = f;
+                                    f.localCoords.y = 1;
+                                    colors.push((color >> 16 & 255) /
+                                        255, (color >> 8 & 255) /
+                                        255, (color & 255) / 255);
+                                    points.push(f.localCoords.x, f.properties.ele, f.localCoords.z);
+                                }
+                            });
+                            if (points.length > 0) {
+                                const geometry = new BufferGeometry();
+                                geometry.setAttribute('position', new Float32BufferAttribute(points, 3));
+                                geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+                                const material = new ShaderMaterial({
+                                    userData: {
+                                        heightMap: this.material.userData.heightMap,
+                                        exageration: { value: exports.exageration },
+                                        elevationDecoder: this.material.userData.elevationDecoder,
+                                        heightMapLocation: this.material.userData.heightMapLocation,
+                                        forViewing: { value: exports.debugFeaturePoints },
+                                        far: { value: exports.FAR },
+                                        pointTexture: { value: new TextureLoader().load('disc.png') }
+                                    },
+                                    vertexShader: `
+							attribute vec4 color;
+							uniform float exageration;
+							uniform bool forViewing;
+							uniform float far;
+							varying float depth;
+							varying vec4 vColor;
+	
+							void main() {
+								vec4 mvPosition = modelViewMatrix * vec4( position.x,  position.y * exageration, position.z, 1.0 );
+								gl_Position = projectionMatrix * mvPosition;
+								if (forViewing) {
+									gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
+									vColor = vec4(0.0, 0.0, 1.0, 1);
+								} else {
+									gl_Position.z -= (position.y / 1000.0 - floor(position.y / 1000.0)) * gl_Position.z / 1000.0;
+									// gl_PointSize = pow(gl_Position.z, 1.2)/ far;
+									gl_PointSize = 2.0 + gl_Position.z / far;
+									vColor = color;
+								}
+								depth = gl_Position.z;
+							}
+							`,
+                                    fragmentShader: `
+							varying vec4 vColor;
+							varying float depth;
+							uniform float far;
+							uniform bool forViewing;
+							uniform sampler2D pointTexture;
+							void main() {
+								gl_FragColor = vColor;
+								// if (forViewing) {
+								// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+								// }
+								if (depth > far) {
+									discard;
+								}
+							}
+							`,
+                                    fog: true,
+                                    transparent: true
+                                });
+                                var mesh = new Points(geometry, material);
+                                material.onBeforeCompile = (shader) => {
+                                    // Pass uniforms from userData to the
+                                    for (const i in material.userData) {
+                                        shader.uniforms[i] = material.userData[i];
+                                    }
+                                };
+                                // (mesh as any).features = features;
+                                mesh.frustumCulled = false;
+                                mesh.updateMatrix();
+                                mesh.updateMatrixWorld(true);
+                                // this.objectsHolder.visible = debugFeaturePoints;
+                                this.objectsHolder.add(mesh);
+                            }
+                        }
+                        render(true);
+                    });
+                }
+                finally {
+                    this.heightLoaded = true;
+                    this.heightListeners.forEach((l) => { return l(); });
+                    this.heightListeners = [];
+                    this.nodeReady();
+                }
+            });
+        }
+    }
+    MapQuantizedMeshHeightNode.geometrySize = 16;
+    MapQuantizedMeshHeightNode.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+    /**
+    * Empty texture used as a placeholder for missing textures.
+    */
+    MapQuantizedMeshHeightNode.EMPTY_TEXTURE = new Texture();
+    /**
+    * Original tile size of the images retrieved from the height provider.
+    *
+    */
+    MapQuantizedMeshHeightNode.tileSize = 256;
 
     /**
      * Cancelable promises extend base promises and provide a cancel functionality than can be used to cancel the execution or task of the promise.
@@ -58686,7 +59953,7 @@ var webapp = (function (exports) {
                     if (xhr.status === 200) {
                         onLoad(xhr.response);
                     }
-                    else {
+                    else if (onError) {
                         onError('tile not found');
                     }
                 };
@@ -62226,32 +63493,32 @@ var webapp = (function (exports) {
 
     }(es5));
 
-    class LocalHeightProvider extends MapProvider {
+    class LocalHeightTerrainProvider extends MapProvider {
         constructor(local = false) {
             super();
             this.name = 'local';
             this.local = local;
             this.terrarium = !local;
-            this.minZoom = 5;
-            this.maxZoom = local ? 11 : 15;
+            this.minZoom = 0;
+            this.maxZoom = 14;
         }
-        fetchTile(zoom, x, y) {
+        fetchTerrainTile(zoom, x, y) {
             return __awaiter(this, void 0, void 0, function* () {
                 const result = yield Promise.all([
                     new CancelablePromise((resolve, reject) => {
-                        const image = document.createElement('img');
-                        image.onload = () => { return resolve(image); };
-                        image.onerror = () => { return resolve(null); };
-                        image.crossOrigin = 'Anonymous';
-                        if (this.local) {
-                            image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
-                        }
-                        else {
-                            image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-                        }
+                        XHRUtils.getRaw(`http://localhost:8084/tilesets/test2/${zoom}/${x}/${Math.pow(2, zoom) - y - 1}.terrain`, (data) => __awaiter(this, void 0, void 0, function* () {
+                            resolve(data);
+                        }), reject);
                     })
                 ]);
                 return result[0];
+            });
+        }
+        fetchTile(zoom, x, y) {
+            return __awaiter(this, void 0, void 0, function* () {
+                if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
+                    return this.fetchTerrainTile(zoom, x, y);
+                }
             });
         }
         fetchPeaks(zoom, x, y) {
@@ -63099,10 +64366,10 @@ var webapp = (function (exports) {
     exports.drawTexture = true;
     exports.computeNormals = false;
     exports.debugFeaturePoints = false;
-    exports.wireframe = true;
+    exports.wireframe = false;
     exports.mapoutline = false;
     exports.dayNightCycle = false;
-    exports.LOD = isMobile ? 104 : 256;
+    exports.LOD = isMobile ? 104 : 128;
     let debugGPUPicking = false;
     let readFeatures = true;
     let drawLines = true;
@@ -63274,7 +64541,6 @@ var webapp = (function (exports) {
     }
     function setDebugMode(value) {
         exports.debug = value;
-        setupLOD();
         sky.visible = sunLight.visible = shouldRenderSky();
         ambientLight.visible = needsLights();
         if (map) {
@@ -63295,7 +64561,6 @@ var webapp = (function (exports) {
         exports.mapMap = value;
         sky.visible = sunLight.visible = shouldRenderSky();
         ambientLight.visible = needsLights();
-        setupLOD();
         if (map) {
             map.provider = createProvider();
             applyOnNodes((node) => {
@@ -63317,7 +64582,6 @@ var webapp = (function (exports) {
         exports.mapoutline = value;
         sky.visible = sunLight.visible = shouldRenderSky();
         ambientLight.visible = needsLights();
-        setupLOD();
         if (map) {
             map.provider = createProvider();
             applyOnNodes((node) => {
@@ -63635,8 +64899,8 @@ var webapp = (function (exports) {
         });
     }
     catch (err) { }
-    const heightProvider = new LocalHeightProvider(devLocal);
-    // const heightProvider = new LocalHeightTerrainProvider(devLocal);
+    // const heightProvider = new LocalHeightProvider(devLocal);
+    const heightProvider = new LocalHeightTerrainProvider(devLocal);
     setTerrarium(heightProvider.terrarium);
     function onControlUpdate() {
         map.lod.updateLOD(map, camera, renderer, scene);
@@ -63666,13 +64930,7 @@ var webapp = (function (exports) {
         // }
         render();
     }
-    function setupLOD() {
-        heightProvider.maxOverZoom = exports.debug || exports.mapMap ? 2 : devLocal ? 1 : 0;
-        lod.subdivideDistance = 40;
-        lod.simplifyDistance = 140;
-    }
     const lod = new LODFrustum();
-    setupLOD();
     function createProvider() {
         let provider;
         if (exports.mapMap) {
@@ -63686,7 +64944,7 @@ var webapp = (function (exports) {
         }
         provider.minZoom = 5;
         provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-        provider.zoomDelta = 1;
+        // provider.zoomDelta = 1 ;
         provider.minLevelForZoomDelta = 10;
         return provider;
     }
@@ -63698,8 +64956,8 @@ var webapp = (function (exports) {
         map = new MapView(null, provider, heightProvider, false, render);
         // map.lowMemoryUsage = isMobile;
         map.lowMemoryUsage = true;
-        // map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
-        map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
+        map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.root, 0, 0, 0));
+        // map.setRoot(new MaterialHeightShader(null, map, MapNode.root, 0, 0, 0));
         map.lod = lod;
         map.updateMatrixWorld(true);
         scene.add(map);
@@ -64368,7 +65626,7 @@ var webapp = (function (exports) {
         // setElevation(100);
     }
     if (datelabel) {
-        setElevation(277, false);
+        setElevation(2770, false);
         setInitialPosition();
     }
     function moveToEndPoint(animated = true) {

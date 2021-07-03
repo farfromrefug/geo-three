@@ -56,7 +56,7 @@ export class XHRUtils
 				{
 					onLoad(xhr.response);
 				}
-				else 
+				else if (onError)
 				{
 					onError('tile not found');
 				}

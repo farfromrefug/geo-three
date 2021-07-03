@@ -23,7 +23,7 @@ export abstract class MapNode extends Mesh
 	/**
 	 * Index of the map node in the quad-tree parent node.
 	 *
-	 * Position in the tree parent, can be TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT or BOTTOM_RIGHT.
+	 * Position in the tree parent, can be topLeft, topRight, bottomLeft or bottomRight.
 	 */
 	public location: number;
 
@@ -92,55 +92,55 @@ export abstract class MapNode extends Mesh
 	 *
 	 * It should have the full size of the world so that operations over the MapView bounding box/sphere work correctly.
 	 */
-	public static BASE_GEOMETRY: BufferGeometry = null;
+	public static baseGeometry: BufferGeometry = null;
 
 	/**
 	 * Base scale applied to the map viewer object.
 	 */
-	public static BASE_SCALE: Vector3 = null;
+	public static baseScale: Vector3 = null;
  
 	/**
 	 * How many children each branch of the tree has.
 	 *
 	 * For a quad-tree this value is 4.
 	 */
-	public static CHILDRENS: number = 4;
+	public static childrens: number = 4;
  
 	/**
 	 * Root node has no location.
 	 */
-	public static ROOT: number = -1;
+	public static root: number = -1;
  
 	/**
 	 * Index of top left quad-tree branch node.
 	 *
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
-	public static TOP_LEFT: number = 0;
+	public static topLeft: number = 0;
  
 	/**
 	 * Index of top left quad-tree branch node.
 	 *
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
-	public static TOP_RIGHT: number = 1;
+	public static topRight: number = 1;
  
 	/**
 	 * Index of top left quad-tree branch node.
 	 *
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
-	public static BOTTOM_LEFT: number = 2;
+	public static bottomLeft: number = 2;
  
 	/**
 	 * Index of top left quad-tree branch node.
 	 *
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
-	public static BOTTOM_RIGHT: number = 3;
+	public static bottomRight: number = 3;
 	
 
-	public constructor(parentNode: MapNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = null, material: Material = null) 
+	public constructor(parentNode: MapNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = null, material: Material = null) 
 	{
 		super(geometry, material);
 
@@ -156,6 +156,7 @@ export abstract class MapNode extends Mesh
 		const autoLoad = mapView.nodeShouldAutoLoad();
 
 		this.isMesh = false;
+		this.matrixAutoUpdate = false;
 		this.isTextureReady = autoLoad;
 
 		this.objectsHolder = new Group();
@@ -210,7 +211,7 @@ export abstract class MapNode extends Mesh
 				}
 			});
 			this.children = this.childrenCache;
-			if (this.nodesLoaded >= MapNode.CHILDRENS) 
+			if (this.nodesLoaded >= MapNode.childrens) 
 			{
 				this.isMesh = false;
 				this.objectsHolder.visible = false;
@@ -336,7 +337,7 @@ export abstract class MapNode extends Mesh
 		if (parentNode !== null) 
 		{
 			parentNode.nodesLoaded++;
-			if (parentNode.nodesLoaded >= MapNode.CHILDRENS) 
+			if (parentNode.nodesLoaded >= MapNode.childrens) 
 			{	
 				parentNode.children.forEach((child, index) => 
 				{

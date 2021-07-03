@@ -37,7 +37,7 @@ export class MapHeightNode extends MapNode
 	 * @param material - Material used to render this height node.
 	 * @param geometry - Geometry used to render this height node.
 	 */
-	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = MapHeightNode.GEOMETRY, material: Material = new MeshPhongMaterial({color: 0x000000, emissive: 0xffffff})) 
+	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = MapHeightNode.geometry, material: Material = new MeshPhongMaterial({color: 0x000000, emissive: 0xffffff})) 
 	{
 		super(parentNode, mapView, location, level, x, y, geometry, material);
 		this.matrixAutoUpdate = false;
@@ -48,19 +48,19 @@ export class MapHeightNode extends MapNode
 	/**
 	 * Original tile size of the images retrieved from the height provider.
 	 */
-	public static TILE_SIZE: number = 256;
+	public static tileSize: number = 256;
 
 	/**
 	 * Size of the grid of the geometry displayed on the scene for each tile.
 	 */
-	public static GEOMETRY_SIZE: number = 16;
+	public static geometrySize: number = 16;
 
 	/**
 	 * Map node plane geometry.
 	 */
-	public static GEOMETRY: BufferGeometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+	public static geometry: BufferGeometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
 
-	public static BASE_GEOMETRY: BufferGeometry = MapPlaneNode.GEOMETRY;
+	public static baseGeometry: BufferGeometry = MapPlaneNode.geometry;
 
 	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
@@ -126,28 +126,28 @@ export class MapHeightNode extends MapNode
 
 		const x = this.x * 2;
 		const y = this.y * 2;
-		let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+		let node = new prototype.constructor(this, this.mapView, MapNode.topLeft, level, x, y);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(-0.25, 0, -0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 
-		node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+		node = new prototype.constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(0.25, 0, -0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 
-		node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+		node = new prototype.constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(-0.25, 0, 0.25);
 		this.add(node);
 		node.updateMatrix();
 		node.updateMatrixWorld(true);
 
-		node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+		node = new prototype.constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
 		node.scale.set(0.5, 1, 0.5);
 		node.position.set(0.25, 0, 0.25);
 		this.add(node);
@@ -223,14 +223,14 @@ export class MapHeightNode extends MapNode
 	 */
 	public onHeightImage(image): void
 	{
-		const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
+		const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
 		const vertices = geometry.attributes.position.array as number[];
 
-		const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
+		const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
 
 		const context = canvas.getContext('2d');
 		context.imageSmoothingEnabled = false;
-		context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
+		context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
 
 		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 		const data = imageData.data;

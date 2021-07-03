@@ -8,7 +8,7 @@
   - Each one of these map providers require a developer account and a API configuration to be used.
   - Its possible to implement new provides using the `MapProvider` interface.
   - Providers should have a tile based map system to be supported by the library.
- - You can test the [live demo of the library running](https://tentone.github.io/geo-three/examples/index.html) from the GitHub page.
+ - You can test the [live demo of the library running](https://tentone.github.io/geo-three/) from the GitHub page.
 
 <img src="https://raw.githubusercontent.com/tentone/geo-three/master/readme/screenshot/b.png" width="380"><img src="https://raw.githubusercontent.com/tentone/geo-three/master/readme/screenshot/c.png" width="380"><img src="https://raw.githubusercontent.com/tentone/geo-three/master/readme/screenshot/e.png" width="380"><img src="https://raw.githubusercontent.com/tentone/geo-three/master/readme/screenshot/d.png" width="380">
 
@@ -207,15 +207,15 @@ export class CustomMapNode extends MapNode
 {
 	constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0)
 	{
-		super(CustomMapNode.GEOMETRY, CustomMapNode.MATERIAL, parentNode, mapView, location, level, x, y);
+		super(CustomMapNode.geometry, CustomMapNode.MATERIAL, parentNode, mapView, location, level, x, y);
 	}
 	
-	static GEOMETRY = new SphereGeometry(0.5, 32, 32); 
+	static geometry = new SphereGeometry(0.5, 32, 32); 
 	
 	static MATERIAL = new MeshBasicMaterial();
 	
 	// Base geometry applied to the map view.
-	static BASE_GEOMETRY = new MapNodeGeometry(1, 1, 1, 1);
+	static baseGeometry = new MapNodeGeometry(1, 1, 1, 1);
 	
 	// Base scale is applied to the map view
 	static BASE_SCALE = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);

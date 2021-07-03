@@ -69,8 +69,9 @@ export class LODFrustum extends LODRadial
 		// distance /= Math.pow(2, 20 - node.level);
 
 		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
+		// console.log('test', node.level, node.x, node.y, distance, inFrustum);
 
-		if (canSubdivideOrSimplify && (node.level < minZoom || maxZoom > node.level && distance < this.subdivideDistance) && inFrustum)
+		if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum)
 		{
 			node.subdivide();
 			// console.log('subdivide', node.x, node.y, node.level);
@@ -101,7 +102,7 @@ export class LODFrustum extends LODRadial
 			this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
 			// }
 		}
-		else if (inFrustum && minZoom <= node.level )
+		else if ((inFrustum || distance < this.subdivideDistance) && minZoom <= node.level )
 		{
 			if (!this.isChildReady(node))
 			{

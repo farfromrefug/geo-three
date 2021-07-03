@@ -8,6 +8,7 @@ import {MapHeightNodeShader} from './nodes/MapHeightNodeShader';
 import {LODRaycast} from './lod/LODRaycast';
 import {MapProvider} from './providers/MapProvider';
 import {LODControl} from './lod/LODControl';
+import {MapMartiniHeightNode} from './nodes/MapMartiniHeightNode';
 
 /**
  * Map viewer is used to read and display map tiles from a server.
@@ -39,13 +40,19 @@ export class MapView extends Mesh
 	public static HEIGHT_SHADER: number = 203;
 
 	/**
+	 * RTIN map mode.
+	 */
+	public static MARTINI: number = 204;
+
+	/**
 	 * Map of the map node types available.
 	 */
 	public static mapModes: Map<number, any> = new Map<number, any>([
 		[MapView.PLANAR, MapPlaneNode],
 		[MapView.SPHERICAL, MapSphereNode],
 		[MapView.HEIGHT, MapHeightNode],
-		[MapView.HEIGHT_SHADER, MapHeightNodeShader]
+		[MapView.HEIGHT_SHADER, MapHeightNodeShader],
+		[MapView.MARTINI, MapMartiniHeightNode]
 	]);
 
 	/**
@@ -110,7 +117,7 @@ export class MapView extends Mesh
 				this.lod.updateLOD(this, camera, renderer, scene);
 			};
 		}
-		
+
 		this.setRoot(root);
 	}
 
@@ -118,6 +125,16 @@ export class MapView extends Mesh
 	{
 		return this.nodeAutoLoad;
 	}
+
+	/**
+	 * Ajust node configuration depending on the camera distance.
+	 *
+	 * Called everytime before render.
+	 */
+	public onBeforeRender: (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group)=> void = (renderer, scene, camera, geometry, material, group) => 
+	{
+		this.lod.updateLOD(this, camera, renderer, scene);
+	};
 
 	/**
 	 * Set the root of the map view.
@@ -153,10 +170,10 @@ export class MapView extends Mesh
 		if (this.root !== null) 
 		{
 			// @ts-ignore
-			this.geometry = this.root.constructor.BASE_GEOMETRY;
+			this.geometry = this.root.constructor.baseGeometry;
 
 			// @ts-ignore
-			this.scale.copy(this.root.constructor.BASE_SCALE);
+			this.scale.copy(this.root.constructor.baseScale);
 
 			this.root.mapView = this;
 			this.add(this.root);
@@ -208,7 +225,7 @@ export class MapView extends Mesh
 			}
 
 			// @ts-ignore
-			if (children.initialize !== undefined) 
+			if (!!children.initialize) 
 			{
 				// @ts-ignore
 				children.initialize();

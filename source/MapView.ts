@@ -131,10 +131,10 @@ export class MapView extends Mesh
 	 *
 	 * Called everytime before render.
 	 */
-	public onBeforeRender: (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group)=> void = (renderer, scene, camera, geometry, material, group) => 
-	{
-		this.lod.updateLOD(this, camera, renderer, scene);
-	};
+	// public onBeforeRender: (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group)=> void = (renderer, scene, camera, geometry, material, group) => 
+	// {
+	// 	this.lod.updateLOD(this, camera, renderer, scene);
+	// };
 
 	/**
 	 * Set the root of the map view.

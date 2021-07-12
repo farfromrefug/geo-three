@@ -22,11 +22,11 @@ export default [{
 			// host: '127.0.0.1',
 			port: 8081,
 			headers: {'Access-Control-Allow-Origin': '*'},
-			https: {
-				cert: fs.readFileSync(resolve(__dirname, 'cert.pem')),
-				key: fs.readFileSync(resolve(__dirname, 'key.pem')),
-				ca: fs.readFileSync(resolve(__dirname, 'cert.csr'))
-			}
+			// https: {
+			// 	cert: fs.readFileSync(resolve(__dirname, 'cert.pem')),
+			// 	key: fs.readFileSync(resolve(__dirname, 'key.pem')),
+			// 	ca: fs.readFileSync(resolve(__dirname, 'cert.csr'))
+			// }
 		}),
 		livereload('example')
 	],

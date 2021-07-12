@@ -58,7 +58,7 @@ export class MapHeightNodeShader extends MapHeightNode
 
 	public static baseGeometry: BufferGeometry = MapPlaneNode.geometry;
 
-	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
 	/**
 	 * Prepare the three.js material to be used in the map tile.

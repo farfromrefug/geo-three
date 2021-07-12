@@ -225,7 +225,7 @@ export class MapView extends Mesh
 			}
 
 			// @ts-ignore
-			if (!!children.initialize) 
+			if (children.initialize) 
 			{
 				// @ts-ignore
 				children.initialize();

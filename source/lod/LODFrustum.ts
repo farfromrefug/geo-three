@@ -58,49 +58,41 @@ export class LODFrustum extends LODRadial
 		{
 			return;
 		}
-		// const key =`${node.x},${node.y},${node.level}`;
-		// if (!this.nodeMap.has(key)) {
-		// 	this.nodeMap.set(key, node);
-		// }
-
 		node.getWorldPosition(position);
-		var distance = pov.distanceTo(position);
-		distance /= Math.pow(2, 20 - node.level) * Math.max(camera.zoom/2, 1);
-		// distance /= Math.pow(2, 20 - node.level);
+		var worldDistance = pov.distanceTo(position);
+		// const distance = worldDistance / Math.pow(2, 20 - node.level) / Math.max(camera.zoom/5, 1);
+		const distance = worldDistance / Math.pow(2, 20 - node.level);
 
 		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
-		// console.log('test', node.level, node.x, node.y, distance, inFrustum);
+		// if (!inFrustum) 
+		// {
+		// 	node.isMesh = false;
+		// 	return;
+		// }
+		// console.log('handleNode', inFrustum, node.level, node.x, node.y);
 
 		if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum)
 		{
 			node.subdivide();
-			// console.log('subdivide', node.x, node.y, node.level);
 			const children = node.children;
 			if (children) 
 			{
 				for (let index = 0; index < children.length; index++) 
 				{
 					const n = children[index];
-					if (!(n instanceof MapNode)) 
+					if (n instanceof MapNode) 
 					{
-						continue;
+						this.handleNode(n, camera, minZoom, maxZoom, false);
 					}
-					this.handleNode(n, camera, minZoom, maxZoom, false);
 				}
 			}
-			node.isMesh = false;
-			node.objectsHolder.visible = false;
+			node.hide();
 		}
 		else if (canSubdivideOrSimplify && (node.level > maxZoom || (!inFrustum || minZoom < node.level )&& distance > this.simplifyDistance) && node.parentNode)
 		{
 			const parentNode = node.parentNode;
 			const removed = parentNode.simplify(distance, camera.far);
-			// console.log('simplify', removed.length, parentNode.x, parentNode.y, parentNode.level);
-			// removed.forEach(n=>this.nodeMap.delete(`${n.x},${n.y},${n.level}`))
-			// if (parentNode.level > minZoom) 
-			// {
 			this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
-			// }
 		}
 		else if ((inFrustum || distance < this.subdivideDistance) && minZoom <= node.level )
 		{
@@ -116,7 +108,7 @@ export class LODFrustum extends LODRadial
 		const toHandle = [];
 		function handleChild(child): void 
 		{
-			if (!child.children || child.children.length === 1) 
+			if (child instanceof MapNode && !child.subdivided) 
 			{
 				toHandle.push(child);
 			}
@@ -144,24 +136,8 @@ export class LODFrustum extends LODRadial
 		const minZoom = view.provider.minZoom;
 		const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
 
-		// var bottomRight = new Vector3( camera.far, 0, camera.far);
-		// var topLeft = new Vector3( -camera.far, 0, -camera.far * 2 );
-		// bottomRight.applyMatrix4( camera.matrixWorld );
-		// topLeft.applyMatrix4( camera.matrixWorld );
-
-		// const pos = UnitsUtils.sphericalToDatums(pov.x, -pov.z);
-		// const postopLeft = UnitsUtils.sphericalToDatums(topLeft.x , -topLeft.z);
-		// const posbottomRight = UnitsUtils.sphericalToDatums(bottomRight.x , -bottomRight.z);
-		// const bbox = [Math.min(posbottomRight.latitude, postopLeft.latitude), Math.min(posbottomRight.longitude, postopLeft.longitude), Math.max(posbottomRight.latitude, postopLeft.latitude), Math.max(posbottomRight.longitude, postopLeft.longitude)];
-		// const tile = bboxToTile(bbox.reverse())
-		// const key = `${tile[0]},${tile[1]},${tile[2]}`
-		// const toHandle = this.getChildrenToTraverse(this.nodeMap.get(key) || view.children[0]);
-		// let count  =0;
-		// view.children[0].traverse((node) =>
-		// {
-		// 	count++});
 		const toHandle = this.getChildrenToTraverse(view.children[0]);
-		// console.log('toHandle', toHandle.length, bbox.join(','), tile, count);
+		// console.log('updateLOD', toHandle.length);
 		toHandle.forEach( (node) => {return this.handleNode(node, camera, minZoom, maxZoom);});
 	}
 }

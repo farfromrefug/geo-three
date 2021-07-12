@@ -158,7 +158,7 @@ export class MapHeightNodeShader extends MapHeightNode
 	 */
 	public raycast(raycaster: Raycaster, intersects: Intersection[]): void
 	{
-		if (this.isMesh === true) 
+		if (this.isVisible()) 
 		{
 			this.geometry = MapPlaneNode.geometry;
 

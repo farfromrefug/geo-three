@@ -75,12 +75,12 @@ export abstract class MapNode extends Mesh
 	public childrenCache: any[] = null;
 
 	/**
-	 * Variable to check if the node is a mesh.
+	 * Variable to check if the node is a mesh. (existing but not declared in THREE)
 	 *
 	 * Used to draw or not draw the node
 	 */
 	// @ts-ignore
-	public isMesh: boolean = true;
+	public isMesh: boolean ;
 
 	/**
 	 * Three Group used to show markers or anything related to the tile.
@@ -204,17 +204,22 @@ export abstract class MapNode extends Mesh
 		{
 			this.childrenCache.forEach((n) => 
 			{
-				if (n !== this.objectsHolder) 
+				if (n instanceof MapNode) 
 				{
-					n.isMesh = n.textureLoaded;
-					n.objectsHolder.visible = n.textureLoaded;
+					if (n.textureLoaded) 
+					{
+						n.show();
+					}
+					else 
+					{
+						n.hide();
+					}
 				}
 			});
 			this.children = this.childrenCache;
 			if (this.nodesLoaded >= MapNode.childrens) 
 			{
-				this.isMesh = false;
-				this.objectsHolder.visible = false;
+				this.hide();
 			}
 		}
 		else 
@@ -265,12 +270,34 @@ export abstract class MapNode extends Mesh
 				});
 			}
 		}
+		this.show();
+		this.didSimplify();
+		return removed;
+	}
 
+	protected didSimplify(): void
+	{
+		this.children = [this.objectsHolder];
+
+	}
+
+	public show(): void
+	{
 		this.isMesh = true;
 		this.objectsHolder.visible = true;
-		this.children = [this.objectsHolder];
-		
-		return removed;
+	}
+
+	public isVisible(): Boolean
+	{
+		return this.isMesh;
+	}
+
+	public hide(): void
+	{
+		this.isMesh = false;
+		this.objectsHolder.visible = false;
+	}
+
 	}
 
 	/**
@@ -332,7 +359,10 @@ export abstract class MapNode extends Mesh
 	public nodeReady(): void
 	{
 		// Update parent nodes loaded
-		this.isMesh = !this.subdivided;
+		if (!this.subdivided) 
+		{
+			this.show();
+		}
 		const parentNode = this.parentNode;
 		if (parentNode !== null) 
 		{
@@ -341,17 +371,21 @@ export abstract class MapNode extends Mesh
 			{	
 				parentNode.children.forEach((child, index) => 
 				{
-					if (child !== parentNode.objectsHolder) 
+					if (child instanceof MapNode) 
 					{
-						let theNode = child as MapNode;
-						theNode.isMesh = !theNode.subdivided;
-						theNode.objectsHolder.visible = !theNode.subdivided;
+						if (child.subdivided) 
+						{
+							child.hide();
+						}
+						else 
+						{
+							child.show();
+						}
 					}
 				});
 				if (parentNode.subdivided === true) 
 				{
-					parentNode.isMesh = false;
-					parentNode.objectsHolder.visible = false;
+					parentNode.hide();
 				}
 
 			}
@@ -359,8 +393,7 @@ export abstract class MapNode extends Mesh
 		// If its the root object just set visible
 		else if (!this.subdivided)	
 		{
-			this.isMesh = true;
-			this.objectsHolder.visible = true;
+			this.show();
 		}
 		this.mapView.onNodeReady();
 	}

@@ -129,7 +129,7 @@ export class MapSphereNode extends MapNode
 	 */
 	public raycast(raycaster: Raycaster, intersects: Intersection[]): void
 	{
-		if (this.isMesh === true) 
+		if (this.isVisible()) 
 		{
 			return super.raycast(raycaster, intersects);
 		}

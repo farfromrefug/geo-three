@@ -1,10 +1,11 @@
+import { locahostServer } from 'LocalHeightProvider';
 import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider';
 
 export default class RasterMapProvider extends OpenStreetMapsProvider 
 {
 	public constructor(local = false)
 	{
-		super(local? 'http://localhost:8080/styles/terrain_no_label': 'https://a.tile.openstreetmap.org');
+		super(local? `http://${locahostServer}/styles/terrain_no_label`: 'https://a.tile.openstreetmap.org');
 	}
 
 	public fetchImage(zoom: number, x: number, y: number): Promise<any>

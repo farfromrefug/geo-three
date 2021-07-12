@@ -9,11 +9,6 @@ import Hammer from 'hammerjs';
 import * as THREE from 'three';
 import Magnify3d from './Magnify3d';
 
-import {
-	Gyroscope,
-	AbsoluteOrientationSensor
-} from 'motion-sensors-polyfill';
-
 // @ts-ignore
 window.THREE = THREE;
 
@@ -32,6 +27,8 @@ import {LODFrustum} from '../source/lod/LODFrustum';
 import {EmptyProvider} from './EmptyProvider';
 import {MaterialHeightShader} from './MaterialHeightShader';
 import {MapQuantizedMeshHeightNode} from './MapQuantizedMeshHeightNode';
+import {MapMartiniHeightNode} from '../source/nodes/MapMartiniHeightNode';
+import {MapDelatinHeightNode} from '../source/nodes/MapDelatinHeightNode';
 import {LocalHeightProvider} from './LocalHeightProvider';
 import {LocalHeightTerrainProvider} from './LocalHeightTerrainProvider';
 import RasterMapProvider from './RasterMapProvider';
@@ -55,312 +52,6 @@ function getURLParameter(name)
 {
 	return decodeURIComponent((new RegExp('[?|&]' + name + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [null, ''])[1].replace(/\+/g, '%20')) || null;
 }
-
-// class CameraControlsWithOrientation extends CameraControls 
-// {
-
-// 	sensor:AbsoluteOrientationSensor;
-// 	screenOrientation: number = 0
-
-// 	deviceOrientation: DeviceOrientationEvent = {} as any
-
-// 	deviceOrientationEnabled =false
-
-// 	alpha = 0;
-
-// 	beta = 0;
-
-// 	gamma = 0;
-
-// 	alphaOffsetAngle = 0;
-
-// 	betaOffsetAngle = 0;
-
-// 	gammaOffsetAngle = 0;
-
-// 	onDeviceOrientationChangeEventBound
-
-// 	onDeviceOrientationChangeEvent( event ) 
-// 	{
-
-// 		this.deviceOrientation = event;
-// 		this.dispatchEvent( {
-// 			type: 'control',
-// 			originalEvent: event
-// 		} );
-// 	}
-
-// 	onScreenOrientationChangeEventBound
-
-// 	onCompassNeedsCalibrationEventBound
-
-// 	onCompassNeedsCalibrationEvent() 
-// 	{
-// 		console.log('onCompassNeedsCalibrationEvent');
-// 	}
-
-// 	onScreenOrientationChangeEvent(event) 
-// 	{
-
-// 		this.screenOrientation = window.orientation as any || 0;
-// 		this.dispatchEvent( {
-// 			type: 'control',
-// 			originalEvent: event
-// 		} );
-
-// 	}
-// 	quaternion:THREE.Quaternion = new THREE.Quaternion();
-// 	euler:THREE.Euler = new THREE.Euler();
-// 	onSensorReading(){
-// 		const q = this.sensor.quaternion;
-// 		let quaternion = new THREE.Quaternion(q[0], q[1],
-// 			q[2], q[3]).invert();
-
-// // euler will hold the Euler angles corresponding to the quaternion
-// let euler = new THREE.Euler(0, 0, 0);
-
-// // Order of rotations must be adapted depending on orientation
-// // for portrait ZYX, for landscape ZXY
-// // const angleOrder = screen.orientation.angle === 0 ? 'ZYX' : 'ZXY';
-// const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1,0,0 ), Math.PI / 2 ); // - PI/2 around the x-axis
-// quaternion.multiply(q1);
-// euler.setFromQuaternion(quaternion);
-// euler.set(euler.z, euler.y, -euler.x);
-// // euler.x = -euler.x;
-// // euler.y = -euler.y;
-// this._camera.quaternion.setFromEuler(euler);
-// 		// const euler = quaternionToEuler(q);
-// 		// const alpha = euler[0];
-// 		// const beta = 180 - euler[2];
-// 		// const gamma = euler[1] + 90;
-// 		// this.euler.set(alpha * TO_RAD, beta * TO_RAD, gamma * TO_RAD);
-// 		// const orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
-// 		// this._camera.quaternion.setFromEuler(this.euler)
-// 		// this.setObjectQuaternion(this._camera.quaternion, q);
-// 		// this._camera.quaternion.fromArray(this.sensor.quaternion);
-// 		// this._camera.quaternion.setFromEuler(this.euler);
-// 		// let  [alpha, beta, gamma] = this.anglesFromQuaternion({
-// 		// 	x:this.quaternion[0],
-// 		// 	y:this.quaternion[1],
-// 		// 	z:this.quaternion[2],
-// 		// 	w:this.quaternion[3],
-// 		// });
-// 		// alpha *= TO_RAD ; // Z
-// 		// beta *= TO_RAD ; // Z
-// 		// gamma  *= TO_RAD ; // Z
-// 		// this.alpha = alpha;
-// 		// this.beta = beta;
-// 		// this.gamma = -gamma;
-// 		// console.log('onSensorReading', this.quaternion, this.euler, this.alphaOffsetAngle,this.betaOffsetAngle );
-// 		// this.rotateTo(this.euler.z + this.alphaOffsetAngle, -this.euler.x + this.betaOffsetAngle);
-// 		// this.update(1);
-// 		this.dispatchEvent( {
-// 			type: 'update',
-// 			originalEvent: null
-// 		} );
-	
-// 	}
-// 	startDeviceOrientation() 
-// 	{
-// 		if (this.deviceOrientationEnabled) 
-// 		{
-// 			return;
-// 		}
-// 		this.deviceOrientationEnabled = true;
-// 		this.screenOrientation = window.orientation as any || 0;
-// 		if (!this.sensor) {
-// 			this.sensor = new AbsoluteOrientationSensor({ frequency: 60 , referenceFrame:'screen'});
-// 			this.sensor.onreading = () => this.onSensorReading();
-// 		}
-// 		// this.onDeviceOrientationChangeEventBound = this.onDeviceOrientationChangeEvent.bind(this);
-// 		this.onScreenOrientationChangeEventBound = this.onScreenOrientationChangeEvent.bind(this);
-// 		// this.onCompassNeedsCalibrationEventBound = this.onCompassNeedsCalibrationEvent.bind(this);
-
-// 		window.addEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
-// 		// window.addEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
-// 		// window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
-// 		this.sensor.start();
-
-// 	}
-
-// 	stopDeviceOrientation() 
-// 	{
-// 		if (!this.deviceOrientationEnabled) 
-// 		{
-// 			return;
-// 		}
-// 		this.deviceOrientationEnabled = false;
-// 		this.sensor.stop();
-// 		const euler = new THREE.Euler();
-// 		euler.setFromQuaternion(this._camera.quaternion);
-// 		window.removeEventListener( 'orientationchange', this.onScreenOrientationChangeEventBound, false );
-// 		// window.removeEventListener( 'deviceorientation', this.onDeviceOrientationChangeEventBound, false );
-// 		// window.addEventListener( 'compassneedscalibration', this.onCompassNeedsCalibrationEventBound, false );
-
-
-// 	}
-
-// 	// anglesFromQuaternion(quaternion) {
-
-// 	// 	let _alpha, _beta, _gamma;
-
-
-// 	// 		var sqw = quaternion.w * quaternion.w;
-// 	// 		var sqx = quaternion.x * quaternion.x;
-// 	// 		var sqy = quaternion.y * quaternion.y;
-// 	// 		var sqz = quaternion.z * quaternion.z;
-
-// 	// 		var unitLength = sqw + sqx + sqy + sqz; // Normalised == 1, otherwise correction divisor.
-// 	// 		var wxyz = quaternion.w * quaternion.x + quaternion.y * quaternion.z;
-// 	// 		var epsilon = 1e-6; // rounding factor
-
-// 	// 		if (wxyz > (0.5 - epsilon) * unitLength) {
-
-// 	// 			_alpha = 2 * Math.atan2(quaternion.y, quaternion.w);
-// 	// 			_beta = PI_X2;
-// 	// 			_gamma = 0;
-
-// 	// 		} else if (wxyz < (-0.5 + epsilon) * unitLength) {
-
-// 	// 			_alpha = -2 * Math.atan2(quaternion.y, quaternion.w);
-// 	// 			_beta = -PI_X2;
-// 	// 			_gamma = 0;
-
-// 	// 		} else {
-
-// 	// 			var aX = sqw - sqx + sqy - sqz;
-// 	// 			var aY = 2 * (quaternion.w * quaternion.z - quaternion.x * quaternion.y);
-
-// 	// 			var gX = sqw - sqx - sqy + sqz;
-// 	// 			var gY = 2 * (quaternion.w * quaternion.y - quaternion.x * quaternion.z);
-
-// 	// 			if (gX > 0) {
-
-// 	// 				_alpha = Math.atan2(aY, aX);
-// 	// 				_beta  = Math.asin(2 * wxyz / unitLength);
-// 	// 				_gamma = Math.atan2(gY, gX);
-
-// 	// 			} else {
-
-// 	// 				_alpha = Math.atan2(-aY, -aX);
-// 	// 				_beta  = -Math.asin(2 * wxyz / unitLength);
-// 	// 				_beta  += _beta < 0 ? Math.PI : - Math.PI;
-// 	// 				_gamma = Math.atan2(-gY, -gX);
-
-// 	// 			}
-
-// 	// 		}
-
-// 	// 		// alpha is in [-pi, pi], make sure it is in [0, 2*pi).
-// 	// 		if (_alpha < 0) {
-// 	// 			_alpha += PI_X2; // alpha [0, 2*pi)
-// 	// 		}
-
-// 	// 		// Convert to degrees
-// 	// 		_alpha *= TO_DEG;
-// 	// 		_beta  *= TO_DEG;
-// 	// 		_gamma *= TO_DEG;
-
-// 	// 		// apply derived euler angles to current object
-// 	// 		return [_alpha, _beta, _gamma];
-
-// 	// }
-
-// 	setObjectQuaternion(quaternion:THREE.Quaternion, q) 
-// 	{
-// 		var zee = new THREE.Vector3( 0, 0, 1 );
-// 		// var euler = new THREE.Euler();
-// 		var q0 = new THREE.Quaternion();
-// 		var q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3( 1,0,0 ), Math.PI / 2 ); // - PI/2 around the x-axis
-// 		// euler.set( beta, alpha, - gamma, 'YXZ' ); // 'ZXY' for the device, but 'YXZ' for us
-// 		quaternion.fromArray( q ).invert(); // orient the device
-// 		// quaternion.fromArray( q ); // orient the device
-// 		quaternion.multiply( q1 ); // camera looks out the back of the device, not the top
-// 		const orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
-// 		quaternion.multiply( q0.setFromAxisAngle( zee, - orient ) ); // adjust for screen orientation
-// 	}
-
-// 	rotate(azimuthAngle: number, polarAngle: number, enableTransition?: boolean) 
-// 	{
-// 		if ( this.deviceOrientationEnabled && this.quaternion) 
-// 		{
-// 			this.alphaOffsetAngle+=azimuthAngle;
-// 			this.betaOffsetAngle+=polarAngle;
-// 			// this.updateAlphaOffsetAngle(this.alphaOffsetAngle + azimuthAngle);
-// 			// this.updateBetaOffsetAngle(this.betaOffsetAngle + polarAngle);
-// 		}
-// 		// else 
-// 		// {
-// 			return super.rotate(azimuthAngle, polarAngle, enableTransition);
-
-// 		// }
-// 	}
-
-// 	// update(delta: number)
-// 	// {
-// 	// 	if ( this.deviceOrientationEnabled && this.quaternion) 
-// 	// 	{
-// 	// 		// alpha += this.alphaOffsetAngle ; // Z
-// 	// 		// beta +=this.betaOffsetAngle ; // Z
-// 	// 		// gamma +=  - this.gammaOffsetAngle ; // Z
-// 	// 		// var alpha = this.deviceOrientation.alpha ? this.deviceOrientation.alpha * TO_RAD + this.alphaOffsetAngle : 0; // Z
-// 	// 		// var beta = this.deviceOrientation.beta ? this.deviceOrientation.beta * TO_RAD + this.betaOffsetAngle : 0; // X'
-// 	// 		// var gamma = this.deviceOrientation.gamma ? this.deviceOrientation.gamma * TO_RAD + this.gammaOffsetAngle : 0; // Y''
-// 	// 		var orient = this.screenOrientation ? this.screenOrientation * TO_RAD : 0; // O
-
-// 	// 		// if (this.screenOrientation % 180 === 0) 
-// 	// 		// {
-// 	// 		// 	if (Math.abs(this.deviceOrientation.beta) <10 && Math.abs(this.deviceOrientation.gamma) >80) 
-// 	// 		// 	{
-// 	// 		// 		wrongOrientation = true;
-// 	// 		// 	}
-// 	// 		// 	else 
-// 	// 		// 	{
-// 	// 		// 		wrongOrientation = false;
-// 	// 		// 	}
-// 	// 		// } 
-// 	// 		// this.setObjectQuaternion( this._camera.quaternion, alpha, beta, gamma, orient );
-// 	// 		// this._camera.quaternion.fromArray([alpha, beta, gamma, orient]);
-// 	// 		// this.dispatchEvent( {
-// 	// 		// 	type: 'update',
-// 	// 		// 	originalEvent: null
-// 	// 		// });
-// 	// 		return true;
-// 	// 	}
-// 	// 	else 
-// 	// 	{
-// 	// 		return super.update(delta);
-// 	// 	}
-// 	// }
-
-// 	updateAlphaOffsetAngle( angle ) 
-// 	{
-
-// 		this.alphaOffsetAngle = angle;
-
-// 	}
-
-// 	updateBetaOffsetAngle( angle ) 
-// 	{
-
-// 		this.betaOffsetAngle = angle;
-
-// 	}
-
-// 	updateGammaOffsetAngle( angle ) 
-// 	{
-
-// 		this.gammaOffsetAngle = angle;
-
-// 	}
-
-// 	dispose() 
-// 	{
-// 		this.stopDeviceOrientation();
-// 		super.dispose();
-// 	}
-
-// }
 class CameraControlsWithOrientation extends CameraControls 
 {
 	screenOrientation: number = 0
@@ -676,7 +367,7 @@ function ArraySortOn(array, key)
 	});
 }
 const devicePixelRatio = window.devicePixelRatio;
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
 export let showStats = true;
@@ -684,10 +375,11 @@ export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
 export let debugFeaturePoints = false;
-export let wireframe = true;
+export let wireframe = false;
 export let mapoutline = false;
 export let dayNightCycle = false;
-export let LOD = isMobile ? 104 :256;
+// export let GEOMETRY_SIZE = isMobile ? 256 :512;
+export let GEOMETRY_SIZE = 512;
 let debugGPUPicking = false;
 let readFeatures = true;
 let drawLines = true;
@@ -807,7 +499,9 @@ export function setTerrarium(value: boolean)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.elevationDecoder.value = elevationDecoder;
+			node.setMaterialValues({
+				elevationDecoder: elevationDecoder
+			});
 		});
 	}
 }
@@ -913,8 +607,11 @@ export function setDebugMode(value)
 		applyOnNodes((node) => 
 		{
 			node.isTextureReady = !debug;
-			node.material.userData.computeNormals.value = shouldComputeNormals();
-			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals(),
+				drawTexture: (debug || mapMap) && drawTexture
+			})
 			// node.material.flatShading = (mapMap && !mapMapNormal);
 		});
 		onControlUpdate();
@@ -938,8 +635,10 @@ export function setMapMode(value)
 		applyOnNodes((node) => 
 		{
 			node.isTextureReady = false;
-			node.material.userData.computeNormals.value = shouldComputeNormals();
-			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals(),
+				drawTexture: (debug || mapMap) && drawTexture
+			});
 			// node.material.flatShading = (mapMap && !mapMapNormal);
 		});
 		onControlUpdate();
@@ -966,8 +665,10 @@ export function setPredefinedMapMode(value)
 		applyOnNodes((node) => 
 		{
 			node.isTextureReady = false;
-			node.material.userData.computeNormals.value = shouldComputeNormals();
-			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals(),
+				drawTexture: (debug || mapMap) && drawTexture
+			});
 		});
 		onControlUpdate();
 	}
@@ -991,7 +692,9 @@ export function setDrawTexture(value)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.drawTexture.value = (debug || mapMap) && drawTexture;
+			node.setMaterialValues({
+				drawTexture: (debug || mapMap) && drawTexture
+			});
 		});
 	}
 	render();
@@ -1012,8 +715,10 @@ export function setNormalsInDebug(value)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.computeNormals.value = shouldComputeNormals();
-			node.material.userData.drawNormals.value = drawNormals;
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals(),
+				drawTexture: (debug || mapMap) && drawTexture
+			});
 		});
 	}
 	render();
@@ -1029,7 +734,9 @@ export function setComputeNormals(value)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals()
+			});
 			
 		});
 	}
@@ -1050,7 +757,9 @@ export function setDayNightCycle(value)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.computeNormals.value = shouldComputeNormals();
+			node.setMaterialValues({
+				computeNormals: shouldComputeNormals(),
+			});
 		});
 	}
 	render();
@@ -1125,12 +834,11 @@ export function setDebugFeaturePoints(value)
 	{
 		applyOnNodes((node) => 
 		{
-			// node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
-			node.objectsHolder.visible = debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
-			let child = node.objectsHolder.children[0];
-			if (child) 
+			// node.objectsHolder.visible = node.isVisible() && debugFeaturePoints;
+			node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
+			if (node.pointsMesh) 
 			{
-				child.material.userData.forViewing.value = debugFeaturePoints;
+				node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
 			}
 		});
 	}
@@ -1212,7 +920,7 @@ export function setMousPosition(x, y)
 	mousePosition = new THREE.Vector2(x, y);
 	render(true);
 }
-let datelabel, viewingDistanceLabel, compass: HTMLDivElement, compassSlice: HTMLDivElement, compassLabel: HTMLLabelElement, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider, lodLabel;
+let datelabel, viewingDistanceLabel, compass: HTMLDivElement, compassSlice: HTMLDivElement, compassLabel: HTMLLabelElement, selectedPeakLabel, selectedPeakDiv, elevationLabel, elevationSlider;
 try 
 {
 	compass = document.getElementById('compass') as HTMLDivElement;
@@ -1361,21 +1069,10 @@ try
 		normalsInDebugCheckbox.value = drawNormals as any;
 	}
 
-	const lodSlider = document.getElementById('lodSlider') as HTMLInputElement;
-	if (lodSlider) 
-	{
-		lodSlider.oninput = (event: any) => {return setLOD(event.target.value);};
-	}
-
+	
 	selectedPeakLabel = document.getElementById('selectedPeakLabel') as HTMLLabelElement;
 	elevationLabel = document.getElementById('elevationLabel') as HTMLLabelElement;
 	selectedPeakDiv = document.getElementById('selectedPeak') as HTMLDivElement;
-	lodLabel = document.getElementById('lodLabel') as HTMLLabelElement;
-	if (lodLabel) 
-	{
-		lodLabel.innerText = LOD;
-	}
-
 	
 	var hammertime = new Hammer(canvas);
 	hammertime.on('tap', function(event ) 
@@ -1426,9 +1123,9 @@ function onControlUpdate()
 }
 function setupLOD() 
 {
-	heightProvider.maxOverZoom = debug || mapMap ? 2: devLocal?1:0;
+	heightProvider.maxOverZoom = 2;
 	lod.subdivideDistance = 40;
-	lod.simplifyDistance = 140;
+	lod.simplifyDistance = 160;
 }
 const lod = new LODFrustum();
 setupLOD();
@@ -1450,7 +1147,7 @@ function createProvider()
 	}
 	provider.minZoom = 5;
 	provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-	provider.zoomDelta = 1 ;
+	// provider.zoomDelta = 1 ;
 	provider.minLevelForZoomDelta = 10 ;
 	return provider;
 }
@@ -1464,8 +1161,10 @@ function createMap()
 	map = new MapView(null, provider, heightProvider, false, render);
 	// map.lowMemoryUsage = isMobile;
 	map.lowMemoryUsage = true;
-	// map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.ROOT, 0, 0, 0));
-	map.setRoot(new MaterialHeightShader(null, map, MapNode.ROOT, 0, 0, 0));
+	// map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.root, 0, 0, 0),{exageration:exageration});
+	map.setRoot(new MaterialHeightShader(null, map, MapNode.root, 0, 0, 0),{exageration:exageration});
+	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.root, 0, 0, 0,{exageration:exageration, meshMaxError:(level)=>480 / level, elevationDecoder:elevationDecoder}));
+	// map.setRoot(new MapDelatinHeightNode(null, map, MapNode.root, 0, 0, 0,{exageration:exageration, meshMaxError:(level)=>480 / level, elevationDecoder:elevationDecoder} ));
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
@@ -1481,7 +1180,8 @@ camera.position.set(0, 0, EPS);
 const controls = new CameraControlsWithOrientation(camera, canvas);
 controls.azimuthRotateSpeed = -0.2; // negative value to invert rotation direction
 controls.polarRotateSpeed = -0.2; // negative value to invert rotation direction
-controls.minZoom = 1;
+controls.minZoom = 0.4;
+controls.maxZoom = 20;
 // controls.minDistance = -10000;
 // controls.maxDistance = 1000;
 // controls.dollyToCursor = true;
@@ -1688,11 +1388,13 @@ export function setExageration(newValue)
 	{
 		applyOnNodes((node) => 
 		{
-			node.material.userData.exageration.value = exageration;
-			if (node.objectsHolder && node.objectsHolder.children.length > 0) 
+			node.setMaterialValues({
+				exageration: newValue
+			});
+			
+			if (node.pointsMesh) 
 			{
-				node.objectsHolder.children[0].material.uniforms.exageration.value = exageration;
-
+				node.pointsMesh.material.userData.exageration.value = newValue;
 			}
 		});
 	}
@@ -1711,22 +1413,6 @@ export function setDepthMultiplier(newValue)
 	render();
 }
 
-export function setLOD(level) 
-{
-	LOD = level;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.geometry = MaterialHeightShader.getGeometry(node.level);
-		});
-	}
-	if (lodLabel) 
-	{
-		lodLabel.innerText = level;
-	}
-	render();
-}
 export function setDate(secondsInDay) 
 {
 	let date = new Date();
@@ -1795,13 +1481,14 @@ function actualComputeFeatures()
 
 	applyOnNodes((node) => 
 	{
-		node.material.userData.drawBlack.value = true;
-		node.material.userData.computeNormals.value = false;
-		node.objectsHolder.visible = node.isMesh || node.level === 14 && node.parentNode.subdivided;
-		let child = node.objectsHolder.children[0];
-		if (child) 
+		node.setMaterialValues({
+			drawBlack: true,
+			computeNormals: false
+		});
+		node.objectsHolder.visible = node.isVisible() || node.level === 14 && node.parentNode.subdivided;
+		if (node.pointsMesh) 
 		{
-			child.material.userData.forViewing.value = false;
+			node.pointsMesh.material.userData.forViewing.value = false;
 		}
 	});
 	if (debugGPUPicking) 
@@ -1817,14 +1504,15 @@ function actualComputeFeatures()
 	const shouldShowNormals = shouldComputeNormals();
 	applyOnNodes((node) => 
 	{
-		node.material.userData.drawBlack.value = false;
-		node.material.userData.computeNormals.value = shouldShowNormals;
-		node.objectsHolder.visible = node.isMesh && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
-		// node.objectsHolder.visible = node.isMesh && debugFeaturePoints;
-		let child = node.objectsHolder.children[0];
-		if (child) 
+		node.setMaterialValues({
+			drawBlack: false,
+			computeNormals: shouldShowNormals
+		});
+		node.objectsHolder.visible = node.isVisible() && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
+		// node.objectsHolder.visible = node.isVisible() && debugFeaturePoints;
+		if (node.pointsMesh) 
 		{
-			child.material.userData.forViewing.value = debugFeaturePoints;
+			node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
 		}
 		
 	});
@@ -1856,6 +1544,7 @@ document.body.onresize = function()
 	canvas4.width = Math.floor(viewWidth * devicePixelRatio);
 	canvas4.height = Math.floor(viewHeight * devicePixelRatio);
 	const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
+	// const rendererScaleRatio = 0.5;
 
 	renderer.setSize(viewWidth, viewHeight);
 	// rendererMagnify.setSize(width, height);
@@ -1894,20 +1583,20 @@ function toScreenXY(pos3D)
 
 function applyOnNode(node, cb) 
 {
-	// if (node.isMesh) 
+	// if (node.isVisible()) 
 	// {
 	cb(node);
 	// }
 	node.children.forEach((n) => 
 	{
-		if (n !== node.objectsHolder) 
+		if (n instanceof MapNode) 
 		{
 			applyOnNode(n, cb);
 		}
 	});
 	node.childrenCache && node.childrenCache.forEach((n) => 
 	{
-		if (n !== node.objectsHolder) 
+		if (n instanceof MapNode) 
 		{
 			applyOnNode(n, cb);
 		}
@@ -2290,11 +1979,10 @@ function actualRender(forceComputeFeatures)
 	applyOnNodes((node) =>
 	{
 			
-		node.objectsHolder.visible = debugFeaturePoints && (node.isMesh || node.level === 14 && node.parentNode.subdivided);
-		let child = node.objectsHolder.children[0];
-		if (child) 
+		node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
+		if (node.pointsMesh) 
 		{
-			child.material.userData.forViewing.value = debugFeaturePoints;
+			node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
 		}
 	});
 
@@ -2358,7 +2046,8 @@ export function setInitialPosition()
 }
 if (datelabel) 
 {
-	setElevation(277, false);
+	setElevation(500, false);
+	// controls.azimuthAngle = -86 * Math.PI / 180
 	setInitialPosition();
 }
 
@@ -2369,8 +2058,8 @@ export function moveToEndPoint(animated = true)
 
 export function moveToStartPoint(animated = true) 
 {
-	// setPosition({lat: 45.19177, lon: 5.72831}, animated);
-	setPosition({lat: 44.86098, lon: 6.05276}, animated);
+	setPosition({lat: 45.19177, lon: 5.72831}, animated);
+	// setPosition({lat: 44.86098, lon: 6.05276}, animated);
 	// setPosition({lat: 44.86056, lon: 6.05242}, animated);
 }
 
@@ -2454,11 +2143,10 @@ export function setViewingDistance(meters: number)
 	{
 		applyOnNodes((node) => 
 		{
-			let child = node.objectsHolder.children[0];
-			if (child) 
-			{
-				child.material.uniforms.far.value = FAR;
-			}
+			if (node.pointsMesh) 
+		{
+			node.pointsMesh.material.userData.far.value = FAR;
+		}
 		});
 	}
 	render(true);

@@ -3,6 +3,9 @@ import {CancelablePromise} from '../source/utils/CancelablePromise';
 import {XHRUtils} from '../source/utils/XHRUtils';
 import {MVTLoader} from '@loaders.gl/mvt';
 
+
+// const locahostServer = 'dev.tileserver.local'
+export const locahostServer = '192.168.1.51:8080'
 export class LocalHeightProvider extends MapProvider 
 {
 	public local: boolean
@@ -16,7 +19,7 @@ export class LocalHeightProvider extends MapProvider
 		this.local = local;
 		this.terrarium = !local;
 		this.minZoom = 5;
-		this.maxZoom = local ? 11 : 15;
+		this.maxZoom = local ? 12 : 15;
 	}
 
 	public async fetchTile(zoom, x, y): Promise<HTMLImageElement>
@@ -31,7 +34,8 @@ export class LocalHeightProvider extends MapProvider
 				image.crossOrigin = 'Anonymous';
 				if (this.local) 
 				{
-					image.src = `http://localhost:8080/data/elevation/${zoom}/${x}/${y}.png`;
+					image.src = `http://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
+					// image.src = `https://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
 				}
 				else 
 				{
@@ -47,7 +51,7 @@ export class LocalHeightProvider extends MapProvider
 	{
 		return new CancelablePromise((resolve, reject) => 
 		{
-			const url = this.local? `http://127.0.0.1:8080/data/full/${zoom}/${x}/${y}.pbf` : `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
+			const url = this.local? `http://${locahostServer}/data/full/${zoom}/${x}/${y}.pbf` : `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
 			try 
 			{
 				XHRUtils.getRaw(

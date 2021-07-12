@@ -1,23 +1,27 @@
-import {BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
+import {BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Sphere, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, LOD} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, GEOMETRY_SIZE, isMobile} from './app';
 
 import {tileToBBOX} from '@mapbox/tilebelt';
 import {MapView} from '../source/MapView';
 import {MapNode} from '../source/nodes/MapNode';
+
+
+const maxLevelForGemSize = 11;
 
 export let currentColor = 0xffffff;
 
 export class MaterialHeightShader extends MapHeightNode 
 {
 
-	public static BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
+	public static baseGeometry = MapPlaneNode.geometry;
 
-	public static BASE_SCALE: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
+	public static geometry: BufferGeometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
 	/**
 	* Empty texture used as a placeholder for missing textures.
 	*/
@@ -26,13 +30,11 @@ export class MaterialHeightShader extends MapHeightNode
 	/**
 	* Size of the grid of the geometry displayed on the scene for each tile.
 	*/
-	public static GEOMETRY_SIZE = 200;
+	public static geometrySize = 4;
 
 	public static geometries = {};
 
 	public frustumCulled: boolean;
-
-	public exageration: number;
 
 	public heightMapLocation = [0, 0, 1, 1]
 
@@ -42,24 +44,27 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public overZoomFactor = 1;
 
-	public static getGeometry(level: number): MapNodeGeometry
+	public pointsMesh:Points
+
+	public static getGeometry(level: number, handleLess = false): MapNodeGeometry
 	{
-		let size = LOD;
-		if (level < 11) 
+		let size = GEOMETRY_SIZE;
+		if (handleLess && level < maxLevelForGemSize) 
 		{
-			size /= Math.pow(2, Math.floor((11 - level)/2));
+			size /= Math.floor(Math.pow(2, Math.floor((maxLevelForGemSize - level))));
 			// size /= 11 - level;
 			size = Math.max(16, size);
 		}
-		else if (level > 11) 
+		else 
+		if (level > maxLevelForGemSize) 
 		{
-			size /= Math.pow(2, level - 11);
+			size /= Math.floor(Math.pow(2, level - maxLevelForGemSize));
 			size = Math.max(16, size);
 		}
 		let geo = MaterialHeightShader.geometries[size];
 		if (!MaterialHeightShader.geometries[size]) 
 		{
-			geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size);
+			geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, true, 300);
 		}
 		return geo;
 	}
@@ -71,7 +76,7 @@ export class MaterialHeightShader extends MapHeightNode
 
 	public constructor(parentNode: MapHeightNode, mapView: MapView, location: number, level: number, x: number, y: number) 
 	{
-		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.GEOMETRY, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
+		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.geometry, MaterialHeightShader.prepareMaterial(new MeshPhongMaterial({
 			map: MaterialHeightShader.EMPTY_TEXTURE,
 			color: 0xffffff,		
 			wireframe: wireframe,
@@ -83,9 +88,10 @@ export class MaterialHeightShader extends MapHeightNode
 		// this.receiveShadow = true;
 		this.material.emissiveIntensity = 0;
 		this.frustumCulled = false;
-		this.exageration = exageration;
-		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
-		this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
+		this.setMaterialValues({
+			heightMapLocation: this.heightMapLocation,
+			mapMapLocation: this.mapMapLocation
+		})
 		// this.material.flatShading =  mapMap && !computeNormals;
 		this.material.flatShading = false;
 	}
@@ -265,6 +271,8 @@ export class MaterialHeightShader extends MapHeightNode
 			parent = parent.parent as MaterialHeightShader;
 			maxUpLevel--;
 		}
+		// if parent exists load texture from parent and show ourself to
+		// prevent blick during load
 		if (parent && (parent.textureLoaded && parent.heightLoaded)) 
 		{
 			const tileBox = tileToBBOX([this.x, this.y, this.level]);
@@ -282,8 +290,10 @@ export class MaterialHeightShader extends MapHeightNode
 				mapMapLocation[0] = parent.mapMapLocation[0] + dx / parentOverZoomFactor;
 				mapMapLocation[1] = parent.mapMapLocation[1] + dy / parentOverZoomFactor;
 				mapMapLocation[2] = mapMapLocation[3] = 1 / Math.pow(2, parentOverZoomFactor * deltaLevel);
-				this.material.userData.mapMapLocation.value.set(...mapMapLocation);
-				this.material.map = parent.material.map;
+				this.setMaterialValues({
+					map: parent.material.map,
+					mapMapLocation: mapMapLocation
+				})
 			}
 
 			if (!this.heightLoaded) 
@@ -293,16 +303,136 @@ export class MaterialHeightShader extends MapHeightNode
 				heightMapLocation[0] = parent.heightMapLocation[0] + dx / parentHeightOverZoomFactor;
 				heightMapLocation[1] = parent.heightMapLocation[1] + dy / parentHeightOverZoomFactor;
 				heightMapLocation[2] = heightMapLocation[3] = 1 / Math.pow(2, parentHeightOverZoomFactor * deltaLevel);
-				this.material.userData.heightMapLocation.value.set(...heightMapLocation);
-				this.material.userData.heightMap.value = parent.material.userData.heightMap.value;
+				this.setMaterialValues({
+					heightMap: parent.material.userData.heightMap.value,
+					heightMapLocation: heightMapLocation
+				})
 			}
-
-			this.geometry = MaterialHeightShader.getGeometry(this.level);
-			this.isMesh = true;
+			this.show();
+			
 		}
 		return super.initialize();
 	}
+	protected didSimplify(): void
+	{
+		if (this.lod) {
+			this.children = [this.objectsHolder, this.lod];
+		} else {
+			this.children = [this.objectsHolder];
+		}
 
+	}
+	public show(): void
+	{
+		// console.log('show', this.level, this.x, this.y, !!this.lod);
+		if (!this.fullGeometryLoaded) {
+			this.constructLOD();
+		}
+		if (MaterialHeightShader.useLOD) {
+			this.isMesh = false;
+			this.lod.visible = true;
+		} else {
+			this.isMesh = true;
+		}
+	}
+	public isVisible(): Boolean
+	{
+		if (MaterialHeightShader.useLOD) {
+			return this.lod && this.lod.visible;
+		} else {
+			return this.isMesh;
+		}
+	}
+	public hide(): void
+	{
+		this.isMesh = false;
+		this.objectsHolder.visible = false;
+		if (this.lod) {
+			this.lod.visible = false;
+		}
+	}
+
+	// public getBoundingSphere(): Sphere
+	// {
+	// 	const geometry =MaterialHeightShader.geometry;
+
+	// 	if ( geometry.boundingSphere === null ) 
+	// 	{
+	// 		geometry.computeBoundingSphere();
+	// 	}
+	// 	_sphere.copy( geometry.boundingSphere ).applyMatrix4( this.matrixWorld );
+	// 	return _sphere;
+	// }
+	public static useLOD = true
+	public fullGeometryLoaded = false;
+	private constructLOD() {
+		this.fullGeometryLoaded = true;
+		if (MaterialHeightShader.useLOD) {
+			const lod = this.lod = new LOD();
+			for ( let i = 0; i < 7; i ++ ) {
+				const mesh = new Mesh( MaterialHeightShader.getGeometry(this.level > maxLevelForGemSize ? this.level + i : maxLevelForGemSize - i, true), this.material);
+				mesh.frustumCulled = false;
+				mesh.updateMatrix();
+				mesh.updateMatrixWorld(true);
+				mesh.matrixAutoUpdate = false;
+				lod.addLevel( mesh, (3000  + 4000 * Math.pow(i, isMobile ? 2 : 4)));
+				// lod.addLevel( mesh, (300000  + 200000 * Math.pow(i, 4)) / Math.pow(2, 20 - this.level));
+
+				// lod.addLevel( mesh, 5000  + 5000 * i  * (1 + Math.abs(Math.min(this.level, 12) - 12)));
+			}
+			lod.updateMatrix();
+			lod.updateMatrixWorld(true);
+			lod.frustumCulled = false;
+			lod.matrixAutoUpdate = false;
+			this.add( lod );
+			this.isMesh = false;
+		} else {
+			this.geometry = MaterialHeightShader.getGeometry(this.level);
+		}
+	}
+	lod: LOD
+
+	setGeometrySize(level) {
+		if (!this.fullGeometryLoaded) {
+			return;
+		}
+		if (MaterialHeightShader.useLOD) {
+			if (this.lod) {
+				this.lod.levels.forEach((l, i) => l.object.geometry = MaterialHeightShader.getGeometry(this.level- i))
+			}
+		} else {
+			this.geometry = MaterialHeightShader.getGeometry(this.level);
+		}
+	}
+
+	// public setMaterialValues(values): void
+	// {
+	// 	const mat = this.material;
+	// 	Object.keys(values).forEach((k) => 
+	// 	{
+	// 		// eslint-disable-next-line no-prototype-builtins
+	// 		if (k === 'map') 
+	// 		{
+	// 			// console.log('setMaterialValues', k);
+	// 			mat[k] = values[k];
+	// 			if (this.lod) {
+	// 				this.lod.levels.forEach(l=>{
+	// 					l.object.material[k] = values[k];
+	// 				})
+	// 			}
+	// 		}
+	// 		else 
+	// 		{
+	// 			// @ts-ignore
+	// 			mat.userData[k].value = values[k];
+	// 			if (this.lod) {
+	// 				this.lod.levels.forEach(l=>{
+	// 					l.object.material.userData[k].value = values[k];
+	// 				})
+	// 			}
+	// 		}
+	// 	});
+	// }
 	/**
 	* Load tile texture from the server.
 	*
@@ -333,8 +463,10 @@ export class MaterialHeightShader extends MapHeightNode
 			texture.needsUpdate = true;
 	
 			// @ts-ignore
-			this.material.userData.mapMapLocation.value.set(...this.mapMapLocation);
-			this.material.map = texture;
+			this.setMaterialValues({
+				map: texture,
+				mapMapLocation: this.mapMapLocation
+			})
 		}
 	}
 
@@ -346,7 +478,9 @@ export class MaterialHeightShader extends MapHeightNode
 			if (image instanceof Texture) 
 			{
 				texture = image;
-				this.material.userData.heightMap.value = image;
+				this.setMaterialValues({
+					heightMap: image
+				})
 			}
 			else 
 			{
@@ -358,14 +492,11 @@ export class MaterialHeightShader extends MapHeightNode
 				// texture.wrapS = ClampToEdgeWrapping;
 				// texture.wrapT = ClampToEdgeWrapping;
 				texture.needsUpdate = true;
-	
-				this.material.userData.heightMap.value = texture;
-
-				// @ts-ignore
-				this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+				this.setMaterialValues({
+					heightMap: texture,
+					heightMapLocation: this.heightMapLocation
+				})
 			}
-			this.geometry = MaterialHeightShader.getGeometry(this.level);
-
 			// no more data after 14
 			if (this.level > 14) 
 			{
@@ -530,6 +661,7 @@ export class MaterialHeightShader extends MapHeightNode
 						mesh.updateMatrix();
 						mesh.updateMatrixWorld(true);
 						// this.objectsHolder.visible = debugFeaturePoints;
+						this.pointsMesh = mesh;
 						this.objectsHolder.add(mesh);
 					}
 				}
@@ -554,7 +686,9 @@ export class MaterialHeightShader extends MapHeightNode
 		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.heightOverZoomFactor;
 
 		// console.log('handleParentOverZoomTile', parent.x, parent.y, parent.level, this.x, this.y, this.level);
-		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+		this.setMaterialValues({
+			heightMapLocation: this.heightMapLocation
+		})
 		this.onHeightImage(parent.material.userData.heightMap.value);
 		if (resolve) 
 		{
@@ -569,10 +703,10 @@ export class MaterialHeightShader extends MapHeightNode
 	*/
 	public raycast(raycaster: Raycaster, intersects: Intersection[]): boolean
 	{
-		if (this.isMesh === true) 
+		if (this.isVisible()) 
 		{
 			const oldGeometry = this.geometry;
-			this.geometry = MapPlaneNode.GEOMETRY;
+			this.geometry = MapPlaneNode.geometry;
 
 			const result = Mesh.prototype.raycast.call(this, raycaster, intersects);
 

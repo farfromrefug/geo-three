@@ -5,7 +5,7 @@ import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapNode} from '../source/nodes/MapNode';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
 import decode, {DECODING_STEPS} from '@here/quantized-mesh-decoder';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, LOD} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, GEOMETRY_SIZE} from './app';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 export let currentColor = 0xffffff;
 
@@ -168,8 +168,9 @@ function constructGeometry({header, vertexData, triangleIndices, extensions}): B
  */
 export class MapQuantizedMeshHeightNode extends MapHeightNode
 {
-	public static GEOMETRY_SIZE = 16;
+	public static geometrySize = 16;
 
+	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 	/**
 	* Empty texture used as a placeholder for missing textures.
 	*/
@@ -237,22 +238,15 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 		return material;
 	}
 
-	public elevationDecoder = {
-		rScaler: 256,
-		gScaler: 1,
-		bScaler: 1 / 256,
-		offset: -32768
-	}
-
 	public exageration = 1.0;
 
 
 	public material: MeshPhongMaterial
 
-	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.ROOT, level: number = 0, x: number = 0, y: number = 0)
+	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0)
 	{
 
-		super(parentNode, mapView, location, level, x, y, MapQuantizedMeshHeightNode.GEOMETRY, MapQuantizedMeshHeightNode.prepareMaterial(new MeshPhongMaterial({
+		super(parentNode, mapView, location, level, x, y, MapQuantizedMeshHeightNode.geometry, MapQuantizedMeshHeightNode.prepareMaterial(new MeshPhongMaterial({
 			map: MapQuantizedMeshHeightNode.EMPTY_TEXTURE,
 			color: 0xffffff,
 			side: DoubleSide
@@ -266,7 +260,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 	* Original tile size of the images retrieved from the height provider.
 	*
 	*/
-	public static TILE_SIZE = 256;
+	public static tileSize = 256;
 
 	
 	// public async onHeightImage(image): Promise<void> 
@@ -363,7 +357,9 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
 				result = result.filter(
-					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name && f.properties.class === 'peak' && f.properties['ele'] !== undefined; }
+					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name
+						//  && f.properties.class === 'peak' 
+						 && f.properties['ele'] !== undefined; }
 				);
 				
 				if (result.length > 0) 

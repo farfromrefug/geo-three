@@ -16,7 +16,7 @@ export class LocalHeightTerrainProvider extends MapProvider
 		this.local = local;
 		this.terrarium = !local;
 		this.minZoom = 0;
-		this.maxZoom = 10;
+		this.maxZoom = 14;
 	}
 
 	public async fetchTerrainTile(zoom, x, y): Promise<ArrayBuffer>
@@ -25,7 +25,7 @@ export class LocalHeightTerrainProvider extends MapProvider
 			new CancelablePromise<ArrayBuffer>((resolve, reject) => 
 			{
 				XHRUtils.getRaw(
-					`http://localhost:8084/tilesets/test/${zoom}/${x}/${Math.pow(2, zoom) - y - 1}.terrain`,
+					`http://localhost:8084/tilesets/test2/${zoom}/${x}/${Math.pow(2, zoom) - y - 1}.terrain`,
 					async(data) => 
 					{
 						resolve(data);

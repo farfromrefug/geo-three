@@ -321,6 +321,25 @@ export abstract class MapNode extends Mesh
 		}
 	}
 	
+
+	public setMaterialValues(values): void
+	{
+		const mat = this.material;
+		Object.keys(values).forEach((k) => 
+		{
+			// eslint-disable-next-line no-prototype-builtins
+			if (mat.hasOwnProperty(k)) 
+			{
+				mat[k] = values[k];
+			}
+			else 
+			{
+				// @ts-ignore
+				mat.userData[k].value = values[k];
+			}
+		});
+	}
+
 	/**
 	 * Load tile texture from the server.
 	 *

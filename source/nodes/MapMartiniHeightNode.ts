@@ -1,9 +1,10 @@
-import {BufferGeometry, DoubleSide, Float32BufferAttribute, Material, MeshPhongMaterial, NearestFilter, RGBFormat, Texture, Uint32BufferAttribute} from 'three';
+import {BufferGeometry, DoubleSide, Float32BufferAttribute, Material, MeshPhongMaterial, NearestFilter, RGBFormat, Texture, Uint32BufferAttribute, Vector3} from 'three';
 import {MapNodeGeometry} from '../geometries/MapNodeGeometry';
 import {MapView} from '../MapView';
 import {Martini} from './Martini';
 import {MapHeightNode} from './MapHeightNode';
-import {MapNode} from './MapNode.js';
+import {MapNode} from './MapNode';
+import {UnitsUtils} from '../utils/UnitsUtils';
 
 /** 
  * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
@@ -38,17 +39,14 @@ export class MapMartiniHeightNode extends MapHeightNode
 	 * 
 	 * Indicates how the pixels should be unpacked and transformed into height data.
 	 */
-	public elevationDecoder: any = {
-		rScaler: 256,
-		gScaler: 1,
-		bScaler: 1 / 256,
-		offset: -32768
-	}
+	public elevationDecoder: any = [256* 255, 255, 1 / 256* 255, -32768]
 
 	/**
 	 * Original tile size of the images retrieved from the height provider.
 	 */
 	public static tileSize: number = 256;
+
+	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
 	/**
 	 * Exageration (scale) of the terrain height.
@@ -59,7 +57,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 
 	public material: MeshPhongMaterial
 
-	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, {elevationDecoder = null, meshMaxError = 10, exageration = 1} = {})
+	public constructor(parentNode: MapMartiniHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, {elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768], meshMaxError = 50, exageration = 1}: {elevationDecoder?: number[], meshMaxError?: number | Function, exageration?: number} = {})
 	{
 		super(parentNode, mapView, location, level, x, y, MapMartiniHeightNode.geometry, MapMartiniHeightNode.prepareMaterial(new MeshPhongMaterial({
 			map: MapMartiniHeightNode.emptyTexture,
@@ -67,13 +65,11 @@ export class MapMartiniHeightNode extends MapHeightNode
 			side: DoubleSide
 		}), level, exageration));
 
-		if (elevationDecoder) 
-		{
-			this.elevationDecoder = elevationDecoder;
-		}
 
-		this.meshMaxError = meshMaxError;
-		this.exageration = exageration;
+		this.meshMaxError = parentNode ? parentNode.meshMaxError : meshMaxError;
+		this.exageration = parentNode ? parentNode.exageration : exageration;
+		this.elevationDecoder = parentNode ? parentNode.elevationDecoder : elevationDecoder;
+		// console.log('MapMartiniHeightNode', this.meshMaxError, this.exageration, this.elevationDecoder);
 		this.frustumCulled = false;
 	}
 
@@ -145,30 +141,30 @@ export class MapMartiniHeightNode extends MapHeightNode
 					// |   |   |   |
 					// +-----------+
 
-					if (computeNormals) {
-						float e = getElevation(vUv, 0.0);
-						ivec2 size = textureSize(heightMap, 0);
-						float offset = 1.0 / float(size.x);
-						float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
-						float b = getElevation(vUv + vec2(0, -offset), 0.0);
-						float c = getElevation(vUv + vec2(offset, -offset), 0.0);
-						float d = getElevation(vUv + vec2(-offset, 0), 0.0);
-						float f = getElevation(vUv + vec2(offset, 0), 0.0);
-						float g = getElevation(vUv + vec2(-offset, offset), 0.0);
-						float h = getElevation(vUv + vec2(0, offset), 0.0);
-						float i = getElevation(vUv + vec2(offset,offset), 0.0);
+					// if (computeNormals) {
+					// 	float e = getElevation(vUv, 0.0);
+					// 	ivec2 size = textureSize(heightMap, 0);
+					// 	float offset = 1.0 / float(size.x);
+					// 	float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
+					// 	float b = getElevation(vUv + vec2(0, -offset), 0.0);
+					// 	float c = getElevation(vUv + vec2(offset, -offset), 0.0);
+					// 	float d = getElevation(vUv + vec2(-offset, 0), 0.0);
+					// 	float f = getElevation(vUv + vec2(offset, 0), 0.0);
+					// 	float g = getElevation(vUv + vec2(-offset, offset), 0.0);
+					// 	float h = getElevation(vUv + vec2(0, offset), 0.0);
+					// 	float i = getElevation(vUv + vec2(offset,offset), 0.0);
 
 
-						float normalLength = 500.0 / zoomlevel;
+					// 	float normalLength = 500.0 / zoomlevel;
 
-						vec3 v0 = vec3(0.0, 0.0, 0.0);
-						vec3 v1 = vec3(0.0, normalLength, 0.0);
-						vec3 v2 = vec3(normalLength, 0.0, 0.0);
-						v0.z = (e + d + g + h) / 4.0;
-						v1.z = (e+ b + a + d) / 4.0;
-						v2.z = (e+ h + i + f) / 4.0;
-						vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
-					}
+					// 	vec3 v0 = vec3(0.0, 0.0, 0.0);
+					// 	vec3 v1 = vec3(0.0, normalLength, 0.0);
+					// 	vec3 v2 = vec3(normalLength, 0.0, 0.0);
+					// 	v0.z = (e + d + g + h) / 4.0;
+					// 	v1.z = (e+ b + a + d) / 4.0;
+					// 	v2.z = (e+ h + i + f) / 4.0;
+					// 	vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
+					// }
 					`
 			);
 		};
@@ -176,9 +172,8 @@ export class MapMartiniHeightNode extends MapHeightNode
 		return material;
 	}
 	
-	public static getTerrain(imageData: Uint8ClampedArray, tileSize: number, elevation: any): Float32Array
+	public static getTerrain(imageData: Uint8ClampedArray, tileSize: number, elevationDecoder: any): Float32Array
 	{
-		const {rScaler, bScaler, gScaler, offset} = elevation;
 		const gridSize = tileSize + 1;
 
 		// From Martini demo
@@ -194,7 +189,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 				const r = imageData[k + 0];
 				const g = imageData[k + 1];
 				const b = imageData[k + 2];
-				terrain[i + y] = r * rScaler + g * gScaler + b * bScaler + offset;
+				terrain[i + y] = r * elevationDecoder[0]/255 + g * elevationDecoder[1] /255+ b * elevationDecoder[2]/255 + elevationDecoder[3];
 			}
 		}
 
@@ -265,37 +260,41 @@ export class MapMartiniHeightNode extends MapHeightNode
 	 */
 	public async onHeightImage(image: HTMLImageElement): Promise<void> 
 	{
-		const tileSize = image.width;
-		const gridSize = tileSize + 1;
-		var canvas = new OffscreenCanvas(tileSize, tileSize);
-
-		var context = canvas.getContext('2d');
-		context.imageSmoothingEnabled = false;
-		context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+		if (image) 
+		{
+			const tileSize = image.width;
+			const gridSize = tileSize + 1;
+			var canvas = new OffscreenCanvas(tileSize, tileSize);
+	
+			var context = canvas.getContext('2d');
+			context.imageSmoothingEnabled = false;
+			context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+			
+			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+			var data = imageData.data;
+	
+			const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+			const martini = new Martini(gridSize);
+			const tile = martini.createTile(terrain);
+			const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
+	
+			const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+	
+			this.geometry = new BufferGeometry();
+			this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+			this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
+			this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
+			this.geometry.rotateX(Math.PI);
+	
+			var texture = new Texture(image);
+			texture.generateMipmaps = false;
+			texture.format = RGBFormat;
+			texture.magFilter = NearestFilter;
+			texture.minFilter = NearestFilter;
+			texture.needsUpdate = true;
+			this.material.userData.heightMap.value = texture;
+		}
 		
-		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-		var data = imageData.data;
-
-		const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
-		const martini = new Martini(gridSize);
-		const tile = martini.createTile(terrain);
-		const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError);
-
-		const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
-
-		this.geometry = new BufferGeometry();
-		this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
-		this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
-		this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
-		this.geometry.rotateX(Math.PI);
-
-		var texture = new Texture(image);
-		texture.generateMipmaps = false;
-		texture.format = RGBFormat;
-		texture.magFilter = NearestFilter;
-		texture.minFilter = NearestFilter;
-		texture.needsUpdate = true;
-		this.material.userData.heightMap.value = texture;
 	}
 	
 	/**

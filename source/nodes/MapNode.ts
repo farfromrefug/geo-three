@@ -298,8 +298,6 @@ export abstract class MapNode extends Mesh
 		this.objectsHolder.visible = false;
 	}
 
-	}
-
 	/**
 	 * Handle loaded texture
 	 *

@@ -1,7 +1,12 @@
 import strip from '@rollup/plugin-strip';
 import typescript from '@rollup/plugin-typescript';
 
-export default {
+import { terser } from "rollup-plugin-terser";
+import {nodeResolve} from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
+
+
+export default [{
 	input: 'source/Main.ts',
 	plugins: [
 		typescript(),
@@ -22,4 +27,23 @@ export default {
 			indent: '\t'
 		}
 	]
-};
+}, {
+		input: 'webapp/app.ts',
+		plugins: [
+			nodeResolve({
+				mainFields: ['browser', 'module', 'main'],
+			}),
+			commonjs(),
+			typescript({tsconfig: 'webapp/tsconfig.json'}),
+			strip({functions: ['assert.*', 'debug', 'alert']}),
+			terser()
+		],
+		output: [
+			{
+				esModule: false,
+				format: 'iife',
+				name: 'webapp',
+				file: 'example/app.js'
+			}
+		]
+}];

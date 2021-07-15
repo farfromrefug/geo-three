@@ -1,38 +1,38 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
-import CameraControls from 'camera-controls';
-import Stats from 'stats.js';
 import TWEEN from '@tweenjs/tween.js';
+import CameraControls from 'camera-controls';
 import Hammer from 'hammerjs';
-
+import * as POSTPROCESSING from 'postprocessing/build/postprocessing.esm';
+import Stats from 'stats.js';
 import * as THREE from 'three';
-import Magnify3d from './Magnify3d';
+import {
+	Box3, MathUtils, Matrix4, MOUSE, Quaternion, Raycaster, Sphere, Spherical, Vector2,
+	Vector3,
+	Vector4
+} from 'three';
+import { Sky } from 'three/examples/jsm/objects/Sky';
+import { LODFrustum } from '../source/lod/LODFrustum';
+import { MapView } from '../source/MapView';
+import { MapNode } from '../source/nodes/MapNode';
+import { DebugProvider } from '../source/providers/DebugProvider';
+import { UnitsUtils } from '../source/utils/UnitsUtils';
+import { EmptyProvider } from './EmptyProvider';
+import { LocalHeightProvider } from './LocalHeightProvider';
+import { MaterialHeightShader } from './MaterialHeightShader';
+import RasterMapProvider from './RasterMapProvider';
+import { SunLight } from './SunLight';
+
 
 // @ts-ignore
-window.THREE = THREE;
+// window.THREE = THREE;
 
 const TO_RAD = Math.PI / 180;
 const PI_DIV4 = Math.PI / 4;
 const PI_X2 = Math.PI * 2;
 const TO_DEG = 180 / Math.PI;
 
-import {Sky} from 'three/examples/jsm/objects/Sky';
-import * as POSTPROCESSING from 'postprocessing/build/postprocessing.esm';
-import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {MapView} from '../source/MapView';
-import {MapNode} from '../source/nodes/MapNode';
-import {DebugProvider} from '../source/providers/DebugProvider';
-import {LODFrustum} from '../source/lod/LODFrustum';
-import {EmptyProvider} from './EmptyProvider';
-import {MaterialHeightShader} from './MaterialHeightShader';
-import {MapQuantizedMeshHeightNode} from './MapQuantizedMeshHeightNode';
-import {MapMartiniHeightNode} from '../source/nodes/MapMartiniHeightNode';
-import {MapDelatinHeightNode} from '../source/nodes/MapDelatinHeightNode';
-import {LocalHeightProvider} from './LocalHeightProvider';
-import {LocalHeightTerrainProvider} from './LocalHeightTerrainProvider';
-import RasterMapProvider from './RasterMapProvider';
-import {SunLight} from './SunLight';
 
 let wrongOrientation = false;
 
@@ -332,7 +332,25 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 	}
 }
 '';
-CameraControls.install({THREE: THREE});
+
+const subsetOfTHREE = {
+	MOUSE     : MOUSE,
+	Vector2   : Vector2,
+	Vector3   : Vector3,
+	Vector4   : Vector4,
+	Quaternion: Quaternion,
+	Matrix4   : Matrix4,
+	Spherical : Spherical,
+	Box3      : Box3,
+	Sphere    : Sphere,
+	Raycaster : Raycaster,
+	MathUtils : {
+		DEG2RAD: MathUtils.DEG2RAD,
+		clamp: MathUtils.clamp,
+	},
+};
+
+CameraControls.install( { THREE: subsetOfTHREE } );
 // @ts-ignore
 function throttle(callback, limit) 
 {
@@ -370,7 +388,7 @@ const devicePixelRatio = window.devicePixelRatio;
 export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
-export let showStats = true;
+export let showStats = false;
 export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
@@ -898,6 +916,7 @@ export function toggleCamera()
 	if (showingCamera) 
 	{
 		video.pause();
+		//@ts-ignore
 		video.srcObject.getTracks().forEach(function(track) 
 		{
 			track.stop();
@@ -1444,6 +1463,7 @@ controls.addEventListener('control', (event) =>
 {
 	const zooming = controls.zooming;
 	const trucking = controls.trucking;
+	//@ts-ignore
 	if (event.originalEvent && event.originalEvent.buttons) 
 	{
 		shouldClearSelectedOnClick = false;

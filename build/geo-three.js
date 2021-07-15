@@ -1,21 +1,106 @@
 (function (global, factory) {
-	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('three')) :
-	typeof define === 'function' && define.amd ? define(['exports', 'three'], factory) :
-	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.Geo = {}, global.THREE));
-}(this, (function (exports, three) { 'use strict';
+	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('three'), require('@mapbox/tilebelt')) :
+	typeof define === 'function' && define.amd ? define(['exports', 'three', '@mapbox/tilebelt'], factory) :
+	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.Geo = {}, global.THREE, global.tilebelt));
+}(this, (function (exports, three, tilebelt) { 'use strict';
 
+	/*! *****************************************************************************
+	Copyright (c) Microsoft Corporation.
+
+	Permission to use, copy, modify, and/or distribute this software for any
+	purpose with or without fee is hereby granted.
+
+	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+	REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+	AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+	INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+	OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+	PERFORMANCE OF THIS SOFTWARE.
+	***************************************************************************** */
+
+	function __awaiter(thisArg, _arguments, P, generator) {
+	    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+	    return new (P || (P = Promise))(function (resolve, reject) {
+	        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+	        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+	        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+	        step((generator = generator.apply(thisArg, _arguments || [])).next());
+	    });
+	}
+
+	function zoomTiles(zoomedTiles, zoom) {
+	    if (zoomedTiles[0][2] === zoom) {
+	        return zoomedTiles;
+	    }
+	    else if (zoomedTiles[0][2] < zoom) {
+	        var oneIn = [];
+	        zoomedTiles.forEach(function (tile) {
+	            oneIn = oneIn.concat(tilebelt.getChildren(tile));
+	        });
+	        return zoomTiles(oneIn, zoom);
+	    }
+	    else {
+	        var zoomedTiles = zoomedTiles.map(function (tile) {
+	            const bbox = tilebelt.tileToBBOX(tile);
+	            return tilebelt.pointToTile(bbox[0] + (bbox[2] - bbox[0]) / 2, bbox[1] + (bbox[3] - bbox[1]) / 2, zoom);
+	        });
+	        return zoomedTiles;
+	    }
+	}
+	function tilesToZoom(tiles, zoom) {
+	    var newTiles = zoomTiles(tiles, zoom);
+	    return newTiles;
+	}
 	class MapProvider {
 	    constructor() {
 	        this.name = '';
 	        this.minZoom = 0;
 	        this.maxZoom = 20;
+	        this.maxOverZoom = 0;
+	        this.zoomDelta = 0;
+	        this.minLevelForZoomDelta = 0;
 	        this.bounds = [];
 	        this.center = [];
 	    }
-	    fetchTile(zoom, x, y) {
+	    get actualMaxZoom() {
+	        return this.maxZoom + this.maxOverZoom;
+	    }
+	    fetchImage(zoom, x, y) {
 	        return null;
 	    }
 	    getMetaData() { }
+	    fetchTile(zoom, x, y) {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
+	                return this.fetchImage(zoom, x, y);
+	            }
+	            else {
+	                const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => {
+	                    return valA[1] - valB[1] ||
+	                        valA[0] - valB[0];
+	                });
+	                const images = (yield Promise.all(tiles.map((t) => { return this.fetchImage(t[2], t[0], t[1]); })));
+	                const width = images[0].width * Math.floor(this.zoomDelta * 2);
+	                const fullWidth = width / Math.sqrt(images.length);
+	                const canvas = new OffscreenCanvas(width, width);
+	                var context = canvas.getContext('2d');
+	                let tileY = tiles[0][1];
+	                let ix = 0;
+	                let iy = 0;
+	                images.forEach((image, index) => {
+	                    if (tileY !== tiles[index][1]) {
+	                        tileY = tiles[index][1];
+	                        ix = 0;
+	                        iy += 1;
+	                    }
+	                    context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
+	                    ix += 1;
+	                });
+	                return canvas;
+	            }
+	        });
+	    }
 	}
 
 	class OpenStreetMapsProvider extends MapProvider {
@@ -24,7 +109,7 @@
 	        this.address = address;
 	        this.format = 'png';
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -40,7 +125,7 @@
 	}
 
 	class MapNodeGeometry extends three.BufferGeometry {
-	    constructor(width, height, widthSegments, heightSegments) {
+	    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0) {
 	        super();
 	        const widthHalf = width / 2;
 	        const heightHalf = height / 2;
@@ -56,8 +141,7 @@
 	            for (let ix = 0; ix < gridX; ix++) {
 	                const x = ix * segmentWidth - widthHalf;
 	                vertices.push(x, 0, z);
-	                uvs.push(ix / widthSegments);
-	                uvs.push(1 - iz / heightSegments);
+	                uvs.push(ix / widthSegments, 1 - iz / heightSegments);
 	            }
 	        }
 	        for (let iz = 0; iz < heightSegments; iz++) {
@@ -66,8 +150,66 @@
 	                const b = ix + gridX * (iz + 1);
 	                const c = ix + 1 + gridX * (iz + 1);
 	                const d = ix + 1 + gridX * iz;
-	                indices.push(a, b, d);
-	                indices.push(b, c, d);
+	                indices.push(a, b, d, b, c, d);
+	            }
+	        }
+	        if (skirt) {
+	            let start = vertices.length / 3;
+	            for (let ix = 0; ix < gridX; ix++) {
+	                const x = ix * segmentWidth - widthHalf;
+	                const z = -heightHalf;
+	                vertices.push(x, -skirtDepth, z);
+	                uvs.push(ix / widthSegments, 1);
+	            }
+	            for (let ix = 0; ix < widthSegments; ix++) {
+	                const a = ix;
+	                const d = ix + 1;
+	                const b = ix + start;
+	                const c = ix + start + 1;
+	                indices.push(d, b, a, d, c, b);
+	            }
+	            start = vertices.length / 3;
+	            for (let ix = 0; ix < gridX; ix++) {
+	                const x = ix * segmentWidth - widthHalf;
+	                const z = heightSegments * segmentHeight - heightHalf;
+	                vertices.push(x, -skirtDepth, z);
+	                uvs.push(ix / widthSegments, 0);
+	            }
+	            let offset = gridX * gridZ - widthSegments - 1;
+	            for (let ix = 0; ix < widthSegments; ix++) {
+	                const a = offset + ix;
+	                const d = offset + ix + 1;
+	                const b = ix + start;
+	                const c = ix + start + 1;
+	                indices.push(a, b, d, b, c, d);
+	            }
+	            start = vertices.length / 3;
+	            for (let iz = 0; iz < gridZ; iz++) {
+	                const z = iz * segmentHeight - heightHalf;
+	                const x = -widthHalf;
+	                vertices.push(x, -skirtDepth, z);
+	                uvs.push(0, 1 - iz / heightSegments);
+	            }
+	            for (let iz = 0; iz < heightSegments; iz++) {
+	                const a = iz * gridZ;
+	                const d = (iz + 1) * gridZ;
+	                const b = iz + start;
+	                const c = iz + start + 1;
+	                indices.push(a, b, d, b, c, d);
+	            }
+	            start = vertices.length / 3;
+	            for (let iz = 0; iz < gridZ; iz++) {
+	                const z = iz * segmentHeight - heightHalf;
+	                const x = widthSegments * segmentWidth - widthHalf;
+	                vertices.push(x, -skirtDepth, z);
+	                uvs.push(1.0, 1 - iz / heightSegments);
+	            }
+	            for (let iz = 0; iz < heightSegments; iz++) {
+	                const a = iz * gridZ + heightSegments;
+	                const d = (iz + 1) * gridZ + heightSegments;
+	                const b = iz + start;
+	                const c = iz + start + 1;
+	                indices.push(d, b, a, d, c, b);
 	            }
 	        }
 	        this.setIndex(indices);
@@ -77,14 +219,14 @@
 	}
 
 	class MapNode extends three.Mesh {
-	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = null, material = null) {
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = null, material = null) {
 	        super(geometry, material);
 	        this.mapView = null;
 	        this.parentNode = null;
+	        this.textureLoaded = false;
 	        this.nodesLoaded = 0;
 	        this.subdivided = false;
 	        this.childrenCache = null;
-	        this.isMesh = true;
 	        this.mapView = mapView;
 	        this.parentNode = parentNode;
 	        this.location = location;
@@ -92,8 +234,9 @@
 	        this.x = x;
 	        this.y = y;
 	        const autoLoad = mapView.nodeShouldAutoLoad();
-	        this.visible = !autoLoad;
-	        this.isReady = autoLoad;
+	        this.isMesh = false;
+	        this.matrixAutoUpdate = false;
+	        this.isTextureReady = autoLoad;
 	        this.objectsHolder = new three.Group();
 	        this.objectsHolder.visible = !autoLoad;
 	        this.add(this.objectsHolder);
@@ -101,53 +244,108 @@
 	            this.initialize();
 	        }
 	    }
-	    initialize() { }
+	    initialize() {
+	    }
 	    createChildNodes() { }
 	    subdivide() {
-	        const maxZoom = Math.min(this.mapView.provider.maxZoom, this.mapView.heightProvider.maxZoom);
-	        if (this.subdivided || this.children.length > 1 || this.level + 1 > maxZoom) {
+	        const mapView = this.mapView;
+	        const maxZoom = Math.min(mapView.provider.actualMaxZoom, mapView.heightProvider.actualMaxZoom);
+	        if (this.subdivided || this.level + 1 > maxZoom) {
 	            return;
 	        }
 	        this.subdivided = true;
 	        if (this.childrenCache !== null) {
-	            this.isMesh = false;
-	            this.objectsHolder.visible = false;
 	            this.childrenCache.forEach((n) => {
-	                if (n !== this.objectsHolder) {
-	                    n.isMesh = !n.subdivided;
-	                    n.objectsHolder.visible = !n.subdivided;
+	                if (n instanceof MapNode) {
+	                    if (n.textureLoaded) {
+	                        n.show();
+	                    }
+	                    else {
+	                        n.hide();
+	                    }
 	                }
 	            });
 	            this.children = this.childrenCache;
+	            if (this.nodesLoaded >= MapNode.childrens) {
+	                this.hide();
+	            }
 	        }
 	        else {
 	            this.createChildNodes();
 	        }
 	    }
-	    simplify() {
+	    simplify(distance, far) {
+	        var _a, _b, _c;
 	        if (!this.subdivided) {
 	            return;
 	        }
-	        this.childrenCache = this.children;
-	        this.objectsHolder.visible = true;
+	        let removed = [];
 	        this.subdivided = false;
-	        this.isMesh = true;
+	        if (this.mapView.lowMemoryUsage || distance > far / 100 || ((_a = this.parentNode) === null || _a === void 0 ? void 0 : _a.subdivided) && ((_c = (_b = this.parentNode) === null || _b === void 0 ? void 0 : _b.parentNode) === null || _c === void 0 ? void 0 : _c.subdivided)) {
+	            if (this.childrenCache && this.children.length > 1) {
+	                removed.push(...this.childrenCache);
+	                this.childrenCache = null;
+	                this.nodesLoaded = 0;
+	            }
+	        }
+	        else {
+	            this.childrenCache = this.children;
+	            if (this.childrenCache) {
+	                this.childrenCache.forEach((c) => {
+	                    if (c.childrenCache && c.children.length > 1) {
+	                        removed.push(...c.childrenCache);
+	                        c.childrenCache = null;
+	                        c.nodesLoaded = [];
+	                    }
+	                });
+	            }
+	        }
+	        this.show();
+	        this.didSimplify();
+	        return removed;
+	    }
+	    didSimplify() {
 	        this.children = [this.objectsHolder];
 	    }
-	    loadTexture() {
-	        this.isReady = true;
-	        this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-	            if (image) {
-	                const texture = new three.Texture(image);
-	                texture.generateMipmaps = false;
-	                texture.format = three.RGBFormat;
-	                texture.magFilter = three.LinearFilter;
-	                texture.minFilter = three.LinearFilter;
-	                texture.needsUpdate = true;
-	                this.material.map = texture;
+	    show() {
+	        this.isMesh = true;
+	        this.objectsHolder.visible = true;
+	    }
+	    isVisible() {
+	        return this.isMesh;
+	    }
+	    hide() {
+	        this.isMesh = false;
+	        this.objectsHolder.visible = false;
+	    }
+	    onTextureImage(image) {
+	        if (image) {
+	            const texture = new three.Texture(image);
+	            texture.generateMipmaps = false;
+	            texture.format = three.RGBFormat;
+	            texture.magFilter = three.LinearFilter;
+	            texture.minFilter = three.LinearFilter;
+	            texture.needsUpdate = true;
+	            this.material.map = texture;
+	        }
+	    }
+	    setMaterialValues(values) {
+	        const mat = this.material;
+	        Object.keys(values).forEach((k) => {
+	            if (mat.hasOwnProperty(k)) {
+	                mat[k] = values[k];
 	            }
-	            this.nodeReady();
-	        }).catch(() => {
+	            else {
+	                mat.userData[k].value = values[k];
+	            }
+	        });
+	    }
+	    loadTexture() {
+	        if (this.isTextureReady) {
+	            return;
+	        }
+	        this.isTextureReady = true;
+	        return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).catch(() => {
 	            const canvas = new OffscreenCanvas(1, 1);
 	            const context = canvas.getContext('2d');
 	            context.fillStyle = '#FF0000';
@@ -156,31 +354,36 @@
 	            texture.generateMipmaps = false;
 	            texture.needsUpdate = true;
 	            this.material.map = texture;
+	        }).finally(() => {
+	            this.textureLoaded = true;
 	            this.nodeReady();
 	        });
 	    }
 	    nodeReady() {
-	        this.isMesh = true;
+	        if (!this.subdivided) {
+	            this.show();
+	        }
 	        const parentNode = this.parentNode;
 	        if (parentNode !== null) {
 	            parentNode.nodesLoaded++;
-	            if (parentNode.nodesLoaded >= MapNode.CHILDRENS) {
-	                if (parentNode.subdivided === true) {
-	                    parentNode.isMesh = false;
-	                    parentNode.objectsHolder.visible = false;
-	                }
+	            if (parentNode.nodesLoaded >= MapNode.childrens) {
 	                parentNode.children.forEach((child, index) => {
-	                    if (child !== parentNode.objectsHolder) {
-	                        let theNode = child;
-	                        theNode.isMesh = !theNode.subdivided;
-	                        theNode.objectsHolder.visible = !theNode.subdivided;
+	                    if (child instanceof MapNode) {
+	                        if (child.subdivided) {
+	                            child.hide();
+	                        }
+	                        else {
+	                            child.show();
+	                        }
 	                    }
 	                });
+	                if (parentNode.subdivided === true) {
+	                    parentNode.hide();
+	                }
 	            }
 	        }
 	        else if (!this.subdivided) {
-	            this.visible = true;
-	            this.objectsHolder.visible = true;
+	            this.show();
 	        }
 	        this.mapView.onNodeReady();
 	    }
@@ -192,14 +395,14 @@
 	        return neighbors;
 	    }
 	}
-	MapNode.BASE_GEOMETRY = null;
-	MapNode.BASE_SCALE = null;
-	MapNode.CHILDRENS = 4;
-	MapNode.ROOT = -1;
-	MapNode.TOP_LEFT = 0;
-	MapNode.TOP_RIGHT = 1;
-	MapNode.BOTTOM_LEFT = 2;
-	MapNode.BOTTOM_RIGHT = 3;
+	MapNode.baseGeometry = null;
+	MapNode.baseScale = null;
+	MapNode.childrens = 4;
+	MapNode.root = -1;
+	MapNode.topLeft = 0;
+	MapNode.topRight = 1;
+	MapNode.bottomLeft = 2;
+	MapNode.bottomRight = 3;
 
 	class UnitsUtils {
 	    static get(onResult, onError) {
@@ -232,75 +435,84 @@
 	UnitsUtils.EARTH_ORIGIN = UnitsUtils.EARTH_PERIMETER / 2.0;
 
 	class MapPlaneNode extends MapNode {
-	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
-	        super(parentNode, mapView, location, level, x, y, MapPlaneNode.GEOMETRY, new three.MeshBasicMaterial({ wireframe: false }));
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
+	        super(parentNode, mapView, location, level, x, y, MapPlaneNode.geometry, new three.MeshBasicMaterial({ wireframe: false }));
 	        this.matrixAutoUpdate = false;
 	    }
 	    initialize() {
-	        this.loadTexture();
+	        return this.loadTexture();
 	    }
 	    createChildNodes() {
 	        const level = this.level + 1;
 	        const x = this.x * 2;
 	        const y = this.y * 2;
-	        let node = new MapPlaneNode(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
-	        node.scale.set(0.5, 1, 0.5);
+	        const Constructor = Object.getPrototypeOf(this).constructor;
+	        let node = new Constructor(this, this.mapView, MapNode.topLeft, level, x, y);
+	        node.scale.set(0.5, 1.0, 0.5);
 	        node.position.set(-0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapPlaneNode(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
-	        node.scale.set(0.5, 1, 0.5);
+	        node = new Constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
+	        node.scale.set(0.5, 1.0, 0.5);
 	        node.position.set(0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
-	        node.scale.set(0.5, 1, 0.5);
+	        node = new Constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
+	        node.scale.set(0.5, 1.0, 0.5);
 	        node.position.set(-0.25, 0, 0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new MapPlaneNode(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
-	        node.scale.set(0.5, 1, 0.5);
+	        node = new Constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
+	        node.scale.set(0.5, 1.0, 0.5);
 	        node.position.set(0.25, 0, 0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
 	    }
 	    raycast(raycaster, intersects) {
-	        if (this.isMesh === true) {
+	        if (this.isVisible()) {
 	            return super.raycast(raycaster, intersects);
 	        }
 	        return false;
 	    }
 	}
-	MapPlaneNode.GEOMETRY = new MapNodeGeometry(1, 1, 1, 1);
-	MapPlaneNode.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
-	MapPlaneNode.BASE_SCALE = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+	MapPlaneNode.geometry = new MapNodeGeometry(1, 1, 1, 1, false);
+	MapPlaneNode.baseGeometry = MapPlaneNode.geometry;
+	MapPlaneNode.baseScale = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1.0, UnitsUtils.EARTH_PERIMETER);
 
 	class MapHeightNode extends MapNode {
-	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0, geometry = MapHeightNode.GEOMETRY, material = new three.MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = MapHeightNode.geometry, material = new three.MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
 	        super(parentNode, mapView, location, level, x, y, geometry, material);
 	        this.heightLoaded = false;
-	        this.textureLoaded = false;
+	        this.heightListeners = [];
 	        this.matrixAutoUpdate = false;
+	        const autoLoad = mapView.nodeShouldAutoLoad();
+	        this.isHeightReady = autoLoad;
 	    }
 	    initialize() {
-	        this.loadTexture();
-	        this.loadHeightGeometry();
+	        super.initialize();
+	        return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
 	    }
-	    loadTexture() {
-	        this.isReady = true;
-	        this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
+	    onTextureImage(image) {
+	        if (image) {
 	            const texture = new three.Texture(image);
 	            texture.generateMipmaps = false;
 	            texture.format = three.RGBFormat;
 	            texture.magFilter = three.LinearFilter;
 	            texture.minFilter = three.LinearFilter;
 	            texture.needsUpdate = true;
-	            this.material.emissiveMap = texture;
-	        }).finally(() => {
+	            this.material.map = texture;
+	        }
+	    }
+	    loadTexture() {
+	        if (this.isTextureReady) {
+	            return;
+	        }
+	        this.isTextureReady = true;
+	        return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).finally(() => {
 	            this.textureLoaded = true;
 	            this.nodeReady();
 	        });
@@ -309,7 +521,6 @@
 	        if (!this.heightLoaded || !this.textureLoaded) {
 	            return;
 	        }
-	        this.visible = true;
 	        super.nodeReady();
 	    }
 	    createChildNodes() {
@@ -317,71 +528,103 @@
 	        var prototype = Object.getPrototypeOf(this);
 	        const x = this.x * 2;
 	        const y = this.y * 2;
-	        let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+	        let node = new prototype.constructor(this, this.mapView, MapNode.topLeft, level, x, y);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(-0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	        node = new prototype.constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(0.25, 0, -0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(-0.25, 0, 0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	        node = new prototype.constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
 	        node.scale.set(0.5, 1, 0.5);
 	        node.position.set(0.25, 0, 0.25);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
 	    }
+	    handleParentOverZoomTile(resolve) {
+	        throw new Error('not implemented');
+	    }
 	    loadHeightGeometry() {
-	        if (this.mapView.heightProvider === null) {
-	            throw new Error('GeoThree: MapView.heightProvider provider is null.');
-	        }
-	        return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => {
-	            const geometry = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-	            const vertices = geometry.attributes.position.array;
-	            const canvas = new OffscreenCanvas(MapHeightNode.GEOMETRY_SIZE + 1, MapHeightNode.GEOMETRY_SIZE + 1);
-	            const context = canvas.getContext('2d');
-	            context.imageSmoothingEnabled = false;
-	            context.drawImage(image, 0, 0, MapHeightNode.TILE_SIZE, MapHeightNode.TILE_SIZE, 0, 0, canvas.width, canvas.height);
-	            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-	            const data = imageData.data;
-	            for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
-	                const r = data[i];
-	                const g = data[i + 1];
-	                const b = data[i + 2];
-	                const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-	                vertices[j + 1] = value;
+	        return __awaiter(this, void 0, void 0, function* () {
+	            if (this.isHeightReady) {
+	                return;
 	            }
-	            this.geometry = geometry;
-	        })
-	            .catch(() => {
-	            console.error('GeoThree: Failed to load height node data.', this);
-	        }).finally(() => {
-	            this.heightLoaded = true;
-	            this.nodeReady();
+	            this.isHeightReady = true;
+	            const heightProvider = this.mapView.heightProvider;
+	            if (heightProvider === null) {
+	                throw new Error('GeoThree: MapView.heightProvider provider is null.');
+	            }
+	            try {
+	                const zoom = this.level;
+	                if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+	                    const parent = this.parent;
+	                    if (parent.heightLoaded) {
+	                        this.handleParentOverZoomTile();
+	                    }
+	                    else {
+	                        const promise = new Promise((resolve) => {
+	                            parent.heightListeners.push(() => { return this.handleParentOverZoomTile(resolve); });
+	                        });
+	                        if (!parent.isHeightReady) {
+	                            parent.loadHeightGeometry();
+	                        }
+	                        yield promise;
+	                    }
+	                }
+	                else {
+	                    const image = yield this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
+	                    this.onHeightImage(image);
+	                }
+	            }
+	            finally {
+	                this.heightLoaded = true;
+	                this.heightListeners.forEach((l) => { return l(); });
+	                this.heightListeners = [];
+	                this.nodeReady();
+	            }
 	        });
 	    }
+	    onHeightImage(image) {
+	        const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
+	        const vertices = geometry.attributes.position.array;
+	        const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
+	        const context = canvas.getContext('2d');
+	        context.imageSmoothingEnabled = false;
+	        context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
+	        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+	        const data = imageData.data;
+	        for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
+	            const r = data[i];
+	            const g = data[i + 1];
+	            const b = data[i + 2];
+	            const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+	            vertices[j + 1] = value;
+	        }
+	        this.geometry = geometry;
+	    }
 	    raycast(raycaster, intersects) {
-	        if (this.isMesh === true) {
+	        if (this.isVisible()) {
 	            return super.raycast(raycaster, intersects);
 	        }
 	        return false;
 	    }
 	}
-	MapHeightNode.TILE_SIZE = 256;
-	MapHeightNode.GEOMETRY_SIZE = 16;
-	MapHeightNode.GEOMETRY = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-	MapHeightNode.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
+	MapHeightNode.tileSize = 256;
+	MapHeightNode.geometrySize = 16;
+	MapHeightNode.geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
+	MapHeightNode.baseGeometry = MapPlaneNode.geometry;
 	MapHeightNode.BASE_SCALE = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
 	class MapSphereNodeGeometry extends three.BufferGeometry {
@@ -434,18 +677,18 @@
 	}
 
 	class MapSphereNode extends MapNode {
-	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
 	        super(parentNode, mapView, location, level, x, y, MapSphereNode.createGeometry(level, x, y), new three.MeshBasicMaterial({ wireframe: false }));
 	        this.applyScaleNode();
 	        this.matrixAutoUpdate = false;
 	    }
 	    initialize() {
-	        this.loadTexture();
+	        return this.loadTexture();
 	    }
 	    static createGeometry(zoom, x, y) {
 	        const range = Math.pow(2, zoom);
 	        const max = 40;
-	        const segments = Math.floor(MapSphereNode.SEGMENTS * (max / (zoom + 1)) / max);
+	        const segments = Math.floor(MapSphereNode.segments * (max / (zoom + 1)) / max);
 	        const phiLength = 1 / range * 2 * Math.PI;
 	        const phiStart = x * phiLength;
 	        const thetaLength = 1 / range * Math.PI;
@@ -477,43 +720,48 @@
 	        const level = this.level + 1;
 	        const x = this.x * 2;
 	        const y = this.y * 2;
-	        var prototype = Object.getPrototypeOf(this);
-	        let node = new prototype.constructor(this, this.mapView, MapNode.TOP_LEFT, level, x, y);
+	        const Constructor = Object.getPrototypeOf(this).constructor;
+	        let node = new Constructor(this, this.mapView, MapNode.topLeft, level, x, y);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.TOP_RIGHT, level, x + 1, y);
+	        node = new Constructor(this, this.mapView, MapNode.topRight, level, x + 1, y);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_LEFT, level, x, y + 1);
+	        node = new Constructor(this, this.mapView, MapNode.bottomLeft, level, x, y + 1);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
-	        node = new prototype.constructor(this, this.mapView, MapNode.BOTTOM_RIGHT, level, x + 1, y + 1);
+	        node = new Constructor(this, this.mapView, MapNode.bottomRight, level, x + 1, y + 1);
 	        this.add(node);
 	        node.updateMatrix();
 	        node.updateMatrixWorld(true);
 	    }
 	    raycast(raycaster, intersects) {
-	        if (this.isMesh === true) {
+	        if (this.isVisible()) {
 	            return super.raycast(raycaster, intersects);
 	        }
 	        return false;
 	    }
 	}
-	MapSphereNode.BASE_GEOMETRY = new MapSphereNodeGeometry(UnitsUtils.EARTH_RADIUS, 64, 64, 0, 2 * Math.PI, 0, Math.PI);
-	MapSphereNode.BASE_SCALE = new three.Vector3(1, 1, 1);
-	MapSphereNode.SEGMENTS = 80;
+	MapSphereNode.baseGeometry = new MapSphereNodeGeometry(UnitsUtils.EARTH_RADIUS, 64, 64, 0, 2 * Math.PI, 0, Math.PI);
+	MapSphereNode.baseScale = new three.Vector3(1, 1, 1);
+	MapSphereNode.segments = 80;
 
 	class MapHeightNodeShader extends MapHeightNode {
-	    constructor(parentNode = null, mapView = null, location = MapNode.ROOT, level = 0, x = 0, y = 0) {
-	        const material = MapHeightNodeShader.prepareMaterial(new three.MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE }));
-	        super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.GEOMETRY, material);
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0) {
+	        super(parentNode, mapView, location, level, x, y, MapHeightNodeShader.geometry, MapHeightNodeShader.prepareMaterial(new three.MeshPhongMaterial({ map: MapHeightNodeShader.EMPTY_TEXTURE })));
+	        this.heightMapLocation = [0, 0, 1, 1];
+	        this.overZoomFactor = 1;
 	        this.frustumCulled = false;
 	    }
 	    static prepareMaterial(material) {
-	        material.userData = { heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE } };
+	        material.userData = {
+	            heightMap: { value: MapHeightNodeShader.EMPTY_TEXTURE },
+	            elevationDecoder: { value: MapHeightNodeShader.ELEVATION_DECODER },
+	            heightMapLocation: { value: new three.Vector4() }
+	        };
 	        material.onBeforeCompile = (shader) => {
 	            for (const i in material.userData) {
 	                shader.uniforms[i] = material.userData[i];
@@ -521,13 +769,22 @@
 	            shader.vertexShader =
 	                `
 			uniform sampler2D heightMap;
+			uniform vec4 heightMapLocation;
+			uniform vec4 elevationDecoder;
+			float getPixelElevation(vec4 e) {
+				// Convert encoded elevation value to meters
+				return ((e.r * elevationDecoder.x + e.g * elevationDecoder.y  + e.b * elevationDecoder.z) + elevationDecoder.w) * exageration;
+			}
+			float getElevation(vec2 coord) {
+				vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
+				return getPixelElevation(e);
+			}
 			` + shader.vertexShader;
 	            shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
 			#include <fog_vertex>
 	
 			// Calculate height of the title
-			vec4 _theight = texture2D(heightMap, vUv);
-			float _height = ((_theight.r * 255.0 * 65536.0 + _theight.g * 255.0 * 256.0 + _theight.b * 255.0) * 0.1) - 10000.0;
+			float _height = getElevation(vUv);
 			vec3 _transformed = position + _height * normal;
 	
 			// Vertex position based on height
@@ -536,28 +793,8 @@
 	        };
 	        return material;
 	    }
-	    loadTexture() {
-	        this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {
-	            const texture = new three.Texture(image);
-	            texture.generateMipmaps = false;
-	            texture.format = three.RGBFormat;
-	            texture.magFilter = three.LinearFilter;
-	            texture.minFilter = three.LinearFilter;
-	            texture.needsUpdate = true;
-	            this.material.map = texture;
-	        }).catch((err) => {
-	            console.error('GeoThree: Failed to load color node data.', err);
-	        }).finally(() => {
-	            this.textureLoaded = true;
-	            this.nodeReady();
-	        });
-	        this.loadHeightGeometry();
-	    }
-	    loadHeightGeometry() {
-	        if (this.mapView.heightProvider === null) {
-	            throw new Error('GeoThree: MapView.heightProvider provider is null.');
-	        }
-	        return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => {
+	    onHeightImage(image) {
+	        if (image) {
 	            const texture = new three.Texture(image);
 	            texture.generateMipmaps = false;
 	            texture.format = three.RGBFormat;
@@ -565,28 +802,41 @@
 	            texture.minFilter = three.NearestFilter;
 	            texture.needsUpdate = true;
 	            this.material.userData.heightMap.value = texture;
-	        }).catch((err) => {
-	            console.error('GeoThree: Failed to load height node data.', err);
-	        }).finally(() => {
-	            this.heightLoaded = true;
-	            this.nodeReady();
-	        });
+	        }
+	    }
+	    handleParentOverZoomTile(resolve) {
+	        const tileBox = tilebelt.tileToBBOX([this.x, this.y, this.level]);
+	        const parent = this.parent;
+	        const parentOverZoomFactor = parent.overZoomFactor;
+	        const parentTileBox = tilebelt.tileToBBOX([parent.x, parent.y, parent.level]);
+	        const width = parentTileBox[2] - parentTileBox[0];
+	        const height = parentTileBox[3] - parentTileBox[1];
+	        this.overZoomFactor = parentOverZoomFactor * 2;
+	        this.heightMapLocation[0] = parent.heightMapLocation[0] + Math.floor((tileBox[0] - parentTileBox[0]) / width * 10) / 10 / parentOverZoomFactor;
+	        this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10) / 10 / parentOverZoomFactor;
+	        this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
+	        this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
+	        this.onHeightImage(parent.material.userData.heightMap.value);
+	        if (resolve) {
+	            resolve();
+	        }
 	    }
 	    raycast(raycaster, intersects) {
-	        if (this.isMesh === true) {
-	            this.geometry = MapPlaneNode.GEOMETRY;
+	        if (this.isVisible()) {
+	            this.geometry = MapPlaneNode.geometry;
 	            const result = super.raycast(raycaster, intersects);
-	            this.geometry = MapHeightNodeShader.GEOMETRY;
+	            this.geometry = MapHeightNodeShader.geometry;
 	            return result;
 	        }
 	        return false;
 	    }
 	}
+	MapHeightNodeShader.ELEVATION_DECODER = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 	MapHeightNodeShader.EMPTY_TEXTURE = new three.Texture();
-	MapHeightNodeShader.GEOMETRY_SIZE = 256;
-	MapHeightNodeShader.GEOMETRY = new MapNodeGeometry(1, 1, MapHeightNode.GEOMETRY_SIZE, MapHeightNode.GEOMETRY_SIZE);
-	MapHeightNodeShader.BASE_GEOMETRY = MapPlaneNode.GEOMETRY;
-	MapHeightNodeShader.BASE_SCALE = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+	MapHeightNodeShader.geometrySize = 256;
+	MapHeightNodeShader.geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
+	MapHeightNodeShader.baseGeometry = MapPlaneNode.geometry;
+	MapHeightNodeShader.baseScale = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
 	class LODRaycast {
 	    constructor() {
@@ -630,6 +880,423 @@
 	    }
 	}
 
+	class Martini {
+	    constructor(gridSize = 257) {
+	        this.gridSize = gridSize;
+	        const tileSize = gridSize - 1;
+	        if (tileSize & tileSize - 1) {
+	            throw new Error(`Expected grid size to be 2^n+1, got ${gridSize}.`);
+	        }
+	        this.numTriangles = tileSize * tileSize * 2 - 2;
+	        this.numParentTriangles = this.numTriangles - tileSize * tileSize;
+	        this.indices = new Uint32Array(this.gridSize * this.gridSize);
+	        this.coords = new Uint16Array(this.numTriangles * 4);
+	        for (let i = 0; i < this.numTriangles; i++) {
+	            let id = i + 2;
+	            let ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0;
+	            if (id & 1) {
+	                bx = by = cx = tileSize;
+	            }
+	            else {
+	                ax = ay = cy = tileSize;
+	            }
+	            while ((id >>= 1) > 1) {
+	                const mx = ax + bx >> 1;
+	                const my = ay + by >> 1;
+	                if (id & 1) {
+	                    bx = ax;
+	                    by = ay;
+	                    ax = cx;
+	                    ay = cy;
+	                }
+	                else {
+	                    ax = bx;
+	                    ay = by;
+	                    bx = cx;
+	                    by = cy;
+	                }
+	                cx = mx;
+	                cy = my;
+	            }
+	            const k = i * 4;
+	            this.coords[k + 0] = ax;
+	            this.coords[k + 1] = ay;
+	            this.coords[k + 2] = bx;
+	            this.coords[k + 3] = by;
+	        }
+	    }
+	    createTile(terrain) {
+	        return new Tile(terrain, this);
+	    }
+	}
+	class Tile {
+	    constructor(terrain, martini) {
+	        const size = martini.gridSize;
+	        if (terrain.length !== size * size) {
+	            throw new Error(`Expected terrain data of length ${size * size} (${size} x ${size}), got ${terrain.length}.`);
+	        }
+	        this.terrain = terrain;
+	        this.martini = martini;
+	        this.errors = new Float32Array(terrain.length);
+	        this.update();
+	    }
+	    update() {
+	        const { numTriangles, numParentTriangles, coords, gridSize: size } = this.martini;
+	        const { terrain, errors } = this;
+	        for (let i = numTriangles - 1; i >= 0; i--) {
+	            const k = i * 4;
+	            const ax = coords[k + 0];
+	            const ay = coords[k + 1];
+	            const bx = coords[k + 2];
+	            const by = coords[k + 3];
+	            const mx = ax + bx >> 1;
+	            const my = ay + by >> 1;
+	            const cx = mx + my - ay;
+	            const cy = my + ax - mx;
+	            const interpolatedHeight = (terrain[ay * size + ax] + terrain[by * size + bx]) / 2;
+	            const middleIndex = my * size + mx;
+	            const middleError = Math.abs(interpolatedHeight - terrain[middleIndex]);
+	            errors[middleIndex] = Math.max(errors[middleIndex], middleError);
+	            if (i < numParentTriangles) {
+	                const leftChildIndex = (ay + cy >> 1) * size + (ax + cx >> 1);
+	                const rightChildIndex = (by + cy >> 1) * size + (bx + cx >> 1);
+	                errors[middleIndex] = Math.max(errors[middleIndex], errors[leftChildIndex], errors[rightChildIndex]);
+	            }
+	        }
+	    }
+	    getMesh(maxError = 0, withSkirts = false) {
+	        const { gridSize: size, indices } = this.martini;
+	        const { errors } = this;
+	        let numVertices = 0;
+	        let numTriangles = 0;
+	        const max = size - 1;
+	        let aIndex, bIndex, cIndex = 0;
+	        const leftSkirtIndices = [];
+	        const rightSkirtIndices = [];
+	        const bottomSkirtIndices = [];
+	        const topSkirtIndices = [];
+	        indices.fill(0);
+	        function countElements(ax, ay, bx, by, cx, cy) {
+	            const mx = ax + bx >> 1;
+	            const my = ay + by >> 1;
+	            if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) {
+	                countElements(cx, cy, ax, ay, mx, my);
+	                countElements(bx, by, cx, cy, mx, my);
+	            }
+	            else {
+	                aIndex = ay * size + ax;
+	                bIndex = by * size + bx;
+	                cIndex = cy * size + cx;
+	                if (indices[aIndex] === 0) {
+	                    if (withSkirts) {
+	                        if (ax === 0) {
+	                            leftSkirtIndices.push(numVertices);
+	                        }
+	                        else if (ax === max) {
+	                            rightSkirtIndices.push(numVertices);
+	                        }
+	                        if (ay === 0) {
+	                            bottomSkirtIndices.push(numVertices);
+	                        }
+	                        else if (ay === max) {
+	                            topSkirtIndices.push(numVertices);
+	                        }
+	                    }
+	                    indices[aIndex] = ++numVertices;
+	                }
+	                if (indices[bIndex] === 0) {
+	                    if (withSkirts) {
+	                        if (bx === 0) {
+	                            leftSkirtIndices.push(numVertices);
+	                        }
+	                        else if (bx === max) {
+	                            rightSkirtIndices.push(numVertices);
+	                        }
+	                        if (by === 0) {
+	                            bottomSkirtIndices.push(numVertices);
+	                        }
+	                        else if (by === max) {
+	                            topSkirtIndices.push(numVertices);
+	                        }
+	                    }
+	                    indices[bIndex] = ++numVertices;
+	                }
+	                if (indices[cIndex] === 0) {
+	                    if (withSkirts) {
+	                        if (cx === 0) {
+	                            leftSkirtIndices.push(numVertices);
+	                        }
+	                        else if (cx === max) {
+	                            rightSkirtIndices.push(numVertices);
+	                        }
+	                        if (cy === 0) {
+	                            bottomSkirtIndices.push(numVertices);
+	                        }
+	                        else if (cy === max) {
+	                            topSkirtIndices.push(numVertices);
+	                        }
+	                    }
+	                    indices[cIndex] = ++numVertices;
+	                }
+	                numTriangles++;
+	            }
+	        }
+	        countElements(0, 0, max, max, max, 0);
+	        countElements(max, max, 0, 0, 0, max);
+	        let numTotalVertices = numVertices * 2;
+	        let numTotalTriangles = numTriangles * 3;
+	        if (withSkirts) {
+	            numTotalVertices += (leftSkirtIndices.length + rightSkirtIndices.length + bottomSkirtIndices.length + topSkirtIndices.length) * 2;
+	            numTotalTriangles += ((leftSkirtIndices.length - 1) * 2 + (rightSkirtIndices.length - 1) * 2 + (bottomSkirtIndices.length - 1) * 2 + (topSkirtIndices.length - 1) * 2) * 3;
+	        }
+	        const vertices = new Uint16Array(numTotalVertices);
+	        const triangles = new Uint32Array(numTotalTriangles);
+	        let triIndex = 0;
+	        function processTriangle(ax, ay, bx, by, cx, cy) {
+	            const mx = ax + bx >> 1;
+	            const my = ay + by >> 1;
+	            if (Math.abs(ax - cx) + Math.abs(ay - cy) > 1 && errors[my * size + mx] > maxError) {
+	                processTriangle(cx, cy, ax, ay, mx, my);
+	                processTriangle(bx, by, cx, cy, mx, my);
+	            }
+	            else {
+	                const a = indices[ay * size + ax] - 1;
+	                const b = indices[by * size + bx] - 1;
+	                const c = indices[cy * size + cx] - 1;
+	                vertices[2 * a] = ax;
+	                vertices[2 * a + 1] = ay;
+	                vertices[2 * b] = bx;
+	                vertices[2 * b + 1] = by;
+	                vertices[2 * c] = cx;
+	                vertices[2 * c + 1] = cy;
+	                triangles[triIndex++] = a;
+	                triangles[triIndex++] = b;
+	                triangles[triIndex++] = c;
+	            }
+	        }
+	        processTriangle(0, 0, max, max, max, 0);
+	        processTriangle(max, max, 0, 0, 0, max);
+	        if (withSkirts) {
+	            leftSkirtIndices.sort((a, b) => { return vertices[2 * a + 1] - vertices[2 * b + 1]; });
+	            rightSkirtIndices.sort((a, b) => { return vertices[2 * b + 1] - vertices[2 * a + 1]; });
+	            bottomSkirtIndices.sort((a, b) => { return vertices[2 * b] - vertices[2 * a]; });
+	            topSkirtIndices.sort((a, b) => { return vertices[2 * a] - vertices[2 * b]; });
+	            let skirtIndex = numVertices * 2;
+	            function constructSkirt(skirt) {
+	                const skirtLength = skirt.length;
+	                for (let i = 0; i < skirtLength - 1; i++) {
+	                    const currIndex = skirt[i];
+	                    const nextIndex = skirt[i + 1];
+	                    const currentSkirt = skirtIndex / 2;
+	                    const nextSkirt = (skirtIndex + 2) / 2;
+	                    vertices[skirtIndex++] = vertices[2 * currIndex];
+	                    vertices[skirtIndex++] = vertices[2 * currIndex + 1];
+	                    triangles[triIndex++] = currIndex;
+	                    triangles[triIndex++] = currentSkirt;
+	                    triangles[triIndex++] = nextIndex;
+	                    triangles[triIndex++] = currentSkirt;
+	                    triangles[triIndex++] = nextSkirt;
+	                    triangles[triIndex++] = nextIndex;
+	                }
+	                vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1]];
+	                vertices[skirtIndex++] = vertices[2 * skirt[skirtLength - 1] + 1];
+	            }
+	            constructSkirt(leftSkirtIndices);
+	            constructSkirt(rightSkirtIndices);
+	            constructSkirt(bottomSkirtIndices);
+	            constructSkirt(topSkirtIndices);
+	        }
+	        return { vertices: vertices, triangles: triangles, numVerticesWithoutSkirts: numVertices };
+	    }
+	}
+
+	class MapMartiniHeightNode extends MapHeightNode {
+	    constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, { elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768], meshMaxError = 50, exageration = 1 } = {}) {
+	        super(parentNode, mapView, location, level, x, y, MapMartiniHeightNode.geometry, MapMartiniHeightNode.prepareMaterial(new three.MeshPhongMaterial({
+	            map: MapMartiniHeightNode.emptyTexture,
+	            color: 0xFFFFFF,
+	            side: three.DoubleSide
+	        }), level, exageration));
+	        this.elevationDecoder = [256 * 255, 255, 1 / 256 * 255, -32768];
+	        this.exageration = 1.0;
+	        this.meshMaxError = 10;
+	        this.meshMaxError = parentNode ? parentNode.meshMaxError : meshMaxError;
+	        this.exageration = parentNode ? parentNode.exageration : exageration;
+	        this.elevationDecoder = parentNode ? parentNode.elevationDecoder : elevationDecoder;
+	        this.frustumCulled = false;
+	    }
+	    static prepareMaterial(material, level, exageration = 1.0) {
+	        material.userData = {
+	            heightMap: { value: MapMartiniHeightNode.emptyTexture },
+	            drawNormals: { value: 0 },
+	            drawBlack: { value: 0 },
+	            zoomlevel: { value: level },
+	            computeNormals: { value: 1 },
+	            drawTexture: { value: 1 }
+	        };
+	        material.onBeforeCompile = (shader) => {
+	            for (let i in material.userData) {
+	                shader.uniforms[i] = material.userData[i];
+	            }
+	            shader.vertexShader =
+	                `
+				uniform bool computeNormals;
+				uniform float zoomlevel;
+				uniform sampler2D heightMap;
+				` + shader.vertexShader;
+	            shader.fragmentShader =
+	                `
+				uniform bool drawNormals;
+				uniform bool drawTexture;
+				uniform bool drawBlack;
+				` + shader.fragmentShader;
+	            shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `
+				if(drawBlack) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
+				} else if(drawNormals) {
+					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
+				} else if (!drawTexture) {
+					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
+				}
+					`);
+	            shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
+					#include <fog_vertex>
+
+					// queried pixels:
+					// +-----------+
+					// |   |   |   |
+					// | a | b | c |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | d | e | f |
+					// |   |   |   |
+					// +-----------+
+					// |   |   |   |
+					// | g | h | i |
+					// |   |   |   |
+					// +-----------+
+
+					// if (computeNormals) {
+					// 	float e = getElevation(vUv, 0.0);
+					// 	ivec2 size = textureSize(heightMap, 0);
+					// 	float offset = 1.0 / float(size.x);
+					// 	float a = getElevation(vUv + vec2(-offset, -offset), 0.0);
+					// 	float b = getElevation(vUv + vec2(0, -offset), 0.0);
+					// 	float c = getElevation(vUv + vec2(offset, -offset), 0.0);
+					// 	float d = getElevation(vUv + vec2(-offset, 0), 0.0);
+					// 	float f = getElevation(vUv + vec2(offset, 0), 0.0);
+					// 	float g = getElevation(vUv + vec2(-offset, offset), 0.0);
+					// 	float h = getElevation(vUv + vec2(0, offset), 0.0);
+					// 	float i = getElevation(vUv + vec2(offset,offset), 0.0);
+
+
+					// 	float normalLength = 500.0 / zoomlevel;
+
+					// 	vec3 v0 = vec3(0.0, 0.0, 0.0);
+					// 	vec3 v1 = vec3(0.0, normalLength, 0.0);
+					// 	vec3 v2 = vec3(normalLength, 0.0, 0.0);
+					// 	v0.z = (e + d + g + h) / 4.0;
+					// 	v1.z = (e+ b + a + d) / 4.0;
+					// 	v2.z = (e+ h + i + f) / 4.0;
+					// 	vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
+					// }
+					`);
+	        };
+	        return material;
+	    }
+	    static getTerrain(imageData, tileSize, elevationDecoder) {
+	        const gridSize = tileSize + 1;
+	        const terrain = new Float32Array(gridSize * gridSize);
+	        for (let i = 0, y = 0; y < tileSize; y++) {
+	            for (let x = 0; x < tileSize; x++, i++) {
+	                const k = i * 4;
+	                const r = imageData[k + 0];
+	                const g = imageData[k + 1];
+	                const b = imageData[k + 2];
+	                terrain[i + y] = r * elevationDecoder[0] / 255 + g * elevationDecoder[1] / 255 + b * elevationDecoder[2] / 255 + elevationDecoder[3];
+	            }
+	        }
+	        for (let i = gridSize * (gridSize - 1), x = 0; x < gridSize - 1; x++, i++) {
+	            terrain[i] = terrain[i - gridSize];
+	        }
+	        for (let i = gridSize - 1, y = 0; y < gridSize; y++, i += gridSize) {
+	            terrain[i] = terrain[i - 1];
+	        }
+	        return terrain;
+	    }
+	    static getMeshAttributes(vertices, terrain, tileSize, bounds, exageration) {
+	        const gridSize = tileSize + 1;
+	        const numOfVerticies = vertices.length / 2;
+	        const positions = new Float32Array(numOfVerticies * 3);
+	        const texCoords = new Float32Array(numOfVerticies * 2);
+	        const [minX, minY, maxX, maxY] = bounds || [0, 0, tileSize, tileSize];
+	        const xScale = (maxX - minX) / tileSize;
+	        const yScale = (maxY - minY) / tileSize;
+	        for (let i = 0; i < numOfVerticies; i++) {
+	            const x = vertices[i * 2];
+	            const y = vertices[i * 2 + 1];
+	            const pixelIdx = y * gridSize + x;
+	            positions[3 * i + 0] = x * xScale + minX;
+	            positions[3 * i + 1] = -terrain[pixelIdx] * exageration;
+	            positions[3 * i + 2] = -y * yScale + maxY;
+	            texCoords[2 * i + 0] = x / tileSize;
+	            texCoords[2 * i + 1] = y / tileSize;
+	        }
+	        return {
+	            position: { value: positions, size: 3 },
+	            uv: { value: texCoords, size: 2 }
+	        };
+	    }
+	    onHeightImage(image) {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            if (image) {
+	                const tileSize = image.width;
+	                const gridSize = tileSize + 1;
+	                var canvas = new OffscreenCanvas(tileSize, tileSize);
+	                var context = canvas.getContext('2d');
+	                context.imageSmoothingEnabled = false;
+	                context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+	                var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+	                var data = imageData.data;
+	                const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+	                const martini = new Martini(gridSize);
+	                const tile = martini.createTile(terrain);
+	                const { vertices, triangles } = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
+	                const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+	                this.geometry = new three.BufferGeometry();
+	                this.geometry.setIndex(new three.Uint32BufferAttribute(triangles, 1));
+	                this.geometry.setAttribute('position', new three.Float32BufferAttribute(attributes.position.value, attributes.position.size));
+	                this.geometry.setAttribute('uv', new three.Float32BufferAttribute(attributes.uv.value, attributes.uv.size));
+	                this.geometry.rotateX(Math.PI);
+	                var texture = new three.Texture(image);
+	                texture.generateMipmaps = false;
+	                texture.format = three.RGBFormat;
+	                texture.magFilter = three.NearestFilter;
+	                texture.minFilter = three.NearestFilter;
+	                texture.needsUpdate = true;
+	                this.material.userData.heightMap.value = texture;
+	            }
+	        });
+	    }
+	    loadHeightGeometry() {
+	        if (this.mapView.heightProvider === null) {
+	            throw new Error('GeoThree: MapView.heightProvider provider is null.');
+	        }
+	        return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => __awaiter(this, void 0, void 0, function* () {
+	            this.onHeightImage(image);
+	        })).finally(() => {
+	            this.heightLoaded = true;
+	            this.nodeReady();
+	        });
+	    }
+	}
+	MapMartiniHeightNode.geometrySize = 16;
+	MapMartiniHeightNode.emptyTexture = new three.Texture();
+	MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, MapMartiniHeightNode.geometrySize, MapMartiniHeightNode.geometrySize);
+	MapMartiniHeightNode.tileSize = 256;
+	MapMartiniHeightNode.baseScale = new three.Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+
 	class MapView extends three.Mesh {
 	    constructor(root = MapView.PLANAR, provider = new OpenStreetMapsProvider(), heightProvider = null, nodeAutoLoad = false, onNodeReady) {
 	        super(undefined, new three.MeshBasicMaterial({ transparent: true, opacity: 0.0 }));
@@ -638,17 +1305,18 @@
 	        this.heightProvider = null;
 	        this.root = null;
 	        this.onNodeReady = null;
-	        this.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
-	            if (!this.onNodeReady) {
-	                this.lod.updateLOD(this, camera, renderer, scene);
-	            }
-	        };
+	        this.lowMemoryUsage = false;
 	        this.lod = new LODRaycast();
 	        this.provider = provider;
 	        this.heightProvider = heightProvider;
 	        this.nodeAutoLoad = nodeAutoLoad;
 	        if (onNodeReady) {
 	            this.onNodeReady = onNodeReady;
+	        }
+	        else {
+	            this.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+	                this.lod.updateLOD(this, camera, renderer, scene);
+	            };
 	        }
 	        this.setRoot(root);
 	    }
@@ -669,8 +1337,8 @@
 	        }
 	        this.root = root;
 	        if (this.root !== null) {
-	            this.geometry = this.root.constructor.BASE_GEOMETRY;
-	            this.scale.copy(this.root.constructor.BASE_SCALE);
+	            this.geometry = this.root.constructor.baseGeometry;
+	            this.scale.copy(this.root.constructor.baseScale);
 	            this.root.mapView = this;
 	            this.add(this.root);
 	        }
@@ -692,7 +1360,7 @@
 	            if (children.childrenCache) {
 	                children.childrenCache = null;
 	            }
-	            if (children.initialize !== undefined) {
+	            if (children.initialize) {
 	                children.initialize();
 	            }
 	        });
@@ -709,11 +1377,13 @@
 	MapView.SPHERICAL = 201;
 	MapView.HEIGHT = 202;
 	MapView.HEIGHT_SHADER = 203;
+	MapView.MARTINI = 204;
 	MapView.mapModes = new Map([
 	    [MapView.PLANAR, MapPlaneNode],
 	    [MapView.SPHERICAL, MapSphereNode],
 	    [MapView.HEIGHT, MapHeightNode],
-	    [MapView.HEIGHT_SHADER, MapHeightNodeShader]
+	    [MapView.HEIGHT_SHADER, MapHeightNodeShader],
+	    [MapView.MARTINI, MapMartiniHeightNode]
 	]);
 
 	const pov$1 = new three.Vector3();
@@ -743,6 +1413,7 @@
 	const pov = new three.Vector3();
 	const frustum = new three.Frustum();
 	const position = new three.Vector3();
+	new three.Vector3();
 	class LODFrustum extends LODRadial {
 	    constructor() {
 	        super(...arguments);
@@ -751,58 +1422,66 @@
 	        this.testCenter = true;
 	        this.pointOnly = false;
 	    }
-	    handleNode(node, minZoom, maxZoom, inFrustum = false) {
+	    isChildReady(node) {
+	        return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
+	    }
+	    handleNode(node, camera, minZoom, maxZoom, inFrustum = false, canSubdivideOrSimplify = true) {
 	        if (!(node instanceof MapNode)) {
-	            return true;
+	            return;
 	        }
 	        node.getWorldPosition(position);
-	        var distance = pov.distanceTo(position);
-	        distance /= Math.pow(2, 20 - node.level);
+	        var worldDistance = pov.distanceTo(position);
+	        const distance = worldDistance / Math.pow(2, 20 - node.level);
 	        inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
-	        if (maxZoom > node.level && distance < this.subdivideDistance && inFrustum) {
+	        if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
 	            node.subdivide();
 	            const children = node.children;
-	            let allLoading = true;
 	            if (children) {
-	                children.forEach((n) => { return allLoading = this.handleNode(n, minZoom, maxZoom, false) && allLoading; });
-	                if (!allLoading) {
-	                    node.isMesh = false;
-	                    node.objectsHolder.visible = false;
+	                for (let index = 0; index < children.length; index++) {
+	                    const n = children[index];
+	                    if (n instanceof MapNode) {
+	                        this.handleNode(n, camera, minZoom, maxZoom, false);
+	                    }
 	                }
 	            }
-	            return allLoading;
+	            node.hide();
 	        }
-	        else if (minZoom < node.level && distance > this.simplifyDistance && node.parentNode) {
+	        else if (canSubdivideOrSimplify && (node.level > maxZoom || (!inFrustum || minZoom < node.level) && distance > this.simplifyDistance) && node.parentNode) {
 	            const parentNode = node.parentNode;
-	            parentNode.simplify();
-	            if (parentNode.level > minZoom) {
-	                this.handleNode(parentNode, minZoom, maxZoom);
-	            }
-	            return true;
+	            parentNode.simplify(distance, camera.far);
+	            this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
 	        }
-	        else if (inFrustum && minZoom <= node.level) {
-	            if (!node.isReady) {
+	        else if ((inFrustum || distance < this.subdivideDistance) && minZoom <= node.level) {
+	            if (!this.isChildReady(node)) {
 	                node.initialize();
 	            }
-	            return true;
 	        }
-	        else {
-	            return node.isReady;
+	    }
+	    getChildrenToTraverse(parent) {
+	        const toHandle = [];
+	        function handleChild(child) {
+	            if (child instanceof MapNode && !child.subdivided) {
+	                toHandle.push(child);
+	            }
+	            else {
+	                child.children.forEach((c) => {
+	                    if (child instanceof MapNode) {
+	                        handleChild(c);
+	                    }
+	                });
+	            }
 	        }
+	        handleChild(parent);
+	        return toHandle;
 	    }
 	    updateLOD(view, camera, renderer, scene) {
 	        projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 	        frustum.setFromProjectionMatrix(projection);
 	        camera.getWorldPosition(pov);
 	        const minZoom = view.provider.minZoom;
-	        const maxZoom = view.provider.maxZoom;
-	        const toHandle = [];
-	        view.children[0].traverseVisible((node) => { return toHandle.push(node); });
-	        toHandle.forEach((node) => {
-	            if (node.children.length <= 1) {
-	                this.handleNode(node, minZoom, maxZoom);
-	            }
-	        });
+	        const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
+	        const toHandle = this.getChildrenToTraverse(view.children[0]);
+	        toHandle.forEach((node) => { return this.handleNode(node, camera, minZoom, maxZoom); });
 	    }
 	}
 
@@ -828,7 +1507,12 @@
 	        xhr.open('GET', url, true);
 	        if (onLoad !== undefined) {
 	            xhr.onload = function () {
-	                onLoad(xhr.response);
+	                if (xhr.status === 200) {
+	                    onLoad(xhr.response);
+	                }
+	                else if (onError) {
+	                    onError('tile not found');
+	                }
 	            };
 	        }
 	        if (onError !== undefined) {
@@ -906,7 +1590,7 @@
 	        }
 	        return quad;
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -954,7 +1638,7 @@
 	            console.warn('Unable to create a google maps session.', xhr);
 	        });
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -985,7 +1669,7 @@
 	        this.server = this.server % 4 === 0 ? 1 : this.server + 1;
 	    }
 	    getMetaData() { }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        this.nextServer();
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
@@ -1026,7 +1710,7 @@
 	            this.center = meta.center;
 	        });
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -1058,7 +1742,7 @@
 	        this.style = style !== undefined ? style : 'satellite';
 	        this.resolution = 512;
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -1092,7 +1776,7 @@
 	            this.center = meta.center;
 	        });
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            const image = document.createElement('img');
 	            image.onload = function () {
@@ -1112,21 +1796,23 @@
 	        super(...arguments);
 	        this.resolution = 256;
 	    }
-	    fetchTile(zoom, x, y) {
-	        const canvas = new OffscreenCanvas(this.resolution, this.resolution);
-	        const context = canvas.getContext('2d');
-	        const green = new three.Color(0x00ff00);
-	        const red = new three.Color(0xff0000);
-	        const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
-	        context.fillStyle = color.getStyle();
-	        context.fillRect(0, 0, this.resolution, this.resolution);
-	        context.fillStyle = '#000000';
-	        context.textAlign = 'center';
-	        context.textBaseline = 'middle';
-	        context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
-	        context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
-	        context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
-	        return Promise.resolve(canvas);
+	    fetchImage(zoom, x, y) {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            const canvas = new OffscreenCanvas(this.resolution, this.resolution);
+	            const context = canvas.getContext('2d');
+	            const green = new three.Color(0x00ff00);
+	            const red = new three.Color(0xff0000);
+	            const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
+	            context.fillStyle = color.getStyle();
+	            context.fillRect(0, 0, this.resolution, this.resolution);
+	            context.fillStyle = '#000000';
+	            context.textAlign = 'center';
+	            context.textBaseline = 'middle';
+	            context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
+	            context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
+	            context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
+	            return canvas;
+	        });
 	    }
 	}
 
@@ -1137,7 +1823,7 @@
 	        this.toColor = new three.Color(0x00ff00);
 	        this.provider = provider;
 	    }
-	    fetchTile(zoom, x, y) {
+	    fetchImage(zoom, x, y) {
 	        return new Promise((resolve, reject) => {
 	            this.provider
 	                .fetchTile(zoom, x, y)

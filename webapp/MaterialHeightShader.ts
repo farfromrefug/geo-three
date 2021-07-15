@@ -398,7 +398,8 @@ export class MaterialHeightShader extends MapHeightNode
 		}
 		if (MaterialHeightShader.useLOD) {
 			if (this.lod) {
-				this.lod.levels.forEach((l, i) => l.object.geometry = MaterialHeightShader.getGeometry(this.level- i))
+			//@ts-ignore
+			this.lod.levels.forEach((l, i) => l.object.geometry = MaterialHeightShader.getGeometry(this.level- i))
 			}
 		} else {
 			this.geometry = MaterialHeightShader.getGeometry(this.level);
@@ -502,6 +503,7 @@ export class MaterialHeightShader extends MapHeightNode
 			{
 				return;
 			}
+			//@ts-ignore
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
 				result = result.filter(

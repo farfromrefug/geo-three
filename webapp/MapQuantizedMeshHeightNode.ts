@@ -354,6 +354,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 			{
 				return;
 			}
+			//@ts-ignore
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
 				result = result.filter(

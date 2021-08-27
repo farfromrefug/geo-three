@@ -407,8 +407,8 @@ export let drawNormals = false;
 let featuresToShow = [];
 const tempVector = new THREE.Vector3(0, 0, 0);
 export let exageration = 1.7;
-export let depthBiais =0.6;
-export let depthMultiplier =30;
+export let depthBiais =0.37;
+export let depthMultiplier =556;
 export const featuresByColor = {};
 export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 // export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
@@ -1142,7 +1142,7 @@ function onControlUpdate()
 }
 function setupLOD() 
 {
-	heightProvider.maxOverZoom = 2;
+	// heightProvider.maxOverZoom = 1;
 	lod.subdivideDistance = 40;
 	lod.simplifyDistance = 160;
 }
@@ -1357,7 +1357,9 @@ export function setPosition(coords, animated = false)
 				updateCurrentViewingDistance();
 				if (window['nsWebViewBridge']) 
 				{
-					window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: endElevation});
+					controls.getPosition(tempVector);
+					const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+					window['nsWebViewBridge'].emit('position', {...point, altitude: endElevation});
 				}
 			}
 		});
@@ -1422,12 +1424,14 @@ export function setExageration(newValue)
 export function setDepthBiais(newValue) 
 {
 	depthBiais = newValue;
+	console.log('depthBiais', depthBiais);
 	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier);
 	render();
 }
 export function setDepthMultiplier(newValue) 
 {
 	depthMultiplier = newValue;
+	console.log('depthMultiplier', depthMultiplier);
 	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier);
 	render();
 }
@@ -1456,6 +1460,14 @@ controls.addEventListener('update', () =>
 });
 controls.addEventListener('controlend', () => 
 {
+	controls.getPosition(tempVector);
+	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+	updateCurrentViewingDistance();
+	
+		if (window['nsWebViewBridge']) 
+	{
+		window['nsWebViewBridge'].emit('position', {...point, altitude: elevation});
+	}
 	// force a render at the end of the movement to make sure we show the correct peaks
 	render(true);
 });
@@ -2066,7 +2078,7 @@ export function setInitialPosition()
 }
 if (datelabel) 
 {
-	setElevation(500, false);
+	setElevation(2100, false);
 	// controls.azimuthAngle = -86 * Math.PI / 180
 	setInitialPosition();
 }
@@ -2078,9 +2090,8 @@ export function moveToEndPoint(animated = true)
 
 export function moveToStartPoint(animated = true) 
 {
-	setPosition({lat: 45.19177, lon: 5.72831}, animated);
-	// setPosition({lat: 44.86098, lon: 6.05276}, animated);
-	// setPosition({lat: 44.86056, lon: 6.05242}, animated);
+	// setPosition({lat: 45.19177, lon: 5.72831}, animated);
+	setPosition({lat: 45.958765265076565, lon: 6.477293372154239}, animated);
 }
 
 var requestId;

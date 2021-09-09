@@ -13,6 +13,20 @@ const frustum = new Frustum();
 const position = new Vector3();
 const temp = new Vector3();
 
+function getCenterPoint(mesh, position): Vector3
+{
+	var geometry = mesh.geometry;
+
+	geometry.computeBoundingBox();
+
+	position.x = (geometry.boundingBox.max.x + geometry.boundingBox.min.x) / 2;
+	position.y = (geometry.boundingBox.max.y + geometry.boundingBox.min.y) / 2;
+	position.z = (geometry.boundingBox.max.z + geometry.boundingBox.min.z) / 2;
+
+	mesh.localToWorld( position );
+	return position;
+}
+
 /**
  * Check the planar distance between the nodes center and the view position.
  *
@@ -58,10 +72,14 @@ export class LODFrustum extends LODRadial
 		{
 			return;
 		}
+
+		// getCenterPoint(node, position);
 		node.getWorldPosition(position);
 		var worldDistance = pov.distanceTo(position);
 		// const distance = worldDistance / Math.pow(2, 20 - node.level) / Math.max(camera.zoom/5, 1);
+		// const distance = worldDistance / Math.pow(2, 20 - 6);
 		const distance = worldDistance / Math.pow(2, 20 - node.level);
+		// console.log('distance', maxZoom, minZoom, node.level, worldDistance, distance);
 
 		inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
 		// if (!inFrustum) 
@@ -71,7 +89,7 @@ export class LODFrustum extends LODRadial
 		// }
 		// console.log('handleNode', inFrustum, node.level, node.x, node.y);
 
-		if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum)
+		if (canSubdivideOrSimplify && (maxZoom > node.level && (node.level < minZoom || distance < this.subdivideDistance)) && inFrustum)
 		{
 			node.subdivide();
 			const children = node.children;

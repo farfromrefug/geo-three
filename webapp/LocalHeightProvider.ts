@@ -5,6 +5,8 @@ import {MVTLoader} from '@loaders.gl/mvt';
 
 
 // const locahostServer = 'dev.tileserver.local'
+// export const locahostServer = '192.168.43.121:8080'
+// export const locahostServer = '192.168.1.23:8080'
 export const locahostServer = '0.0.0.0:8080'
 export class LocalHeightProvider extends MapProvider 
 {

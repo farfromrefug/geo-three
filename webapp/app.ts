@@ -8,7 +8,7 @@ import * as POSTPROCESSING from 'postprocessing/build/postprocessing.esm';
 import Stats from 'stats.js';
 import * as THREE from 'three';
 import {
-	Box3, MathUtils, Matrix4, MOUSE, Quaternion, Raycaster, Sphere, Spherical, Vector2,
+	BasicDepthPacking, Box3, MathUtils, Matrix4, Mesh, MOUSE, Quaternion, Raycaster, Sphere, Spherical, Vector2,
 	Vector3,
 	Vector4
 } from 'three';
@@ -23,6 +23,8 @@ import { LocalHeightProvider } from './LocalHeightProvider';
 import { MaterialHeightShader } from './MaterialHeightShader';
 import RasterMapProvider from './RasterMapProvider';
 import { SunLight } from './SunLight';
+import RenderTargetHelper from 'three-rt-helper';
+
 
 
 // @ts-ignore
@@ -292,7 +294,7 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 	constructor() 
 	{
 		super(
-			'CustomEffect',
+			'CustomOutlineEffect',
 			`
 		uniform vec3 weights;
 		uniform vec3 outlineColor;
@@ -317,6 +319,7 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 			// Combine outline with scene color.
 			vec4 outlineColor = vec4(outlineColor, 1.0);
 			outputColor = vec4(mix(inputColor, outlineColor, depthDiff));
+			// outputColor = vec4(vec3(zdepth), 1.0);
 		}
 `,
 			{
@@ -384,17 +387,17 @@ function ArraySortOn(array, key)
 		return 0;
 	});
 }
-const devicePixelRatio = window.devicePixelRatio;
 export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const devicePixelRatio = isMobile ? window.devicePixelRatio : window.devicePixelRatio;
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
-export let showStats = false;
+export let showStats = true;
 export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;
 export let debugFeaturePoints = false;
 export let wireframe = false;
-export let mapoutline = false;
+export let mapoutline = true;
 export let dayNightCycle = false;
 // export let GEOMETRY_SIZE = isMobile ? 256 :512;
 export let GEOMETRY_SIZE = 512;
@@ -406,15 +409,17 @@ let darkTheme = false;
 export let drawNormals = false;
 let featuresToShow = [];
 const tempVector = new THREE.Vector3(0, 0, 0);
-export let exageration = 1.7;
-export let depthBiais =0.37;
-export let depthMultiplier =556;
-export const featuresByColor = {};
+export let exageration = 2;
+export let depthBiais =0.44;
+export let depthMultiplier =110;
+export let featuresByColor = {};
 export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 // export let elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768];
 export let currentViewingDistance = 0;
-export let FAR = 173000;
-const TEXT_HEIGHT = 180;
+export let FAR = isMobile? 153000: 173000;
+export let NEAR = 100;
+// export let FAR = 173000;
+const TEXT_HEIGHT = 200;
 let currentPositionAltitude = -1;
 let currentPosition;
 let elevation = -1;
@@ -433,13 +438,15 @@ let animating = false;
 // Setup the animation loop.
 let viewWidth = window.innerWidth;
 let viewHeight = window.innerHeight;
-
+let offWidth = window.innerWidth;
+let offHeight = window.innerHeight;
+let rendererScaleRatio = 1
 
 let stats;
 
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
+// const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
 const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
 const video = document.getElementById('video') as HTMLVideoElement;
 const ctx2d = canvas4.getContext('2d');
@@ -452,21 +459,21 @@ const renderer = new THREE.WebGLRenderer({
 	alpha: true,
 	powerPreference: 'high-performance',
 	stencil: false
-	// depth: false
 	// precision: isMobile ? 'mediump' : 'highp'
 });
 // const magnify3d = new Magnify3d();
 // const magnify3dTarget = new THREE.WebGLRenderTarget(0, 0); 
 
 renderer.setClearColor(0x000000, 0);
-const rendereroff = new THREE.WebGLRenderer({
-	canvas: canvas3,
-	antialias: false,
-	alpha: false,
-	powerPreference: 'high-performance',
-	stencil: false
-	// precision: isMobile ? 'mediump' : 'highp'
-});
+
+// const squadScene = new THREE.Scene();
+// const screenQuad = new ScreenQuad({
+// 	width: 0.25,
+// 	height: 0.25,
+// 	top: '150px',
+// 	left: '0px'
+// })
+// squadScene.add(screenQuad);
 
 // const rendererMagnify = new THREE.WebGLRenderer({
 // 	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
@@ -478,13 +485,13 @@ const rendereroff = new THREE.WebGLRenderer({
 // 	depth: false
 // 	// precision: isMobile ? 'mediump' : 'highp'
 // });
-const pointBufferTarget = new THREE.WebGLRenderTarget(0, 0);
-pointBufferTarget.texture.minFilter = THREE.NearestFilter;
-pointBufferTarget.texture.magFilter = THREE.NearestFilter;
+const pointBufferTarget = new THREE.WebGLRenderTarget(100, 100);
+pointBufferTarget.texture.minFilter = THREE.LinearFilter;
+pointBufferTarget.texture.magFilter = THREE.LinearFilter;
 pointBufferTarget.texture.generateMipmaps = false;
 pointBufferTarget.stencilBuffer = false;
-// pointBufferTarget.texture.format = THREE.RGBFormat;
-
+pointBufferTarget.depthBuffer = false;
+let renderTargetHelper;
 const composer = new POSTPROCESSING.EffectComposer(renderer);
 
 
@@ -616,7 +623,8 @@ export function setDebugMode(value)
 {
 	debug = value;
 	setupLOD();
-
+	outlinePass.enabled = !withoutOutline();
+	mainPass.renderToScreen = !outlinePass.enabled;
 	sky.visible = sunLight.visible = shouldRenderSky();
 	ambientLight.visible = needsLights();
 	if (map) 
@@ -643,7 +651,8 @@ export function toggleDebugMode()
 export function setMapMode(value) 
 {
 	mapMap = value;
-	
+	outlinePass.enabled = !withoutOutline();
+	mainPass.renderToScreen = !outlinePass.enabled;
 	sky.visible = sunLight.visible = shouldRenderSky();
 	ambientLight.visible = needsLights();
 	setupLOD();
@@ -789,7 +798,7 @@ export function toggleDayNightCycle()
 export function setDebugGPUPicking(value) 
 {
 	debugGPUPicking = value;
-	canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+	// canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
 	render();
 }
 export function toggleDebugGPUPicking() 
@@ -856,7 +865,7 @@ export function setDebugFeaturePoints(value)
 			node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
 			if (node.pointsMesh) 
 			{
-				node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
+				node.pointsMesh.material.uniforms.forViewing.value = debugFeaturePoints;
 			}
 		});
 	}
@@ -893,6 +902,8 @@ export function toggleWireFrame()
 export function setMapOultine(value) 
 {
 	mapoutline = value;
+	outlinePass.enabled = !withoutOutline();
+	mainPass.renderToScreen = !outlinePass.enabled;
 	render();
 }
 export function toggleMapOultine() 
@@ -980,7 +991,7 @@ try
 	{
 		debugGPUPickingCheckbox.onchange = (event: any) => {return setDebugGPUPicking(event.target.checked);};
 		debugGPUPickingCheckbox.checked = debugGPUPicking as any;
-		canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
+		// canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
 	}
 	
 	const readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
@@ -1142,9 +1153,11 @@ function onControlUpdate()
 }
 function setupLOD() 
 {
-	// heightProvider.maxOverZoom = 1;
+	heightProvider.maxOverZoom = 4;
+	// lod.subdivideDistance = 60;
+	// lod.simplifyDistance = 150;
 	lod.subdivideDistance = 40;
-	lod.simplifyDistance = 160;
+	lod.simplifyDistance = 140;
 }
 const lod = new LODFrustum();
 setupLOD();
@@ -1166,7 +1179,7 @@ function createProvider()
 	}
 	provider.minZoom = 5;
 	provider.maxZoom = heightProvider.maxZoom + heightProvider.maxOverZoom;
-	// provider.zoomDelta = 1 ;
+	// provider.zoomDelta = 1;
 	provider.minLevelForZoomDelta = 10 ;
 	return provider;
 }
@@ -1177,7 +1190,7 @@ function createMap()
 		scene.remove(map);
 	}
 	const provider = createProvider();
-	map = new MapView(null, provider, heightProvider, false, render);
+	map = new MapView(null, provider, heightProvider, false, throttle(render, 20));
 	// map.lowMemoryUsage = isMobile;
 	map.lowMemoryUsage = true;
 	// map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.root, 0, 0, 0),{exageration:exageration});
@@ -1194,17 +1207,17 @@ function createMap()
 
 createMap();
 const cameraFOV = 40;
-const camera = new THREE.PerspectiveCamera(cameraFOV, viewWidth / viewHeight, 100, FAR);
+const camera = new THREE.PerspectiveCamera(cameraFOV, viewWidth / viewHeight, NEAR, FAR);
 camera.position.set(0, 0, EPS);
 const controls = new CameraControlsWithOrientation(camera, canvas);
 controls.azimuthRotateSpeed = -0.2; // negative value to invert rotation direction
 controls.polarRotateSpeed = -0.2; // negative value to invert rotation direction
-controls.minZoom = 0.4;
+controls.minZoom = 1;
 controls.maxZoom = 20;
 // controls.minDistance = -10000;
 // controls.maxDistance = 1000;
 // controls.dollyToCursor = true;
-controls.truckSpeed = 1 / EPS * 60000;
+controls.truckSpeed = 1 / EPS * 200000;
 controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
@@ -1224,9 +1237,10 @@ camera.add( sunLight as any );
 const ambientLight = new THREE.AmbientLight( 0xffffff, 1);
 scene.add( ambientLight );
 scene.add(camera );
-sky.visible = sunLight.visible = shouldRenderSky();
-ambientLight.visible = needsLights();
-// setComputeNormals(!computeNormals);
+// sky.visible = sunLight.visible = shouldRenderSky() || computeNormals;
+// ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
+// ambientLight.visible = needsLights();
+setComputeNormals(computeNormals);
 
 // const fog = new THREE.Fog(0xffffff, camera.near, camera.far * 2);
 
@@ -1415,7 +1429,7 @@ export function setExageration(newValue)
 			
 			if (node.pointsMesh) 
 			{
-				node.pointsMesh.material.userData.exageration.value = newValue;
+				node.pointsMesh.material.uniforms.exageration.value = newValue;
 			}
 		});
 	}
@@ -1496,11 +1510,44 @@ controls.addEventListener('control', (event) =>
 	}
 	render();
 });
-composer.addPass(new POSTPROCESSING.RenderPass(scene, camera));
-const outlineEffect = new CustomOutlineEffect();
-const pass = new POSTPROCESSING.EffectPass(camera, outlineEffect);
-composer.addPass(pass);
+// class PeaksPass extends POSTPROCESSING.Pass {
+// 	needsSwap = false
+// 	needsDepthTexture = true
+// 	// depthTexture
+// 	// setDepthTexture(depthTexture, depthPacking) {
+// 	// 	this.depthTexture = depthTexture;
+// 	// 	console.log('setDepthTexture', depthTexture);
+// 	// }
+// 	render() {
+// 		if (!animating && readFeatures && pixelsBuffer) {
+// 			actualComputeFeatures(composer.depthTexture);
+// 		}
+// 	}
+// }
 
+class OutlinePass extends POSTPROCESSING.EffectPass {
+	enabled
+	renderToScreen
+	constructor(camera, outlineEffect) {
+		super(camera, outlineEffect);
+	}
+}
+const mainPass = new POSTPROCESSING.RenderPass(scene, camera);
+composer.addPass(mainPass);
+mainPass.renderToScreen = true;
+// const peaksPass = new PeaksPass();
+// composer.addPass(peaksPass);
+// peaksPass.renderToScreen = true;
+// mainPass.clear = false;
+const outlineEffect = new CustomOutlineEffect();
+const outlinePass = new OutlinePass(camera, outlineEffect);
+outlinePass.renderToScreen = true;
+composer.addPass(outlinePass);
+function crop(x, y, w, h) {
+	// renderer.setViewport(x, y, w, h);
+	// renderer.setScissor(x, y, w, h);
+	// renderer.setScissorTest(true);
+}
 let minYPx = 0;
 function actualComputeFeatures() 
 {
@@ -1510,41 +1557,64 @@ function actualComputeFeatures()
 	sky.visible = false;
 	sunLight.visible = false;
 	ambientLight.visible = false;
-
+	const depthTexture = composer.depthTexture;
 	applyOnNodes((node) => 
 	{
-		node.setMaterialValues({
-			drawBlack: true,
-			computeNormals: false
-		});
-		node.objectsHolder.visible = node.isVisible() || node.level === 14 && node.parentNode.subdivided;
+		// node.setMaterialValues({
+		// 	drawBlack: true,
+		// 	computeNormals: false
+		// });
+		const visible = node.isVisible();
+		if (visible) {
+			node.wasVisible = visible;
+			node.hide();
+		}
+		node.objectsHolder.visible = visible || node.level === 14 && node.parentNode.subdivided;
 		if (node.pointsMesh) 
 		{
-			node.pointsMesh.material.userData.forViewing.value = false;
+			node.pointsMesh.material.uniforms.depthTexture.value = depthTexture;
+			// node.pointsMesh.material.uniforms.cameraNear.value = camera.near;
+			// node.pointsMesh.material.uniforms.cameraFar.value = camera.far;
+			node.pointsMesh.material.uniforms.forViewing.value = debugFeaturePoints;
+			// node.pointsMesh.material.needsUpdate = true;
 		}
 	});
-	if (debugGPUPicking) 
+	if (debugFeaturePoints) 
 	{
-		rendereroff.setRenderTarget(null);
-		rendereroff.render(scene, camera);
+		crop(0, 0, offWidth, offHeight);
+		renderer.render(scene, camera);
+		applyOnNodes((node) =>  {
+			if (node.pointsMesh) 
+			{
+				node.pointsMesh.material.uniforms.forViewing.value = false;
+			}
+		});
 	}
-	rendereroff.setRenderTarget(pointBufferTarget);
-	rendereroff.render(scene, camera);
-
+	renderer.setRenderTarget(pointBufferTarget);
+	renderer.clear();
+	// crop(0, 0, offWidth, offHeight);
+	renderer.render(scene, camera);
+	renderer.setRenderTarget(null);
+	// crop(0, 0, viewWidth, viewHeight);
 	readShownFeatures();
 
 	const shouldShowNormals = shouldComputeNormals();
 	applyOnNodes((node) => 
 	{
-		node.setMaterialValues({
-			drawBlack: false,
-			computeNormals: shouldShowNormals
-		});
+		// node.setMaterialValues({
+		// 	drawBlack: false,
+		// 	computeNormals: shouldShowNormals
+		// });
+		if (node.wasVisible) {
+			delete node.wasVisible;
+			node.show();
+		}
 		node.objectsHolder.visible = node.isVisible() && debugFeaturePoints || node.level === 14 && node.parentNode.subdivided;
 		// node.objectsHolder.visible = node.isVisible() && debugFeaturePoints;
 		if (node.pointsMesh) 
 		{
-			node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
+			// node.pointsMesh.material.uniforms.forViewing.value = debugFeaturePoints;
+			node.pointsMesh.material.uniforms.depthTexture.value = null;
 		}
 		
 	});
@@ -1552,22 +1622,20 @@ function actualComputeFeatures()
 	sunLight.visible = oldSunLightVisible;
 	ambientLight.visible = oldAmbientLightVisible;
 }
-const computeFeatures = throttle(actualComputeFeatures, 100);
+const computeFeatures = throttle(actualComputeFeatures, 100) as any;
 document.body.onresize = function() 
 {
 	viewWidth= window.innerWidth;
 	viewHeight = window.innerHeight;
 	const scale = viewWidth / viewHeight;
-	let offWidth;
-	let offHeight;
 	if (scale > 1) 
 	{
-		offWidth = Math.max(Math.floor(viewWidth/100) * 100 /4, 200);
+		offWidth = 200;
 		offHeight = Math.round(offWidth / scale);
 	}
 	else 
 	{
-		offHeight = Math.max(Math.floor(viewHeight/100) * 100 /4, 200);
+		offHeight = 200;
 		offWidth = Math.round(offHeight * scale); 
 	}
 
@@ -1575,24 +1643,27 @@ document.body.onresize = function()
 
 	canvas4.width = Math.floor(viewWidth * devicePixelRatio);
 	canvas4.height = Math.floor(viewHeight * devicePixelRatio);
-	const rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
-	// const rendererScaleRatio = 0.5;
+	 rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
 
 	renderer.setSize(viewWidth, viewHeight);
-	// rendererMagnify.setSize(width, height);
 	renderer.setPixelRatio(rendererScaleRatio);
-	// rendererMagnify.setPixelRatio(rendererScaleRatio);
-	// magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
 
 	pixelsBuffer = new Uint8Array(offWidth * offHeight * 4);
-	rendereroff.setSize(offWidth, offHeight);
-	rendereroff.setPixelRatio(1);
 	pointBufferTarget.setSize(offWidth, offHeight);
 
 	composer.setSize(viewWidth, viewHeight);
-	// composer.setPixelRatio(rendererScaleRatio);
 	camera.aspect = scale;
 	camera.updateProjectionMatrix();
+
+	// rendererMagnify.setSize(width, height);
+	// rendererMagnify.setPixelRatio(rendererScaleRatio);
+	// magnify3dTarget.setSize(width *devicePixelRatio, height *devicePixelRatio);
+
+    // screenQuad.setScreenSize( viewWidth, viewHeight );
+	// if (!renderTargetHelper) {
+	// 	renderTargetHelper = RenderTargetHelper( renderer, pointBufferTarget );
+	// 	document.body.append( renderTargetHelper );
+	// }
 
 	render();
 };
@@ -1714,6 +1785,7 @@ function sendSelectedToNS()
 }
 function setSelectedItem(f) 
 {
+	mousePosition = null;
 	if (f === selectedItem) 
 	{
 		return;
@@ -1758,7 +1830,7 @@ export function focusSelectedItem()
 
 function isSelectedFeature(f) 
 {
-	if (devLocal ) 
+	if (devLocal) 
 	{
 		return selectedItem && f.properties.osmid === selectedItem.properties.osmid;
 	}
@@ -1772,7 +1844,7 @@ function drawFeatures()
 	}
 
 	let lastFeature;
-	const minDistance = 24;
+	const minDistance = 34;
 	featuresToShow = featuresToShow.map((f) => 
 	{
 		const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
@@ -1785,7 +1857,6 @@ function drawFeatures()
 
 	const featuresToDraw = [];
 	let canTestHeight = true;
-	let newlySelectedItem = null;
 	featuresToShow.forEach((f, index) => 
 	{	
 		if (mousePosition) 
@@ -1793,17 +1864,15 @@ function drawFeatures()
 			const distance = Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
 			if (distance < 10) 
 			{
-				newlySelectedItem = f;
-				mousePosition = null;
+				setSelectedItem(f);
 			}
 		}
-		
 		if (!lastFeature) 
 		{
 			// first
 			lastFeature = f;
 		}
-		else if (f.x - lastFeature.x <= minDistance ) 
+		else if (Math.round(f.x) - Math.round(lastFeature.x) <= minDistance ) 
 		{
 			if (isSelectedFeature(lastFeature)) 
 			{
@@ -1830,14 +1899,18 @@ function drawFeatures()
 	{
 		featuresToDraw.push(lastFeature);
 	}
+	drawFeaturesLabels(featuresToDraw);
+	
+}
 
+function drawFeaturesLabels(featuresToDraw:any[]) {
+	const screenRatio = devicePixelRatio;
 	const toShow = featuresToDraw.length;
 	ctx2d.save();
 	ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
-	ctx2d.scale(devicePixelRatio, devicePixelRatio);
-	const rectTop = -12;
-	const rectBottom = 17;
-
+	ctx2d.scale(screenRatio, screenRatio);
+	const rectTop = -16;
+	const rectBottom = 21;
 
 	for (let index = 0; index < toShow; index++) 
 	{
@@ -1860,8 +1933,8 @@ function drawFeatures()
 		ctx2d.save();
 		ctx2d.translate(f.x, TEXT_HEIGHT);
 		ctx2d.rotate(-Math.PI / 4);
-		ctx2d.font = '14px Noto Sans';
-		const text = truncate(f.properties.name, 28);
+		ctx2d.font = '17px Noto Sans';
+		const text = truncate(f.properties.name, 26);
 		const textWidth = ctx2d.measureText(text).width;
 		let totalWidth = textWidth + 10;
 		let text2;
@@ -1874,18 +1947,25 @@ function drawFeatures()
 		if (mousePosition) 
 		{
 			const transform = ctx2d.getTransform().inverse();
-			var point = new DOMPoint(mousePosition.x * devicePixelRatio, mousePosition.y * devicePixelRatio);
+			var point = new DOMPoint(mousePosition.x * screenRatio, mousePosition.y * screenRatio);
 			const test = point.matrixTransform(transform);
 			if (test.x >= 0 && test.x < totalWidth && 
 			test.y < -rectTop && test.y>=-rectBottom ) 
 			{
-				newlySelectedItem = f;
-				mousePosition = null;
+				let wasSelected = selectedItem !== null && selectedItem !== f;
+				setSelectedItem(f);
+				if (wasSelected) {
+					// we need to redraw again as the previously selected text 
+					// might already be drawn bold
+					ctx2d.restore();
+					ctx2d.restore();
+					return drawFeaturesLabels(featuresToDraw);
+				}
 			}
 		}
 		if (selectedItem && isSelectedFeature(f) ) 
 		{
-			ctx2d.font = 'bold 14px Noto Sans';
+			ctx2d.font = 'bold 17px Noto Sans';
 			totalWidth *=1.1;
 			ctx2d.fillStyle = color + 'aa';
 		}
@@ -1900,33 +1980,28 @@ function drawFeatures()
 		ctx2d.fillText(text, 5, 0);
 		if (drawElevations) 
 		{
-			ctx2d.font = 'normal 9px Courier';
+			ctx2d.font = 'normal 11px Courier';
 			ctx2d.fillText(text2, textWidth + 10, 0);
 		}
 		ctx2d.restore();
 	}
-	if (newlySelectedItem) 
-	{
-		setSelectedItem(newlySelectedItem);
-	}
-	else if (mousePosition) 
+	if (mousePosition) 
 	{
 		setSelectedItem(null);
 	}
 	ctx2d.restore();
-	mousePosition = null;
 }
 
 function readShownFeatures() 
 {
-	const width = pointBufferTarget.width;
-	const height = pointBufferTarget.height;
+	const width = offWidth;
+	const height = offHeight;
 	const hScale = viewHeight / height;
 	const lineWidth = 4 * width;
-	rendereroff.readRenderTargetPixels(pointBufferTarget, 0, 0, width, height, pixelsBuffer);
+	renderer.readRenderTargetPixels(pointBufferTarget, 0, 0, offWidth, offHeight, pixelsBuffer);
 	const readColors = [];
 	const rFeatures = [];
-	let needsSelectedItem = Boolean(selectedItem);
+	let needsToClearSelectedItem = Boolean(selectedItem);
 	let lastColor;
 	function handleLastColor(index) 
 	{
@@ -1938,9 +2013,9 @@ function readShownFeatures()
 			if (feature) 
 			{
 				rFeatures.push({...feature, screenY: y});
-				if (needsSelectedItem && isSelectedFeature(feature)) 
+				if (needsToClearSelectedItem && isSelectedFeature(feature)) 
 				{
-					needsSelectedItem = false;
+					needsToClearSelectedItem = false;
 				}
 			}
 		}
@@ -1949,21 +2024,16 @@ function readShownFeatures()
 	const endIndex = pixelsBuffer.length - minYPx * 4 * width;
 	for (let index = 0; index < endIndex; index += 4) 
 	{
-		if (pixelsBuffer[index] !== 0 || pixelsBuffer[index + 1] !== 0 || pixelsBuffer[index + 2] !== 0) 
+		if (pixelsBuffer[index+ 3] !== 0 && (pixelsBuffer[index] !== 0 || pixelsBuffer[index + 1] !== 0 || pixelsBuffer[index + 2] !== 0)) 
 		{
 			const color = (pixelsBuffer[index] << 16) + (pixelsBuffer[index + 1] << 8) + pixelsBuffer[index + 2];
-			if (lastColor === color) 
-			{
-				// lastColorNb++;
-			}
-			else 
+			if (lastColor !== color) 
 			{
 				if (lastColor) 
 				{
 					handleLastColor(index - 1);
 				}
 				lastColor = color;
-				// lastColorNb = 1;
 			}
 		}
 		else 
@@ -1972,7 +2042,6 @@ function readShownFeatures()
 			{
 				handleLastColor(index - 1);
 				lastColor = null;
-				// lastColorNb = 0;
 			}
 		}
 	}
@@ -1980,53 +2049,59 @@ function readShownFeatures()
 	{
 		handleLastColor(pixelsBuffer.length - 1);
 		lastColor = null;
-		// lastColorNb = 0;
 	}
-	if (needsSelectedItem) 
-	{
-		rFeatures.push({...selectedItem, screenY: null});
+	if (needsToClearSelectedItem) {
+		setSelectedItem(null);
 	}
+	// if (needsSelectedItem) 
+	// {
+	// 	rFeatures.push({...selectedItem, screenY: null});
+	// }
 	featuresToShow = rFeatures;
 }
 
-function withoutComposer() 
+function withoutOutline() 
 {
 	return (debug || mapMap) && !mapoutline;
 }
 function actualRender(forceComputeFeatures) 
 {
-	if (!animating && readFeatures && pixelsBuffer) 
-	{
-		if (forceComputeFeatures) 
-		{
-			actualComputeFeatures();
-		}
-		else 
-		{
-			computeFeatures();
+	
+	// }
+	// applyOnNodes((node) =>
+	// {
+			
+	// 	node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
+	// 	if (node.pointsMesh) 
+	// 	{
+	// 		node.pointsMesh.material.uniforms.forViewing.value = debugFeaturePoints;
+	// 	}
+	// });
 
+	// if (withoutComposer()) 
+	// {
+	// 	renderer.render(scene, camera);
+	// }
+	// else 
+	// {
+		composer.render(clock.getDelta());
+		if (!animating && readFeatures && pixelsBuffer) 
+		{
+			if (forceComputeFeatures)  {
+				actualComputeFeatures();
+			}
+			else  {
+				computeFeatures();
+			}
 		}
 		drawFeatures();
-	}
-	applyOnNodes((node) =>
-	{
-			
-		node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
-		if (node.pointsMesh) 
-		{
-			node.pointsMesh.material.userData.forViewing.value = debugFeaturePoints;
-		}
-	});
-
-	if (withoutComposer()) 
-	{
-		renderer.render(scene, camera);
-	}
-	else 
-	{
-		composer.render(clock.getDelta());
-	}
+		// screenQuad.material.uniforms.uTexture.value = composer.depthTexture;
+		// screenQuad.material.uniforms.cameraNear.value = camera.near;
+		// screenQuad.material.uniforms.cameraFar.value = camera.far;
+		// renderer.render(squadScene, camera)
+	// }
 }
+
 export function render(forceComputeFeatures = false) 
 {
 	if (!renderer || !composer) 
@@ -2064,6 +2139,9 @@ export function render(forceComputeFeatures = false)
 	// {
 	actualRender(forceComputeFeatures);
 	// }
+	if (renderTargetHelper) {
+		renderTargetHelper.update();
+	}
 	if (stats) 
 	{
 		stats.end();
@@ -2078,8 +2156,8 @@ export function setInitialPosition()
 }
 if (datelabel) 
 {
-	setElevation(2100, false);
-	// controls.azimuthAngle = -86 * Math.PI / 180
+	setElevation(500, false);
+	controls.azimuthAngle = -86 * Math.PI / 180
 	setInitialPosition();
 }
 
@@ -2090,8 +2168,8 @@ export function moveToEndPoint(animated = true)
 
 export function moveToStartPoint(animated = true) 
 {
-	// setPosition({lat: 45.19177, lon: 5.72831}, animated);
-	setPosition({lat: 45.958765265076565, lon: 6.477293372154239}, animated);
+	setPosition({lat: 45.19177, lon: 5.72831}, animated);
+	// setPosition({lat: 45.958765265076565, lon: 6.477293372154239}, animated);
 }
 
 var requestId;
@@ -2174,9 +2252,9 @@ export function setViewingDistance(meters: number)
 	{
 		applyOnNodes((node) => 
 		{
-			if (node.pointsMesh) 
+		if (node.pointsMesh) 
 		{
-			node.pointsMesh.material.userData.far.value = FAR;
+			node.pointsMesh.material.uniforms.cameraFar.value = camera.far;
 		}
 		});
 	}

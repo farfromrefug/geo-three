@@ -1,22 +1,24 @@
-import {BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Sphere, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
+import {BasicDepthPacking, BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Sphere, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, GEOMETRY_SIZE, isMobile} from './app';
+import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, GEOMETRY_SIZE, isMobile, NEAR} from './app';
 
 import {tileToBBOX} from '@mapbox/tilebelt';
 import {MapView} from '../source/MapView';
 import {MapNode} from '../source/nodes/MapNode';
 
 
-const maxLevelForGemSize = 11;
+const maxLevelForGemSize = 12;
 
-export let currentColor = 0xffffff;
+export let currentColor = 0x000000;
 
 export class MaterialHeightShader extends MapHeightNode 
 {
 
+	public static useLOD = true
+	public fullGeometryLoaded = false;
 	public static baseGeometry = MapPlaneNode.geometry;
 
 	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
@@ -64,7 +66,7 @@ export class MaterialHeightShader extends MapHeightNode
 		let geo = MaterialHeightShader.geometries[size];
 		if (!MaterialHeightShader.geometries[size]) 
 		{
-			geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, true, 300);
+			geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, true, 100);
 		}
 		return geo;
 	}
@@ -363,8 +365,6 @@ export class MaterialHeightShader extends MapHeightNode
 	// 	_sphere.copy( geometry.boundingSphere ).applyMatrix4( this.matrixWorld );
 	// 	return _sphere;
 	// }
-	public static useLOD = true
-	public fullGeometryLoaded = false;
 	private constructLOD() {
 		this.fullGeometryLoaded = true;
 		if (MaterialHeightShader.useLOD) {
@@ -375,10 +375,7 @@ export class MaterialHeightShader extends MapHeightNode
 				mesh.updateMatrix();
 				mesh.updateMatrixWorld(true);
 				mesh.matrixAutoUpdate = false;
-				lod.addLevel( mesh, (3000  + 4000 * Math.pow(i, isMobile ? 2 : 4)));
-				// lod.addLevel( mesh, (300000  + 200000 * Math.pow(i, 4)) / Math.pow(2, 20 - this.level));
-
-				// lod.addLevel( mesh, 5000  + 5000 * i  * (1 + Math.abs(Math.min(this.level, 12) - 12)));
+				lod.addLevel( mesh, (3000  + 4000 * Math.pow(i, isMobile?3:4)));
 			}
 			lod.updateMatrix();
 			lod.updateMatrixWorld(true);
@@ -545,7 +542,8 @@ export class MaterialHeightShader extends MapHeightNode
 							f.level = this.level;
 							f.x = this.x;
 							f.y = this.y;
-							const color = f.color = currentColor--;
+							currentColor =(currentColor + 1) %0xfffffe
+							const color = f.color = currentColor;
 							featuresByColor[color] = f;
 							f.localCoords.y = 1;
 							colors.push(
@@ -580,27 +578,36 @@ export class MaterialHeightShader extends MapHeightNode
 							)
 						);
 						const material = new ShaderMaterial({
-							userData: 
+							depthWrite: false,
+							depthTest: false,
+							uniforms: 
 								{
 									heightMap: this.material.userData.heightMap,
 									exageration: this.material.userData.exageration,
 									elevationDecoder: this.material.userData.elevationDecoder,
 									heightMapLocation: this.material.userData.heightMapLocation,
 									forViewing: {value: debugFeaturePoints}, 
-									far: {value: FAR}, 
-									pointTexture: {value: new TextureLoader().load( 'disc.png' )}
+									depthTexture: {value: MaterialHeightShader.EMPTY_TEXTURE}, 
+									// pointTexture: {value: new TextureLoader().load( 'disc.png' )},
+									cameraNear: { value: NEAR },
+									cameraFar: { value: FAR },
 								},
 							vertexShader: `
+							#include <packing>
 							attribute vec4 color;
-							uniform float exageration;
-							uniform bool forViewing;
-							uniform float far;
-							varying float depth;
-							varying vec4 vColor;
 
 							uniform sampler2D heightMap;
+							uniform sampler2D depthTexture;
 							uniform vec4 elevationDecoder;
 							uniform vec4 heightMapLocation;
+							uniform float cameraNear;
+							uniform float cameraFar;
+							uniform float exageration;
+							uniform bool forViewing;
+
+							varying vec2 vUv;
+							varying float depth;
+							varying vec4 vColor;
 
 							float getPixelElevation(vec4 e) {
 								// Convert encoded elevation value to meters
@@ -610,53 +617,73 @@ export class MaterialHeightShader extends MapHeightNode
 								vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
 								return getPixelElevation(e);
 							}
+
+							float readDepth(const in vec2 uv) {
+									return texture2D(depthTexture, uv).r;
+							}
+							float getViewZ(const in float depth) {
+								return perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
+							}
+							float readZDepth(vec2 uv) {
+								return viewZToOrthographicDepth( getViewZ(readDepth(uv)), cameraNear, cameraFar );
+							}
 							void main() {
 								float elevation  = getElevation(vec2(position.x + 0.5, 0.5 - position.z)) ;
 								vec4 mvPosition = modelViewMatrix * vec4( position.x,  elevation, position.z, 1.0 );
 								gl_Position = projectionMatrix * mvPosition;
 								if (forViewing) {
-									gl_PointSize = 10.0 - gl_Position.z/ far * 6.0;
 									vColor = vec4(0.0, 0.0, 1.0, 1);
+									gl_PointSize = 10.0;
 								} else {
-									gl_Position.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * gl_Position.z / 1000.0;
-									// gl_PointSize = pow(gl_Position.z, 1.2)/ far;
-									gl_PointSize = 2.0 + gl_Position.z / far;
+									mvPosition.z -= (elevation / 1000.0 - floor(elevation / 1000.0)) * mvPosition.z / 1000.0;
+									gl_PointSize = 5.0;
+								}
+								float depthFromPosition = viewZToOrthographicDepth(mvPosition.z, cameraNear, cameraFar);
+								vec3 coord = gl_Position.xyz / gl_Position.w;
+								vUv =(coord.xy + 1.0) * 0.5 ;
+								float depthAtPoint = readZDepth(vUv);
+						 		if (depthAtPoint > cameraFar || depthFromPosition > depthAtPoint + 0.0005) {
+									depth = -1.0;
+									vColor = vec4( 0.0, 0.0, 0.0, 0.0);
+								} else {
+									depth = depthAtPoint;
 									vColor = color;
 								}
-								depth = gl_Position.z;
 							}
 							`,
 							fragmentShader: `
+							#include <packing>
 							varying vec4 vColor;
 							varying float depth;
-							uniform float far;
+							varying vec2 vUv;
+
+							uniform float cameraFar;
+							uniform float cameraNear;
 							uniform bool forViewing;
-							uniform sampler2D pointTexture;
+							
 							void main() {
-								gl_FragColor = vColor;
-								// if (forViewing) {
-								// 	gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
-								// }
-								if (depth > far) {
+								if (depth < 0.0 ) {
 									discard;
 								}
+								gl_FragColor = vColor;
+								// gl_FragColor = vec4( vUv.x, vUv.y, 0.0, 1.0 );
+								// gl_FragColor = vec4(vec3( depth ), 1.0);
 							}
 							`,
-							fog: true,
-							transparent: true
+							transparent:false
 						});
 						var mesh = new Points(
 							geometry,
 							material
 						);
-						material.onBeforeCompile = (shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }) => 
-						{
-							// Pass uniforms from userData to the
-							for (const i in material.userData) 
-							{
-								shader.uniforms[i] = material.userData[i];
-							}
-						};
+						// material.onBeforeCompile = (shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }) => 
+						// {
+						// 	// Pass uniforms from userData to the
+						// 	for (const i in material.userData) 
+						// 	{
+						// 		shader.uniforms[i] = material.userData[i];
+						// 	}
+						// };
 						// (mesh as any).features = features;
 						mesh.frustumCulled = false;
 

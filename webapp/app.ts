@@ -391,7 +391,7 @@ export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Oper
 const devicePixelRatio = isMobile ? window.devicePixelRatio : window.devicePixelRatio;
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
-export let showStats = true;
+export let showStats = false;
 export let mapMap = false;
 export let drawTexture = true;
 export let computeNormals = false;

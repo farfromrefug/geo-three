@@ -55649,7 +55649,7 @@ var webapp = (function (exports) {
             }
             let geo = MaterialHeightShader.geometries[size];
             if (!MaterialHeightShader.geometries[size]) {
-                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, true, 100);
+                geo = MaterialHeightShader.geometries[size] = new MapNodeGeometry(1, 1, size, size, exports.exageration > 0.1, 50 * exports.exageration);
             }
             return geo;
         }
@@ -55694,6 +55694,9 @@ var webapp = (function (exports) {
 				return getPixelElevation(e);
 			}
 			float getElevationMean(vec2 coord, float width, float height) {
+				// if(exageration == 0.0) {
+				// 	return 20.0;
+				// }
 				// if (heightMapLocation.z != 1.0) {
 				// 	return  getElevation(coord, width, height);
 				// }

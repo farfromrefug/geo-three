@@ -57914,19 +57914,26 @@ var webapp = (function (exports) {
         render();
     }
     let lastPosition;
+    let updateExternalPosition;
+    function setUpdateExternalPositionThrottleTime(value) {
+        updateExternalPosition = throttle(function () {
+            controls.getPosition(tempVector);
+            const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+            if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
+                lastPosition = point;
+                if (window['electron']) {
+                    const ipcRenderer = window['electron'].ipcRenderer;
+                    ipcRenderer.send('message', lastPosition);
+                }
+                if (window['nsWebViewBridge']) {
+                    window['nsWebViewBridge'].emit('position', lastPosition);
+                }
+            }
+        }, value);
+    }
+    setUpdateExternalPositionThrottleTime(100);
     controls.addEventListener('update', () => {
-        controls.getPosition(tempVector);
-        const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-        if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
-            lastPosition = point;
-            if (window['electron']) {
-                const ipcRenderer = window['electron'].ipcRenderer;
-                ipcRenderer.send('message', (lastPosition));
-            }
-            if (window['nsWebViewBridge']) {
-                window['nsWebViewBridge'].emit('position', lastFinalPosition);
-            }
-        }
+        updateExternalPosition();
         onControlUpdate();
     });
     let lastFinalPosition;
@@ -58593,6 +58600,7 @@ var webapp = (function (exports) {
     exports.setReadFeatures = setReadFeatures;
     exports.setShowStats = setShowStats;
     exports.setTerrarium = setTerrarium;
+    exports.setUpdateExternalPositionThrottleTime = setUpdateExternalPositionThrottleTime;
     exports.setViewingDistance = setViewingDistance;
     exports.setWireFrame = setWireFrame;
     exports.shouldComputeNormals = shouldComputeNormals;

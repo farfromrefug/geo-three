@@ -1336,19 +1336,26 @@ export function setDate(secondsInDay) {
 	render();
 }
 let lastPosition;
+let updateExternalPosition
+export function setUpdateExternalPositionThrottleTime(value) {
+	updateExternalPosition = throttle(function() {
+		controls.getPosition(tempVector);
+		const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+		if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
+			lastPosition = point;
+			if (window['electron']) {
+				const ipcRenderer = window['electron'].ipcRenderer;
+				ipcRenderer.send('message', lastPosition);
+			}
+			if (window['nsWebViewBridge']) {
+				window['nsWebViewBridge'].emit('position', lastPosition);
+			}
+		}
+	}, value)
+}
+setUpdateExternalPositionThrottleTime(100)
 controls.addEventListener('update', () => {
-	controls.getPosition(tempVector);
-	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-	if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
-		lastPosition = point;
-		if (window['electron']) {
-			const ipcRenderer = window['electron'].ipcRenderer;
-			ipcRenderer.send('message',(lastPosition));
-		}
-		if (window['nsWebViewBridge']) {
-			window['nsWebViewBridge'].emit('position', lastFinalPosition);
-		}
-	}
+	updateExternalPosition();
 	onControlUpdate();
 });
 let lastFinalPosition;

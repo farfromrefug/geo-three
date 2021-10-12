@@ -98,7 +98,7 @@ export class MaterialHeightShader extends MapHeightNode
 		this.material.flatShading = false;
 	}
 
-	public static prepareMaterial(material: MeshPhongMaterial, level: any): MeshPhongMaterial 
+	public static prepareMaterial(material: Material, level: any): Material 
 	{
 		// material.precision = 'highp';
 		material.userData = {

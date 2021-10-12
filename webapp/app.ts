@@ -1335,13 +1335,20 @@ export function setDate(secondsInDay) {
 	updateSky();
 	render();
 }
-// let lastPosition;
+let lastPosition;
 controls.addEventListener('update', () => {
-	// controls.getPosition(tempVector);
-	// const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-	// if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
-	// 	lastPosition = point;
-	// }
+	controls.getPosition(tempVector);
+	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+	if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
+		lastPosition = point;
+		if (window['electron']) {
+			const ipcRenderer = window['electron'].ipcRenderer;
+			ipcRenderer.send('message',(lastPosition));
+		}
+		if (window['nsWebViewBridge']) {
+			window['nsWebViewBridge'].emit('position', lastFinalPosition);
+		}
+	}
 	onControlUpdate();
 });
 let lastFinalPosition;
@@ -1351,9 +1358,6 @@ controls.addEventListener('controlend', () => {
 	if (!lastFinalPosition || lastFinalPosition.latitude !== point.latitude || lastFinalPosition.longitude !== point.longitude  || lastFinalPosition.altitude !== elevation ) {
 		lastFinalPosition = { ...point, altitude: elevation };
 		updateCurrentViewingDistance();
-		if (window['nsWebViewBridge']) {
-			window['nsWebViewBridge'].emit('position', lastFinalPosition);
-		}
 	}
 	// force a render at the end of the movement to make sure we show the correct peaks
 	render(true);

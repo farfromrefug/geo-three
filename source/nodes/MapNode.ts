@@ -333,7 +333,12 @@ export abstract class MapNode extends Mesh
 			else 
 			{
 				// @ts-ignore
-				mat.userData[k].value = values[k];
+				// eslint-disable-next-line no-prototype-builtins
+				if (mat.userData.hasOwnProperty(k)) 
+				{
+				// @ts-ignore
+					mat.userData[k].value = values[k];
+				}
 			}
 		});
 	}

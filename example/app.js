@@ -49884,7 +49884,7 @@ var webapp = (function (exports) {
             const longitude = x / UnitsUtils.EARTH_ORIGIN * 180.0;
             let latitude = y / UnitsUtils.EARTH_ORIGIN * 180.0;
             latitude = 180.0 / Math.PI * (2 * Math.atan(Math.exp(latitude * Math.PI / 180.0)) - Math.PI / 2.0);
-            return { latitude: latitude, longitude: longitude };
+            return { latitude: Math.round(latitude * 10000) / 10000, longitude: Math.round(longitude * 10000) / 10000 };
         }
         /**
          * Converts quad tree zoom/x/y to lat/lon in WGS84 Datum.
@@ -55551,8 +55551,8 @@ var webapp = (function (exports) {
 
     // const locahostServer = 'dev.tileserver.local'
     // export const locahostServer = '192.168.43.121:8080'
-    const locahostServer = '192.168.1.37:8080';
-    // export const locahostServer = '0.0.0.0:8080'
+    // export const locahostServer = '192.168.1.23:8080'
+    const locahostServer = '0.0.0.0:8080';
     class LocalHeightProvider extends MapProvider {
         constructor(local = false) {
             super();
@@ -55572,7 +55572,6 @@ var webapp = (function (exports) {
                         image.crossOrigin = 'Anonymous';
                         if (this.local) {
                             image.src = `http://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
-                            // image.src = `https://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
                         }
                         else {
                             image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
@@ -55660,7 +55659,6 @@ var webapp = (function (exports) {
         static prepareMaterial(material, level) {
             // material.precision = 'highp';
             material.userData = {
-                map: { value: MaterialHeightShader.EMPTY_TEXTURE },
                 heightMap: { value: MaterialHeightShader.EMPTY_TEXTURE },
                 drawNormals: { value: exports.drawNormals },
                 computeNormals: { value: shouldComputeNormals() },
@@ -55686,7 +55684,6 @@ var webapp = (function (exports) {
 			uniform sampler2D heightMap;
 			uniform vec4 elevationDecoder;
 			uniform vec4 heightMapLocation;
-			// varying vec3 vNormal;
 
 			float getPixelElevation(vec4 e) {
 				// Convert encoded elevation value to meters
@@ -55725,7 +55722,6 @@ var webapp = (function (exports) {
 			` + shader.vertexShader;
                 shader.fragmentShader =
                     `
-			// varying vec3 vNormal;
 			uniform bool drawNormals;
 			uniform bool drawTexture;
 			uniform bool drawBlack;
@@ -57914,15 +57910,25 @@ var webapp = (function (exports) {
         updateSky();
         render();
     }
+    // let lastPosition;
     controls.addEventListener('update', () => {
+        // controls.getPosition(tempVector);
+        // const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+        // if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) {
+        // 	lastPosition = point;
+        // }
         onControlUpdate();
     });
+    let lastFinalPosition;
     controls.addEventListener('controlend', () => {
         controls.getPosition(tempVector);
         const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-        updateCurrentViewingDistance();
-        if (window['nsWebViewBridge']) {
-            window['nsWebViewBridge'].emit('position', Object.assign(Object.assign({}, point), { altitude: elevation }));
+        if (!lastFinalPosition || lastFinalPosition.latitude !== point.latitude || lastFinalPosition.longitude !== point.longitude || lastFinalPosition.altitude !== elevation) {
+            lastFinalPosition = Object.assign(Object.assign({}, point), { altitude: elevation });
+            updateCurrentViewingDistance();
+            if (window['nsWebViewBridge']) {
+                window['nsWebViewBridge'].emit('position', lastFinalPosition);
+            }
         }
         // force a render at the end of the movement to make sure we show the correct peaks
         render(true);

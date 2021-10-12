@@ -68,7 +68,7 @@ export class UnitsUtils
 
 		latitude = 180.0 / Math.PI * (2 * Math.atan(Math.exp(latitude * Math.PI / 180.0)) - Math.PI / 2.0);
 
-		return {latitude: latitude, longitude: longitude};
+		return {latitude: Math.round(latitude * 10000) /10000, longitude: Math.round(longitude * 10000) /10000};
 	}
 
 	/**

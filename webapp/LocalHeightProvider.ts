@@ -37,12 +37,10 @@ export class LocalHeightProvider extends MapProvider
 				if (this.local) 
 				{
 					image.src = `http://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
-					// image.src = `https://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
 				}
 				else 
 				{
 					image.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
-
 				}
 			})
 		]);

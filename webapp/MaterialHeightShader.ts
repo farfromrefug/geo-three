@@ -1,4 +1,4 @@
-import {BasicDepthPacking, BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Sphere, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils} from 'three';
+import {BasicDepthPacking, BufferGeometry, ClampToEdgeWrapping, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, MeshPhongMaterial, NearestFilter, Points, Raycaster, RGBFormat, ShaderMaterial, Sphere, Texture, TextureLoader, Vector3, Vector4, UniformsLib, UniformsUtils, Material} from 'three';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';

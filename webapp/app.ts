@@ -2024,6 +2024,11 @@ export function setAzimuth(value: number) {
 		}
 	});
 }
+
+export function setNear(value) {
+	NEAR = value;
+	camera.near = NEAR;
+}
 export function setViewingDistance(meters: number) {
 	FAR = meters / currentViewingDistance * FAR;
 	camera.far = FAR;

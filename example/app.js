@@ -57671,6 +57671,10 @@ var webapp = (function (exports) {
     controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
     controls.verticalDragToForward = true;
     controls.saveState();
+    let keyboardSpeed = 0.05;
+    function setKeyboardSpeed(value) {
+        keyboardSpeed = value;
+    }
     if (!isMobile) {
         console.log('adding keyboard events');
         const KEYCODE = {
@@ -57688,39 +57692,39 @@ var webapp = (function (exports) {
         const sKey = new KeyboardKeyHold(KEYCODE.S, 16.666);
         const dKey = new KeyboardKeyHold(KEYCODE.D, 16.666);
         aKey.addEventListener('holding', function (event) {
-            controls.truck(-0.5 * event.deltaTime, 0, false);
+            controls.truck(-keyboardSpeed * event.deltaTime, 0, false);
             controls.update(event.deltaTime);
         });
         dKey.addEventListener('holding', function (event) {
-            controls.truck(0.5 * event.deltaTime, 0, false);
+            controls.truck(keyboardSpeed * event.deltaTime, 0, false);
             controls.update(event.deltaTime);
         });
         wKey.addEventListener('holding', function (event) {
-            controls.forward(0.5 * event.deltaTime, false);
+            controls.forward(keyboardSpeed * event.deltaTime, false);
             controls.update(event.deltaTime);
         });
         sKey.addEventListener('holding', function (event) {
-            controls.forward(-0.5 * event.deltaTime, false);
+            controls.forward(-keyboardSpeed * event.deltaTime, false);
             controls.update(event.deltaTime);
         });
-        const leftKey = new KeyboardKeyHold(KEYCODE.ARROW_LEFT, 50);
-        const rightKey = new KeyboardKeyHold(KEYCODE.ARROW_RIGHT, 50);
-        const upKey = new KeyboardKeyHold(KEYCODE.ARROW_UP, 50);
-        const downKey = new KeyboardKeyHold(KEYCODE.ARROW_DOWN, 50);
+        const leftKey = new KeyboardKeyHold(KEYCODE.ARROW_LEFT, 16.666);
+        const rightKey = new KeyboardKeyHold(KEYCODE.ARROW_RIGHT, 16.666);
+        const upKey = new KeyboardKeyHold(KEYCODE.ARROW_UP, 16.666);
+        const downKey = new KeyboardKeyHold(KEYCODE.ARROW_DOWN, 16.666);
         leftKey.addEventListener('holding', function (event) {
             controls.rotate(0.1 * MathUtils.DEG2RAD * event.deltaTime, 0, true);
             controls.update(event.deltaTime);
         });
         rightKey.addEventListener('holding', function (event) {
-            controls.rotate(-0.1 * MathUtils.DEG2RAD * event.deltaTime, 0, true);
+            controls.rotate(-keyboardSpeed * MathUtils.DEG2RAD * event.deltaTime, 0, true);
             controls.update(event.deltaTime);
         });
         upKey.addEventListener('holding', function (event) {
-            controls.rotate(0, -0.05 * MathUtils.DEG2RAD * event.deltaTime, true);
+            controls.rotate(0, -keyboardSpeed * MathUtils.DEG2RAD * event.deltaTime, true);
             controls.update(event.deltaTime);
         });
         downKey.addEventListener('holding', function (event) {
-            controls.rotate(0, 0.05 * MathUtils.DEG2RAD * event.deltaTime, true);
+            controls.rotate(0, keyboardSpeed * MathUtils.DEG2RAD * event.deltaTime, true);
             controls.update(event.deltaTime);
         });
     }
@@ -58590,6 +58594,7 @@ var webapp = (function (exports) {
     exports.setElevation = setElevation;
     exports.setExageration = setExageration;
     exports.setInitialPosition = setInitialPosition;
+    exports.setKeyboardSpeed = setKeyboardSpeed;
     exports.setMapMode = setMapMode;
     exports.setMapOultine = setMapOultine;
     exports.setMousPosition = setMousPosition;

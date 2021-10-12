@@ -1065,10 +1065,14 @@ controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
 controls.saveState();
-let keyboardSpeed = 0.05;
+let keyboardMoveSpeed = 0.05;
+let keyboardRotateSpeed = 0.05;
 
-export function setKeyboardSpeed(value) {
-	keyboardSpeed = value;
+export function setKeyboardRotateSpeed(value) {
+	keyboardRotateSpeed = value;
+}
+export function setKeyboardMoveSpeed(value) {
+	keyboardMoveSpeed = value;
 }
 if (!isMobile) {
 	console.log('adding keyboard events')
@@ -1087,19 +1091,19 @@ if (!isMobile) {
 	const sKey = new KeyboardKeyHold(KEYCODE.S, 16.666);
 	const dKey = new KeyboardKeyHold(KEYCODE.D, 16.666);
 	aKey.addEventListener('holding', function (event) {
-		controls.truck(- keyboardSpeed * event.deltaTime, 0, false);
+		controls.truck(- keyboardMoveSpeed * event.deltaTime, 0, false);
 		controls.update(event.deltaTime);
 	});
 	dKey.addEventListener('holding', function (event) {
-		controls.truck(keyboardSpeed * event.deltaTime, 0, false);
+		controls.truck(keyboardMoveSpeed * event.deltaTime, 0, false);
 		controls.update(event.deltaTime);
 	});
 	wKey.addEventListener('holding', function (event) {
-		controls.forward(keyboardSpeed * event.deltaTime, false);
+		controls.forward(keyboardMoveSpeed * event.deltaTime, false);
 		controls.update(event.deltaTime);
 	});
 	sKey.addEventListener('holding', function (event) {
-		controls.forward(- keyboardSpeed * event.deltaTime, false);
+		controls.forward(- keyboardMoveSpeed * event.deltaTime, false);
 		controls.update(event.deltaTime);
 	});
 
@@ -1112,15 +1116,15 @@ if (!isMobile) {
 		controls.update(event.deltaTime);
 	});
 	rightKey.addEventListener('holding', function (event) {
-		controls.rotate(-keyboardSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, 0, true)
+		controls.rotate(-keyboardRotateSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, 0, true)
 		controls.update(event.deltaTime);
 	});
 	upKey.addEventListener('holding', function (event) {
-		controls.rotate(0, - keyboardSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, true);
+		controls.rotate(0, - keyboardRotateSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, true);
 		controls.update(event.deltaTime);
 	});
 	downKey.addEventListener('holding', function (event) {
-		controls.rotate(0, keyboardSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, true);
+		controls.rotate(0, keyboardRotateSpeed * THREE.MathUtils.DEG2RAD * event.deltaTime, true);
 		controls.update(event.deltaTime);
 	});
 

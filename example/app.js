@@ -56065,7 +56065,7 @@ var webapp = (function (exports) {
                                         forViewing: { value: exports.debugFeaturePoints },
                                         depthTexture: { value: MaterialHeightShader.EMPTY_TEXTURE },
                                         // pointTexture: {value: new TextureLoader().load( 'disc.png' )},
-                                        cameraNear: { value: NEAR },
+                                        cameraNear: { value: exports.NEAR },
                                         cameraFar: { value: exports.FAR },
                                     },
                                     vertexShader: `
@@ -57045,7 +57045,7 @@ var webapp = (function (exports) {
     exports.currentViewingDistance = 0;
     // export let FAR = isMobile? 153000: 173000;
     exports.FAR = 173000;
-    let NEAR = 100;
+    exports.NEAR = 100;
     // export let FAR = 173000;
     const TEXT_HEIGHT = 200;
     let currentPositionAltitude = -1;
@@ -57656,7 +57656,7 @@ var webapp = (function (exports) {
     }
     createMap();
     const cameraFOV = 40;
-    const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, NEAR, exports.FAR);
+    const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, exports.NEAR, exports.FAR);
     camera.position.set(0, 0, EPS);
     const controls = new CameraControlsWithOrientation(camera, canvas);
     controls.azimuthRotateSpeed = -0.2; // negative value to invert rotation direction
@@ -58524,6 +58524,10 @@ var webapp = (function (exports) {
             }
         });
     }
+    function setNear(value) {
+        exports.NEAR = value;
+        camera.near = exports.NEAR;
+    }
     function setViewingDistance(meters) {
         exports.FAR = meters / exports.currentViewingDistance * exports.FAR;
         camera.far = exports.FAR;
@@ -58555,7 +58559,6 @@ var webapp = (function (exports) {
     setShowStats(exports.showStats);
 
     exports.GEOMETRY_SIZE = GEOMETRY_SIZE;
-    exports.NEAR = NEAR;
     exports.featuresByColor = featuresByColor;
     exports.focusSelectedItem = focusSelectedItem;
     exports.goToSelectedItem = goToSelectedItem;
@@ -58583,6 +58586,7 @@ var webapp = (function (exports) {
     exports.setMapMode = setMapMode;
     exports.setMapOultine = setMapOultine;
     exports.setMousPosition = setMousPosition;
+    exports.setNear = setNear;
     exports.setNormalsInDebug = setNormalsInDebug;
     exports.setPosition = setPosition;
     exports.setPredefinedMapMode = setPredefinedMapMode;

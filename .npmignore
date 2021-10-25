@@ -1,4 +1,6 @@
 docs/
 examples/
-node_modules/
-pnpm-global/
+source/
+readme/**/*
+.github/
+node_modules/pnpm-global/

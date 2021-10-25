@@ -1,5 +1,6 @@
 import {Group, LinearFilter, Material, Mesh, MeshPhongMaterial, Object3D, RGBFormat, Texture, Vector3, BufferGeometry} from 'three';
 import {MapView} from '../MapView';
+import {CanvasUtils} from '../utils/CanvasUtils';
 
 /**
  * Represents a map tile node inside of the tiles quad-tree
@@ -138,7 +139,7 @@ export abstract class MapNode extends Mesh
 	 * Can be used to navigate the children array looking for neighbors.
 	 */
 	public static bottomRight: number = 3;
-	
+
 
 	public constructor(parentNode: MapNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, geometry: BufferGeometry = null, material: Material = null) 
 	{
@@ -146,7 +147,7 @@ export abstract class MapNode extends Mesh
 
 		this.mapView = mapView;
 		this.parentNode = parentNode;
-
+	
 		this.location = location;
 		this.level = level;
 		this.x = x;
@@ -164,8 +165,8 @@ export abstract class MapNode extends Mesh
 		this.add(this.objectsHolder);
 		if (autoLoad) 
 		{
-			this.initialize();
-		}
+		this.initialize();
+	}
 	}
 
 	/**
@@ -199,7 +200,7 @@ export abstract class MapNode extends Mesh
 		}
 
 		this.subdivided = true;
-
+		
 		if (this.childrenCache !== null) 
 		{
 			this.childrenCache.forEach((n) => 
@@ -313,7 +314,7 @@ export abstract class MapNode extends Mesh
 			texture.magFilter = LinearFilter;
 			texture.minFilter = LinearFilter;
 			texture.needsUpdate = true;
-	
+			
 			// @ts-ignore
 			this.material.map = texture;
 		}
@@ -356,7 +357,7 @@ export abstract class MapNode extends Mesh
 		this.isTextureReady = true;
 		return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => {return this.onTextureImage(image);}).catch(() => 
 		{
-			const canvas = new OffscreenCanvas(1, 1);
+			const canvas = CanvasUtils.createOffscreenCanvas(1, 1);
 			const context = canvas.getContext('2d');
 			context.fillStyle = '#FF0000';
 			context.fillRect(0, 0, 1, 1);

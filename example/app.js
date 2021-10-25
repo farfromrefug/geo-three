@@ -49401,6 +49401,31 @@ var webapp = (function (exports) {
     }
 
     /**
+     * Contains utils to handle canvas element manipulation and common canvas operations.
+     */
+    class CanvasUtils {
+        /**
+         * Create a offscreen canvas, used to draw content that will not be displayed using DOM.
+         *
+         * If OffscreenCanvas object is no available creates a regular DOM canvas object instead.
+         *
+         * @param width - Width of the canvas in pixels.
+         * @param height - Height of the canvas in pixels.
+         */
+        static createOffscreenCanvas(width, height) {
+            if (OffscreenCanvas) {
+                return new OffscreenCanvas(width, height);
+            }
+            else {
+                let canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                return canvas;
+            }
+        }
+    }
+
+    /**
      * Represents a map tile node inside of the tiles quad-tree
      *
      * Each map node can be subdivided into other nodes.
@@ -49598,7 +49623,7 @@ var webapp = (function (exports) {
             }
             this.isTextureReady = true;
             return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).catch(() => {
-                const canvas = new OffscreenCanvas(1, 1);
+                const canvas = CanvasUtils.createOffscreenCanvas(1, 1);
                 const context = canvas.getContext('2d');
                 context.fillStyle = '#FF0000';
                 context.fillRect(0, 0, 1, 1);
@@ -49734,6 +49759,21 @@ var webapp = (function (exports) {
          */
         constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0) {
             super();
+            // Buffers
+            const indices = [];
+            const vertices = [];
+            const uvs = [];
+            // Build plane
+            MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
+            // Generate the skirt
+            if (skirt) {
+                MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, skirtDepth, indices, vertices, uvs);
+            }
+            this.setIndex(indices);
+            this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+            this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+        }
+        static buildPlane(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, indices, vertices, uvs) {
             // Half width X 
             const widthHalf = width / 2;
             // Half width Z
@@ -49746,10 +49786,6 @@ var webapp = (function (exports) {
             const segmentWidth = width / widthSegments;
             // Height of each segment Z
             const segmentHeight = height / heightSegments;
-            // Buffers
-            const indices = [];
-            const vertices = [];
-            const uvs = [];
             // Generate vertices, normals and uvs
             for (let iz = 0; iz < gridZ; iz++) {
                 const z = iz * segmentHeight - heightHalf;
@@ -49770,75 +49806,83 @@ var webapp = (function (exports) {
                     indices.push(a, b, d, b, c, d);
                 }
             }
-            // Generate the skirt
-            if (skirt) {
-                let start = vertices.length / 3;
-                // Down X
-                for (let ix = 0; ix < gridX; ix++) {
-                    const x = ix * segmentWidth - widthHalf;
-                    const z = -heightHalf;
-                    vertices.push(x, -skirtDepth, z);
-                    uvs.push(ix / widthSegments, 1);
-                }
-                // Indices
-                for (let ix = 0; ix < widthSegments; ix++) {
-                    const a = ix;
-                    const d = ix + 1;
-                    const b = ix + start;
-                    const c = ix + start + 1;
-                    indices.push(d, b, a, d, c, b);
-                }
-                start = vertices.length / 3;
-                // Up X
-                for (let ix = 0; ix < gridX; ix++) {
-                    const x = ix * segmentWidth - widthHalf;
-                    const z = heightSegments * segmentHeight - heightHalf;
-                    vertices.push(x, -skirtDepth, z);
-                    uvs.push(ix / widthSegments, 0);
-                }
-                // Index of the beginning of the last X row
-                let offset = gridX * gridZ - widthSegments - 1;
-                for (let ix = 0; ix < widthSegments; ix++) {
-                    const a = offset + ix;
-                    const d = offset + ix + 1;
-                    const b = ix + start;
-                    const c = ix + start + 1;
-                    indices.push(a, b, d, b, c, d);
-                }
-                start = vertices.length / 3;
-                // Down Z
-                for (let iz = 0; iz < gridZ; iz++) {
-                    const z = iz * segmentHeight - heightHalf;
-                    const x = -widthHalf;
-                    vertices.push(x, -skirtDepth, z);
-                    uvs.push(0, 1 - iz / heightSegments);
-                }
-                for (let iz = 0; iz < heightSegments; iz++) {
-                    const a = iz * gridZ;
-                    const d = (iz + 1) * gridZ;
-                    const b = iz + start;
-                    const c = iz + start + 1;
-                    indices.push(a, b, d, b, c, d);
-                }
-                start = vertices.length / 3;
-                // Up Z
-                for (let iz = 0; iz < gridZ; iz++) {
-                    const z = iz * segmentHeight - heightHalf;
-                    const x = widthSegments * segmentWidth - widthHalf;
-                    vertices.push(x, -skirtDepth, z);
-                    uvs.push(1.0, 1 - iz / heightSegments);
-                }
-                for (let iz = 0; iz < heightSegments; iz++) {
-                    const a = iz * gridZ + heightSegments;
-                    const d = (iz + 1) * gridZ + heightSegments;
-                    const b = iz + start;
-                    const c = iz + start + 1;
-                    indices.push(d, b, a, d, c, b);
-                }
+        }
+        static buildSkirt(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirtDepth, indices, vertices, uvs) {
+            // Half width X 
+            const widthHalf = width / 2;
+            // Half width Z
+            const heightHalf = height / 2;
+            // Size of the grid in X
+            const gridX = widthSegments + 1;
+            // Size of the grid in Z
+            const gridZ = heightSegments + 1;
+            // Width of each segment X
+            const segmentWidth = width / widthSegments;
+            // Height of each segment Z
+            const segmentHeight = height / heightSegments;
+            let start = vertices.length / 3;
+            // Down X
+            for (let ix = 0; ix < gridX; ix++) {
+                const x = ix * segmentWidth - widthHalf;
+                const z = -heightHalf;
+                vertices.push(x, -skirtDepth, z);
+                uvs.push(ix / widthSegments, 1);
             }
-            this.setIndex(indices);
-            this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-            this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+            // Indices
+            for (let ix = 0; ix < widthSegments; ix++) {
+                const a = ix;
+                const d = ix + 1;
+                const b = ix + start;
+                const c = ix + start + 1;
+                indices.push(d, b, a, d, c, b);
+            }
+            start = vertices.length / 3;
+            // Up X
+            for (let ix = 0; ix < gridX; ix++) {
+                const x = ix * segmentWidth - widthHalf;
+                const z = heightSegments * segmentHeight - heightHalf;
+                vertices.push(x, -skirtDepth, z);
+                uvs.push(ix / widthSegments, 0);
+            }
+            // Index of the beginning of the last X row
+            let offset = gridX * gridZ - widthSegments - 1;
+            for (let ix = 0; ix < widthSegments; ix++) {
+                const a = offset + ix;
+                const d = offset + ix + 1;
+                const b = ix + start;
+                const c = ix + start + 1;
+                indices.push(a, b, d, b, c, d);
+            }
+            start = vertices.length / 3;
+            // Down Z
+            for (let iz = 0; iz < gridZ; iz++) {
+                const z = iz * segmentHeight - heightHalf;
+                const x = -widthHalf;
+                vertices.push(x, -skirtDepth, z);
+                uvs.push(0, 1 - iz / heightSegments);
+            }
+            for (let iz = 0; iz < heightSegments; iz++) {
+                const a = iz * gridZ;
+                const d = (iz + 1) * gridZ;
+                const b = iz + start;
+                const c = iz + start + 1;
+                indices.push(a, b, d, b, c, d);
+            }
+            start = vertices.length / 3;
+            // Up Z
+            for (let iz = 0; iz < gridZ; iz++) {
+                const z = iz * segmentHeight - heightHalf;
+                const x = widthSegments * segmentWidth - widthHalf;
+                vertices.push(x, -skirtDepth, z);
+                uvs.push(1.0, 1 - iz / heightSegments);
+            }
+            for (let iz = 0; iz < heightSegments; iz++) {
+                const a = iz * gridZ + heightSegments;
+                const d = (iz + 1) * gridZ + heightSegments;
+                const b = iz + start;
+                const c = iz + start + 1;
+                indices.push(d, b, a, d, c, b);
+            }
         }
     }
 
@@ -49972,6 +50016,93 @@ var webapp = (function (exports) {
     MapPlaneNode.geometry = new MapNodeGeometry(1, 1, 1, 1, false);
     MapPlaneNode.baseGeometry = MapPlaneNode.geometry;
     MapPlaneNode.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1.0, UnitsUtils.EARTH_PERIMETER);
+
+    class MapNodeHeightGeometry extends BufferGeometry {
+        /**
+         * Map node geometry constructor.
+         *
+         * @param width - Width of the node.
+         * @param height - Height of the node.
+         * @param widthSegments - Number of subdivisions along the width.
+         * @param heightSegments - Number of subdivisions along the height.
+         * @param skirt - Skirt around the plane to mask gaps between tiles.
+         */
+        constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0, imageData = null, calculateNormals = true) {
+            super();
+            // Buffers
+            const indices = [];
+            const vertices = [];
+            const normals = [];
+            const uvs = [];
+            // Build plane
+            MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
+            const data = imageData.data;
+            for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // The value will be composed of the bits RGB
+                const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+                vertices[j + 1] = value;
+            }
+            // Generate the skirt
+            if (skirt) {
+                MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, skirtDepth, indices, vertices, uvs);
+            }
+            this.setIndex(indices);
+            this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+            this.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+            this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+            if (calculateNormals) {
+                this.computeNormals(widthSegments, heightSegments);
+            }
+        }
+        /**
+         * Compute normals for the height geometry.
+         *
+         * Only computes normals for the surface of the map geometry. Skirts are not considered.
+         *
+         * @param widthSegments - Number of segments in width.
+         * @param heightSegments - Number of segments in height.
+         */
+        computeNormals(widthSegments, heightSegments) {
+            const positionAttribute = this.getAttribute('position');
+            if (positionAttribute !== undefined) {
+                // Reset existing normals to zero
+                let normalAttribute = this.getAttribute('normal');
+                const normalLength = heightSegments * widthSegments;
+                for (let i = 0; i < normalLength; i++) {
+                    normalAttribute.setXYZ(i, 0, 0, 0);
+                }
+                const pA = new Vector3(), pB = new Vector3(), pC = new Vector3();
+                const nA = new Vector3(), nB = new Vector3(), nC = new Vector3();
+                const cb = new Vector3(), ab = new Vector3();
+                const indexLength = heightSegments * widthSegments * 6;
+                for (let i = 0; i < indexLength; i += 3) {
+                    const vA = this.index.getX(i + 0);
+                    const vB = this.index.getX(i + 1);
+                    const vC = this.index.getX(i + 2);
+                    pA.fromBufferAttribute(positionAttribute, vA);
+                    pB.fromBufferAttribute(positionAttribute, vB);
+                    pC.fromBufferAttribute(positionAttribute, vC);
+                    cb.subVectors(pC, pB);
+                    ab.subVectors(pA, pB);
+                    cb.cross(ab);
+                    nA.fromBufferAttribute(normalAttribute, vA);
+                    nB.fromBufferAttribute(normalAttribute, vB);
+                    nC.fromBufferAttribute(normalAttribute, vC);
+                    nA.add(cb);
+                    nB.add(cb);
+                    nC.add(cb);
+                    normalAttribute.setXYZ(vA, nA.x, nA.y, nA.z);
+                    normalAttribute.setXYZ(vB, nB.x, nB.y, nB.z);
+                    normalAttribute.setXYZ(vC, nC.x, nC.y, nC.z);
+                }
+                this.normalizeNormals();
+                normalAttribute.needsUpdate = true;
+            }
+        }
+    }
 
     /**
      * Represents a height map tile node that can be subdivided into other height nodes.
@@ -50125,22 +50256,12 @@ var webapp = (function (exports) {
          * @returns Returns a promise indicating when the geometry generation has finished.
          */
         onHeightImage(image) {
-            const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
-            const vertices = geometry.attributes.position.array;
-            const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
+            const canvas = CanvasUtils.createOffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
             const context = canvas.getContext('2d');
             context.imageSmoothingEnabled = false;
             context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                // The value will be composed of the bits RGB
-                const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-                vertices[j + 1] = value;
-            }
+            const geometry = new MapNodeHeightGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize, true, 10.0, imageData, true);
             this.geometry = geometry;
         }
         /**
@@ -50723,7 +50844,7 @@ var webapp = (function (exports) {
                     reject();
                 };
                 image.crossOrigin = 'Anonymous';
-                image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
+                image.src = this.address + zoom + '/' + x + '/' + y + '.' + this.format;
             });
         }
     }
@@ -51364,6 +51485,506 @@ var webapp = (function (exports) {
     }
 
     /**
+     * XHR utils contains public static methods to allow easy access to services via XHR.
+     */
+    class XHRUtils {
+        /**
+         * Get file data from URL as text, using a XHR call.
+         *
+         * @param url - Target for the request.
+         * @param onLoad - On load callback.
+         * @param onError - On progress callback.
+         */
+        static get(url, onLoad, onError) {
+            const xhr = new XMLHttpRequest();
+            xhr.overrideMimeType('text/plain');
+            xhr.open('GET', url, true);
+            if (onLoad !== undefined) {
+                xhr.onload = function () {
+                    onLoad(xhr.response);
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            xhr.send(null);
+            return xhr;
+        }
+        /**
+         * Get raw file data from URL, using a XHR call.
+         *
+         * @param url - Target for the request.
+         * @param onLoad - On load callback.
+         * @param onError - On progress callback.
+         */
+        static getRaw(url, onLoad, onError) {
+            var xhr = new XMLHttpRequest();
+            xhr.responseType = 'arraybuffer';
+            xhr.open('GET', url, true);
+            if (onLoad !== undefined) {
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        onLoad(xhr.response);
+                    }
+                    else if (onError) {
+                        onError('tile not found');
+                    }
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            xhr.send(null);
+            return xhr;
+        }
+        /**
+         * Perform a request with the specified configuration.
+         *
+         * Syncronous request should be avoided unless they are strictly necessary.
+         *
+         * @param url - Target for the request.
+         * @param type - Resquest type (POST, GET, ...)
+         * @param header - Object with data to be added to the request header.
+         * @param body - Data to be sent in the resquest.
+         * @param onLoad - On load callback, receives data (String or Object) and XHR as arguments.
+         * @param onError - XHR onError callback.
+         */
+        static request(url, type, header, body, onLoad, onError, onProgress) {
+            function parseResponse(response) {
+                try {
+                    return JSON.parse(response);
+                }
+                catch (e) {
+                    return response;
+                }
+            }
+            const xhr = new XMLHttpRequest();
+            xhr.overrideMimeType('text/plain');
+            xhr.open(type, url, true);
+            // Fill header data from Object
+            if (header !== null && header !== undefined) {
+                for (const i in header) {
+                    xhr.setRequestHeader(i, header[i]);
+                }
+            }
+            if (onLoad !== undefined) {
+                xhr.onload = function (event) {
+                    onLoad(parseResponse(xhr.response), xhr);
+                };
+            }
+            if (onError !== undefined) {
+                // @ts-ignore
+                xhr.onerror = onError;
+            }
+            if (onProgress !== undefined) {
+                // @ts-ignore
+                xhr.onprogress = onProgress;
+            }
+            if (body !== undefined) {
+                xhr.send(body);
+            }
+            else {
+                xhr.send(null);
+            }
+            return xhr;
+        }
+    }
+
+    /**
+     * Bing maps tile provider.
+     *
+     * API Reference
+     *  - https://msdn.microsoft.com/en-us/library/bb259689.aspx (Bing Maps Tile System)
+     *  - https://msdn.microsoft.com/en-us/library/mt823633.aspx (Directly accessing the Bing Maps tiles)
+     *  - https://www.bingmapsportal.com/
+     */
+    class BingMapsProvider extends MapProvider {
+        /**
+         * @param apiKey - Bing API key.
+         * @param type - Type provider.
+         */
+        constructor(apiKey = '', type = BingMapsProvider.AERIAL) {
+            super();
+            /**
+             * Maximum zoom level allows by the provider.
+             */
+            this.maxZoom = 19;
+            /**
+             * Map image tile format, the formats available are:
+             *  - gif: Use GIF image format.
+             *  - jpeg: Use JPEG image format. JPEG format is the default for Road, Aerial and AerialWithLabels imagery.
+             *  - png: Use PNG image format. PNG is the default format for OrdnanceSurvey imagery.
+             */
+            this.format = 'jpeg';
+            /**
+             * Size of the map tiles.
+             */
+            this.mapSize = 512;
+            /**
+             * Tile server subdomain.
+             */
+            this.subdomain = 't1';
+            this.apiKey = apiKey;
+            this.type = type;
+        }
+        /**
+         * Get the base URL for the map configuration requested.
+         *
+         * Uses the follwing format
+         *
+         * http://ecn.\{subdomain\}.tiles.virtualearth.net/tiles/r\{quadkey\}.jpeg?g=129&mkt=\{culture\}&shading=hill&stl=H
+         */
+        getMetaData() {
+            const address = 'http://dev.virtualearth.net/REST/V1/Imagery/Metadata/RoadOnDemand?output=json&include=ImageryProviders&key=' + this.apiKey;
+            XHRUtils.get(address, function (data) {
+                JSON.parse(data);
+                // TODO <FILL METADATA>
+            });
+        }
+        /**
+         * Convert x, y, zoom quadtree to a bing maps specific quadkey.
+         *
+         * Adapted from original C# code at https://msdn.microsoft.com/en-us/library/bb259689.aspx.
+         */
+        static quadKey(zoom, x, y) {
+            let quad = '';
+            for (let i = zoom; i > 0; i--) {
+                const mask = 1 << i - 1;
+                let cell = 0;
+                if ((x & mask) !== 0) {
+                    cell++;
+                }
+                if ((y & mask) !== 0) {
+                    cell += 2;
+                }
+                quad += cell;
+            }
+            return quad;
+        }
+        fetchImage(zoom, x, y) {
+            return new Promise((resolve, reject) => {
+                const image = document.createElement('img');
+                image.onload = function () {
+                    resolve(image);
+                };
+                image.onerror = function () {
+                    reject();
+                };
+                image.crossOrigin = 'Anonymous';
+                image.src = 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
+            });
+        }
+    }
+    /**
+     * Display an aerial view of the map.
+     */
+    BingMapsProvider.AERIAL = 'a';
+    /**
+     * Display a road view of the map.
+     */
+    BingMapsProvider.ROAD = 'r';
+    /**
+     * Display an aerial view of the map with labels.
+     */
+    BingMapsProvider.AERIAL_LABELS = 'h';
+    /**
+     * Use this value to display a bird's eye (oblique) view of the map.
+     */
+    BingMapsProvider.OBLIQUE = 'o';
+    /**
+     * Display a bird's eye (oblique) with labels view of the map.
+     */
+    BingMapsProvider.OBLIQUE_LABELS = 'b';
+
+    /**
+     * Here maps tile server provider.
+     *
+     * API Reference
+     *  - https://developer.here.com/documentation/map-tile/topics/example-satellite-map.html
+     */
+    class HereMapsProvider extends MapProvider {
+        /**
+         * Here maps provider constructor.
+         *
+         * @param appId - HERE maps app id.
+         * @param appCode - HERE maps app code.
+         * @param style - Map style.
+         * @param scheme - Map scheme.
+         * @param format - Image format.
+         * @param size - Tile size.
+         */
+        constructor(appId, appCode, style, scheme, format, size) {
+            super();
+            this.appId = appId !== undefined ? appId : '';
+            this.appCode = appCode !== undefined ? appCode : '';
+            this.style = style !== undefined ? style : 'base';
+            this.scheme = scheme !== undefined ? scheme : 'normal.day';
+            this.format = format !== undefined ? format : 'png';
+            this.size = size !== undefined ? size : 512;
+            this.version = 'newest';
+            this.server = 1;
+        }
+        /**
+         * Update the server counter.
+         *
+         * There are 4 server (1 to 4).
+         */
+        nextServer() {
+            this.server = this.server % 4 === 0 ? 1 : this.server + 1;
+        }
+        getMetaData() { }
+        fetchImage(zoom, x, y) {
+            this.nextServer();
+            return new Promise((resolve, reject) => {
+                const image = document.createElement('img');
+                image.onload = function () {
+                    resolve(image);
+                };
+                image.onerror = function () {
+                    reject();
+                };
+                image.crossOrigin = 'Anonymous';
+                image.src = 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +
+                    this.version + '/' + this.scheme + '/' + zoom + '/' + x + '/' + y + '/' +
+                    this.size + '/' + this.format + '?app_id=' + this.appId + '&app_code=' + this.appCode;
+            });
+        }
+    }
+    /**
+     * Path to map tile API.
+     *
+     * Version of the api is fixed 2.1.
+     */
+    HereMapsProvider.PATH = '/maptile/2.1/';
+
+    /**
+     * Map box service tile provider. Map tiles can be fetched from style or from a map id.
+     *
+     * API Reference
+     *  - https://www.mapbox.com/
+     */
+    class MapBoxProvider extends MapProvider {
+        /**
+         * @param apiToken - Map box api token.
+         * @param id - Map style or map ID if the mode is set to MAP_ID.
+         * @param mode - Map tile access mode.
+         * @param format - Image format.
+         * @param useHDPI - If true uses high DPI mode.
+         */
+        constructor(apiToken = '', id = '', mode = MapBoxProvider.STYLE, format = 'png', useHDPI = false, version = 'v4') {
+            super();
+            this.apiToken = apiToken;
+            this.format = format;
+            this.useHDPI = useHDPI;
+            this.mode = mode;
+            this.mapId = id;
+            this.style = id;
+            this.version = version;
+        }
+        getMetaData() {
+            const address = MapBoxProvider.ADDRESS + this.version + '/' + this.mapId + '.json?access_token=' + this.apiToken;
+            XHRUtils.get(address, (data) => {
+                const meta = JSON.parse(data);
+                this.name = meta.name;
+                this.minZoom = meta.minZoom;
+                this.maxZoom = meta.maxZoom;
+                this.bounds = meta.bounds;
+                this.center = meta.center;
+            });
+        }
+        fetchImage(zoom, x, y) {
+            return new Promise((resolve, reject) => {
+                const image = document.createElement('img');
+                image.onload = function () {
+                    resolve(image);
+                };
+                image.onerror = function () {
+                    reject();
+                };
+                image.crossOrigin = 'Anonymous';
+                if (this.mode === MapBoxProvider.STYLE) {
+                    image.src = MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken;
+                }
+                else {
+                    image.src = MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken;
+                }
+            });
+        }
+    }
+    MapBoxProvider.ADDRESS = 'https://api.mapbox.com/';
+    /**
+     * Access the map data using a map style.
+     */
+    MapBoxProvider.STYLE = 100;
+    /**
+     * Access the map data using a map id.
+     */
+    MapBoxProvider.MAP_ID = 101;
+
+    /**
+     * Debug provider can be used to debug the levels of the map three based on the zoom level they change between green and red.
+     */
+    class DebugProvider extends MapProvider {
+        constructor() {
+            super(...arguments);
+            /**
+             * Resolution in px of each tile.
+             */
+            this.resolution = 256;
+        }
+        fetchImage(zoom, x, y) {
+            return __awaiter(this, void 0, void 0, function* () {
+                const canvas = CanvasUtils.createOffscreenCanvas(this.resolution, this.resolution);
+                const context = canvas.getContext('2d');
+                const green = new Color(0x00ff00);
+                const red = new Color(0xff0000);
+                const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
+                context.fillStyle = color.getStyle();
+                context.fillRect(0, 0, this.resolution, this.resolution);
+                context.fillStyle = '#000000';
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
+                context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
+                context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
+                return canvas;
+            });
+        }
+    }
+
+    /**
+     * Cancelable promises extend base promises and provide a cancel functionality than can be used to cancel the execution or task of the promise.
+     *
+     * These type of promises can be used to prevent additional processing when the data is not longer required (e.g. HTTP request for data that is not longer necessary)
+     */
+    class CancelablePromise {
+        constructor(executor) {
+            this.fulfilled = false;
+            this.rejected = false;
+            this.called = false;
+            const resolve = (v) => {
+                this.fulfilled = true;
+                this.value = v;
+                if (typeof this.onResolve === 'function') {
+                    this.onResolve(this.value);
+                    this.called = true;
+                }
+            };
+            const reject = (reason) => {
+                this.rejected = true;
+                this.value = reason;
+                if (typeof this.onReject === 'function') {
+                    this.onReject(this.value);
+                    this.called = true;
+                }
+            };
+            try {
+                executor(resolve, reject);
+            }
+            catch (error) {
+                reject(error);
+            }
+        }
+        /**
+         * Request to cancel the promise execution.
+         *
+         * @returns True if the promise is canceled successfully, false otherwise.
+         */
+        cancel() {
+            // TODO <ADD CODE HERE>
+            return false;
+        }
+        /**
+         * Executed after the promise is fulfilled.
+         *
+         * @param callback - Callback to receive the value.
+         * @returns Promise for chainning.
+         */
+        then(callback) {
+            this.onResolve = callback;
+            if (this.fulfilled && !this.called) {
+                this.called = true;
+                this.onResolve(this.value);
+            }
+            return this;
+        }
+        /**
+         * Catch any error that occurs in the promise.
+         *
+         * @param callback - Method to catch errors.
+         * @returns Promise for chainning.
+         */
+        catch(callback) {
+            this.onReject = callback;
+            if (this.rejected && !this.called) {
+                this.called = true;
+                this.onReject(this.value);
+            }
+            return this;
+        }
+        /**
+         * Finally callback
+         *
+         * @param callback - Method to be called.
+         * @returns Promise for chainning.
+         */
+        finally(callback) {
+            // TODO: not implemented
+            return this;
+        }
+        /**
+         * Create a resolved promise.
+         *
+         * @param val - Value to pass.
+         * @returns Promise created with resolve value.
+         */
+        static resolve(val) {
+            return new CancelablePromise(function executor(resolve, _reject) {
+                resolve(val);
+            });
+        }
+        /**
+         * Create a rejected promise.
+         *
+         * @param reason - Reason to reject the promise.
+         * @returns Promise created with rejection reason.
+         */
+        static reject(reason) {
+            return new CancelablePromise(function executor(resolve, reject) {
+                reject(reason);
+            });
+        }
+        /**
+         * Wait for a set of promises to finish, creates a promise that waits for all running promises.
+         *
+         * If any of the promises fail it will reject altough some of them may have been completed with success.
+         *
+         * @param promises - List of promisses to syncronize.
+         * @returns Promise that will resolve when all of the running promises are fullfilled.
+         */
+        static all(promises) {
+            const fulfilledPromises = [];
+            const result = [];
+            function executor(resolve, reject) {
+                promises.forEach((promise, index) => {
+                    return promise
+                        .then((val) => {
+                        fulfilledPromises.push(true);
+                        result[index] = val;
+                        if (fulfilledPromises.length === promises.length) {
+                            return resolve(result);
+                        }
+                    })
+                        .catch((error) => { return reject(error); });
+                });
+            }
+            return new CancelablePromise(executor);
+        }
+    }
+
+    /**
      * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
      *
      * Based off the library https://github.com/mapbox/martini (Mapbox's Awesome Right-Triangulated Irregular Networks, Improved)
@@ -51436,25 +52057,24 @@ var webapp = (function (exports) {
 					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
 				} else if (!drawTexture) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
-				}
-					`);
+				}`);
                 shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
-					#include <fog_vertex>
+				#include <fog_vertex>
 
-					// queried pixels:
-					// +-----------+
-					// |   |   |   |
-					// | a | b | c |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | d | e | f |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | g | h | i |
-					// |   |   |   |
-					// +-----------+
+				// queried pixels:
+				// +-----------+
+				// |   |   |   |
+				// | a | b | c |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | d | e | f |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | g | h | i |
+				// |   |   |   |
+				// +-----------+
 
 					// if (computeNormals) {
 					// 	float e = getElevation(vUv, 0.0);
@@ -51480,7 +52100,7 @@ var webapp = (function (exports) {
 					// 	v2.z = (e+ h + i + f) / 4.0;
 					// 	vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
 					// }
-					`);
+				`);
             };
             return material;
         }
@@ -51554,7 +52174,7 @@ var webapp = (function (exports) {
                 if (image) {
                     const tileSize = image.width;
                     const gridSize = tileSize + 1;
-                    var canvas = new OffscreenCanvas(tileSize, tileSize);
+                    var canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
                     var context = canvas.getContext('2d');
                     context.imageSmoothingEnabled = false;
                     context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
@@ -51603,7 +52223,10 @@ var webapp = (function (exports) {
      * Empty texture used as a placeholder for missing textures.
      */
     MapMartiniHeightNode.emptyTexture = new Texture();
-    MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, MapMartiniHeightNode.geometrySize, MapMartiniHeightNode.geometrySize);
+    /**
+     * Base geometry appied before any custom geometru is used.
+     */
+    MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, 1, 1);
     /**
      * Original tile size of the images retrieved from the height provider.
      */
@@ -51793,37 +52416,6 @@ var webapp = (function (exports) {
         [MapView.MARTINI, MapMartiniHeightNode]
     ]);
 
-    /**
-     * Debug provider can be used to debug the levels of the map three based on the zoom level they change between green and red.
-     */
-    class DebugProvider extends MapProvider {
-        constructor() {
-            super(...arguments);
-            /**
-             * Resolution in px of each tile.
-             */
-            this.resolution = 256;
-        }
-        fetchImage(zoom, x, y) {
-            return __awaiter(this, void 0, void 0, function* () {
-                const canvas = new OffscreenCanvas(this.resolution, this.resolution);
-                const context = canvas.getContext('2d');
-                const green = new Color(0x00ff00);
-                const red = new Color(0xff0000);
-                const color = green.lerpHSL(red, (zoom - this.minZoom) / (this.maxZoom - this.minZoom));
-                context.fillStyle = color.getStyle();
-                context.fillRect(0, 0, this.resolution, this.resolution);
-                context.fillStyle = '#000000';
-                context.textAlign = 'center';
-                context.textBaseline = 'middle';
-                context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
-                context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
-                context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
-                return canvas;
-            });
-        }
-    }
-
     class EmptyProvider extends MapProvider {
         constructor() {
             super();
@@ -51833,244 +52425,6 @@ var webapp = (function (exports) {
         }
         fetchTile(zoom, x, y) {
             return Promise.resolve(null);
-        }
-    }
-
-    /**
-     * Cancelable promises extend base promises and provide a cancel functionality than can be used to cancel the execution or task of the promise.
-     *
-     * These type of promises can be used to prevent additional processing when the data is not longer required (e.g. HTTP request for data that is not longer necessary)
-     */
-    class CancelablePromise {
-        constructor(executor) {
-            this.fulfilled = false;
-            this.rejected = false;
-            this.called = false;
-            const resolve = (v) => {
-                this.fulfilled = true;
-                this.value = v;
-                if (typeof this.onResolve === 'function') {
-                    this.onResolve(this.value);
-                    this.called = true;
-                }
-            };
-            const reject = (reason) => {
-                this.rejected = true;
-                this.value = reason;
-                if (typeof this.onReject === 'function') {
-                    this.onReject(this.value);
-                    this.called = true;
-                }
-            };
-            try {
-                executor(resolve, reject);
-            }
-            catch (error) {
-                reject(error);
-            }
-        }
-        /**
-         * Request to cancel the promise execution.
-         *
-         * @returns True if the promise is canceled successfully, false otherwise.
-         */
-        cancel() {
-            // TODO <ADD CODE HERE>
-            return false;
-        }
-        /**
-         * Executed after the promise is fulfilled.
-         *
-         * @param callback - Callback to receive the value.
-         * @returns Promise for chainning.
-         */
-        then(callback) {
-            this.onResolve = callback;
-            if (this.fulfilled && !this.called) {
-                this.called = true;
-                this.onResolve(this.value);
-            }
-            return this;
-        }
-        /**
-         * Catch any error that occurs in the promise.
-         *
-         * @param callback - Method to catch errors.
-         * @returns Promise for chainning.
-         */
-        catch(callback) {
-            this.onReject = callback;
-            if (this.rejected && !this.called) {
-                this.called = true;
-                this.onReject(this.value);
-            }
-            return this;
-        }
-        /**
-         * Finally callback
-         *
-         * @param callback - Method to be called.
-         * @returns Promise for chainning.
-         */
-        finally(callback) {
-            // TODO: not implemented
-            return this;
-        }
-        /**
-         * Create a resolved promise.
-         *
-         * @param val - Value to pass.
-         * @returns Promise created with resolve value.
-         */
-        static resolve(val) {
-            return new CancelablePromise(function executor(resolve, _reject) {
-                resolve(val);
-            });
-        }
-        /**
-         * Create a rejected promise.
-         *
-         * @param reason - Reason to reject the promise.
-         * @returns Promise created with rejection reason.
-         */
-        static reject(reason) {
-            return new CancelablePromise(function executor(resolve, reject) {
-                reject(reason);
-            });
-        }
-        /**
-         * Wait for a set of promises to finish, creates a promise that waits for all running promises.
-         *
-         * If any of the promises fail it will reject altough some of them may have been completed with success.
-         *
-         * @param promises - List of promisses to syncronize.
-         * @returns Promise that will resolve when all of the running promises are fullfilled.
-         */
-        static all(promises) {
-            const fulfilledPromises = [];
-            const result = [];
-            function executor(resolve, reject) {
-                promises.forEach((promise, index) => {
-                    return promise
-                        .then((val) => {
-                        fulfilledPromises.push(true);
-                        result[index] = val;
-                        if (fulfilledPromises.length === promises.length) {
-                            return resolve(result);
-                        }
-                    })
-                        .catch((error) => { return reject(error); });
-                });
-            }
-            return new CancelablePromise(executor);
-        }
-    }
-
-    /**
-     * XHR utils contains public static methods to allow easy access to services via XHR.
-     */
-    class XHRUtils {
-        /**
-         * Get file data from URL as text, using a XHR call.
-         *
-         * @param url - Target for the request.
-         * @param onLoad - On load callback.
-         * @param onError - On progress callback.
-         */
-        static get(url, onLoad, onError) {
-            const xhr = new XMLHttpRequest();
-            xhr.overrideMimeType('text/plain');
-            xhr.open('GET', url, true);
-            if (onLoad !== undefined) {
-                xhr.onload = function () {
-                    onLoad(xhr.response);
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            xhr.send(null);
-            return xhr;
-        }
-        /**
-         * Get raw file data from URL, using a XHR call.
-         *
-         * @param url - Target for the request.
-         * @param onLoad - On load callback.
-         * @param onError - On progress callback.
-         */
-        static getRaw(url, onLoad, onError) {
-            var xhr = new XMLHttpRequest();
-            xhr.responseType = 'arraybuffer';
-            xhr.open('GET', url, true);
-            if (onLoad !== undefined) {
-                xhr.onload = function () {
-                    if (xhr.status === 200) {
-                        onLoad(xhr.response);
-                    }
-                    else if (onError) {
-                        onError('tile not found');
-                    }
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            xhr.send(null);
-            return xhr;
-        }
-        /**
-         * Perform a request with the specified configuration.
-         *
-         * Syncronous request should be avoided unless they are strictly necessary.
-         *
-         * @param url - Target for the request.
-         * @param type - Resquest type (POST, GET, ...)
-         * @param header - Object with data to be added to the request header.
-         * @param body - Data to be sent in the resquest.
-         * @param onLoad - On load callback, receives data (String or Object) and XHR as arguments.
-         * @param onError - XHR onError callback.
-         */
-        static request(url, type, header, body, onLoad, onError, onProgress) {
-            function parseResponse(response) {
-                try {
-                    return JSON.parse(response);
-                }
-                catch (e) {
-                    return response;
-                }
-            }
-            const xhr = new XMLHttpRequest();
-            xhr.overrideMimeType('text/plain');
-            xhr.open(type, url, true);
-            // Fill header data from Object
-            if (header !== null && header !== undefined) {
-                for (const i in header) {
-                    xhr.setRequestHeader(i, header[i]);
-                }
-            }
-            if (onLoad !== undefined) {
-                xhr.onload = function (event) {
-                    onLoad(parseResponse(xhr.response), xhr);
-                };
-            }
-            if (onError !== undefined) {
-                // @ts-ignore
-                xhr.onerror = onError;
-            }
-            if (onProgress !== undefined) {
-                // @ts-ignore
-                xhr.onprogress = onProgress;
-            }
-            if (body !== undefined) {
-                xhr.send(body);
-            }
-            else {
-                xhr.send(null);
-            }
-            return xhr;
         }
     }
 

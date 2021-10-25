@@ -4,7 +4,8 @@ import {MapView} from '../MapView';
 import {Martini} from './Martini';
 import {MapHeightNode} from './MapHeightNode';
 import {MapNode} from './MapNode';
-import {UnitsUtils} from '../utils/UnitsUtils';
+import {CanvasUtils} from '../utils/CanvasUtils';
+import { UnitsUtils } from '../Main';
 
 /** 
  * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
@@ -32,7 +33,10 @@ export class MapMartiniHeightNode extends MapHeightNode
 	 */
 	public static emptyTexture: Texture = new Texture();
 	
-	public static geometry = new MapNodeGeometry(1, 1, MapMartiniHeightNode.geometrySize, MapMartiniHeightNode.geometrySize);
+	/**
+	 * Base geometry appied before any custom geometru is used.
+	 */
+	public static geometry = new MapNodeGeometry(1, 1, 1, 1);
 
 	/**
 	 * Elevation decoder configuration.
@@ -109,8 +113,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 				` + shader.fragmentShader;
 
 			// Vertex depth logic
-			shader.fragmentShader = shader.fragmentShader.replace(
-				'#include <dithering_fragment>',
+			shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>',
 				`
 				if(drawBlack) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
@@ -118,28 +121,27 @@ export class MapMartiniHeightNode extends MapHeightNode
 					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
 				} else if (!drawTexture) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
-				}
-					`
+				}`
 			);
-			shader.vertexShader = shader.vertexShader.replace(
-				'#include <fog_vertex>',
-				`
-					#include <fog_vertex>
 
-					// queried pixels:
-					// +-----------+
-					// |   |   |   |
-					// | a | b | c |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | d | e | f |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | g | h | i |
-					// |   |   |   |
-					// +-----------+
+			shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>',
+				`
+				#include <fog_vertex>
+
+				// queried pixels:
+				// +-----------+
+				// |   |   |   |
+				// | a | b | c |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | d | e | f |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | g | h | i |
+				// |   |   |   |
+				// +-----------+
 
 					// if (computeNormals) {
 					// 	float e = getElevation(vUv, 0.0);
@@ -165,7 +167,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 					// 	v2.z = (e+ h + i + f) / 4.0;
 					// 	vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
 					// }
-					`
+				`
 			);
 		};
 
@@ -262,39 +264,39 @@ export class MapMartiniHeightNode extends MapHeightNode
 	{
 		if (image) 
 		{
-			const tileSize = image.width;
-			const gridSize = tileSize + 1;
-			var canvas = new OffscreenCanvas(tileSize, tileSize);
-	
-			var context = canvas.getContext('2d');
-			context.imageSmoothingEnabled = false;
-			context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
-			
-			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-			var data = imageData.data;
-	
-			const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
-			const martini = new Martini(gridSize);
-			const tile = martini.createTile(terrain);
-			const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
-	
-			const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
-	
-			this.geometry = new BufferGeometry();
-			this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
-			this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
-			this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
-			this.geometry.rotateX(Math.PI);
-	
-			var texture = new Texture(image);
-			texture.generateMipmaps = false;
-			texture.format = RGBFormat;
-			texture.magFilter = NearestFilter;
-			texture.minFilter = NearestFilter;
-			texture.needsUpdate = true;
-			this.material.userData.heightMap.value = texture;
-		}
+		const tileSize = image.width;
+		const gridSize = tileSize + 1;
+		var canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
+
+		var context = canvas.getContext('2d');
+		context.imageSmoothingEnabled = false;
+		context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
 		
+		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+		var data = imageData.data;
+
+		const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+		const martini = new Martini(gridSize);
+		const tile = martini.createTile(terrain);
+			const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
+
+		const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+
+		this.geometry = new BufferGeometry();
+		this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+		this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
+		this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
+		this.geometry.rotateX(Math.PI);
+
+		var texture = new Texture(image);
+		texture.generateMipmaps = false;
+		texture.format = RGBFormat;
+		texture.magFilter = NearestFilter;
+		texture.minFilter = NearestFilter;
+		texture.needsUpdate = true;
+		this.material.userData.heightMap.value = texture;
+	}
+	
 	}
 	
 	/**

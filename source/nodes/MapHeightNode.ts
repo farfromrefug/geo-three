@@ -4,6 +4,8 @@ import {MapNode} from './MapNode';
 import {MapPlaneNode} from './MapPlaneNode';
 import {UnitsUtils} from '../utils/UnitsUtils';
 import {MapView} from '../MapView';
+import {MapNodeHeightGeometry} from '../geometries/MapNodeHeightGeometry';
+import {CanvasUtils} from '../utils/CanvasUtils';
 
 /**
  * Represents a height map tile node that can be subdivided into other height nodes.
@@ -85,7 +87,7 @@ export class MapHeightNode extends MapNode
 			texture.magFilter = LinearFilter;
 			texture.minFilter = LinearFilter;
 			texture.needsUpdate = true;
-	
+
 			// @ts-ignore
 			this.material.map = texture;
 		}
@@ -222,31 +224,18 @@ export class MapHeightNode extends MapNode
 	 * @returns Returns a promise indicating when the geometry generation has finished.
 	 */
 	public onHeightImage(image): void
-	{
-		const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
-		const vertices = geometry.attributes.position.array as number[];
-
-		const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
-
-		const context = canvas.getContext('2d');
-		context.imageSmoothingEnabled = false;
-		context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
-
-		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-		const data = imageData.data;
-		for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) 
 		{
-			const r = data[i];
-			const g = data[i + 1];
-			const b = data[i + 2];
+			const canvas = CanvasUtils.createOffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
 
-			// The value will be composed of the bits RGB
-			const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+			const context = canvas.getContext('2d');
+			context.imageSmoothingEnabled = false;
+			context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
 
-			vertices[j + 1] = value;
-		}
+			const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-		this.geometry = geometry;
+			const geometry = new MapNodeHeightGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize, true, 10.0, imageData, true);
+
+			this.geometry = geometry;
 		
 	}
 

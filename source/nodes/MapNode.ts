@@ -391,8 +391,15 @@ export abstract class MapNode extends Mesh
 			texture.needsUpdate = true;
 			// @ts-ignore
 			this.material.map = texture;
+		}).catch((err) => 
+		{
+			console.error('error fetching image', err);
 		}).finally(() => 
 		{
+			if (!this.mapView) 
+			{
+				return;
+			}
 			this.textureLoaded = true;
 			this.nodeReady();
 		});

@@ -1,12 +1,11 @@
-import {Box3, BufferAttribute, BufferGeometry, DoubleSide, Float32BufferAttribute, MeshPhongMaterial, NearestFilter, Points, RGBFormat, ShaderMaterial, Texture, TextureLoader, Uint32BufferAttribute, Vector2, Vector3} from 'three';
-
+import decode, {DECODING_STEPS} from '@here/quantized-mesh-decoder';
+import {Box3, BufferAttribute, BufferGeometry, DoubleSide, Float32BufferAttribute, MeshPhongMaterial, Points, ShaderMaterial, Texture, TextureLoader, Vector2, Vector3} from 'three';
 import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapNode} from '../source/nodes/MapNode';
-import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import decode, {DECODING_STEPS} from '@here/quantized-mesh-decoder';
-import {drawTexture, exageration, mapMap, drawNormals, debug, elevationDecoder, featuresByColor, debugFeaturePoints, render, wireframe, shouldComputeNormals, FAR, GEOMETRY_SIZE} from './app';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
+import {debugFeaturePoints, exageration, FAR, featuresByColor, requestRenderIfNotRequested} from './app';
+
 export let currentColor = 0xffffff;
 
 const container = new Box3(
@@ -171,6 +170,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 	public static geometrySize = 16;
 
 	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
+
 	/**
 	* Empty texture used as a placeholder for missing textures.
 	*/
@@ -241,7 +241,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 	public exageration = 1.0;
 
 
-	public material: MeshPhongMaterial
+	public material: MeshPhongMaterial;
 
 	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0)
 	{
@@ -354,13 +354,14 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 			{
 				return;
 			}
-			//@ts-ignore
+			// @ts-ignore
 			this.mapView.heightProvider.fetchPeaks(this.level, this.x, this.y).then((result: any[]) => 
 			{
 				result = result.filter(
-					(f: { properties: { name: any; class: string; }; }) => { return f.properties.name
-						//  && f.properties.class === 'peak' 
-						 && f.properties['ele'] !== undefined; }
+					(f: { properties: { name: any; class: string; }; }) => 
+					{
+						return f.properties.name && f.properties['ele'] !== undefined; 
+					}
 				);
 				
 				if (result.length > 0) 
@@ -507,7 +508,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 					}
 				}
 
-				render(true);
+				requestRenderIfNotRequested(true);
 			});
 
 		}

@@ -14,4 +14,9 @@ export class EmptyProvider extends MapProvider
 	{
 		return Promise.resolve(null);
 	}
+
+	public cancelTile(zoom: number, x: number, y: number): void 
+	{
+		
+	}
 }

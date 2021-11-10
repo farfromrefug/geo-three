@@ -4,17 +4,17 @@ import {Color, OrthographicCamera, Texture, Mesh, Scene, ShaderMaterial, PlaneBu
 
 export default class Magnify3d 
 {
-   public zoomTarget
+	public zoomTarget;
 
-   public magnifyMaterial: ShaderMaterial
+	public magnifyMaterial: ShaderMaterial;
 
-	public magnifyScene
+	public magnifyScene;
 
-	public camera
+	public camera;
 
-	public outlineColor
+	public outlineColor;
 
-	public size = new Vector2()
+	public size = new Vector2();
 
 	public constructor() 
 	{

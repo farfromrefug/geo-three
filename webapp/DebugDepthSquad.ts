@@ -1,6 +1,6 @@
-import { Mesh, PlaneBufferGeometry, ShaderMaterial, Vector2, Vector4 } from "three";
+import {Mesh, PlaneBufferGeometry, ShaderMaterial, Vector2, Vector4} from 'three';
 
-const defaultQuad = new PlaneBufferGeometry(2,2,1,1);
+const defaultQuad = new PlaneBufferGeometry(2, 2, 1, 1);
 
 const defaultVertexShader = `
 	
@@ -38,50 +38,59 @@ void main(){
 `;
 
 
-export default class ScreenQuad extends Mesh{
-	top: string | number;
-	left: string | number;
-	width: string | number;
-	height: string | number;
+export default class ScreenQuad extends Mesh
+{
+	public top: string | number;
+
+	public left: string | number;
+
+	public width: string | number;
+
+	public height: string | number;
+
 	private _pixels: boolean[];
-	private _componentSetters: ((v: any) => void)[];
+
+	private _componentSetters: ((v: any)=> void)[];
+
 	private _components: string[];
-	screenSize: any;
-	material:THREE.ShaderMaterial
-	constructor({
+
+	public screenSize: any;
+
+	public material: THREE.ShaderMaterial;
+
+	public constructor({
 	
-		width = 1,        	//100%
-		height = 1,			//100%
+		width = 1, // 100%
+		height = 1,			// 100%
 		top = 0,			
 		left = 0,
 		texture = null,
 		fragmentShader = false
 	
-	}:{width?:string|number, height?:string|number, top?:string|number, left?:string|number, fragmentShader? :string|boolean, texture?:any} = {}) {
+	}: {width?: string|number, height?: string|number, top?: string|number, left?: string|number, fragmentShader?: string|boolean, texture?: any} = {}) 
+	{
 	
-		super( defaultQuad , new ShaderMaterial({
+		super( defaultQuad, new ShaderMaterial({
 
-			uniforms:{
-				uTexture:{
+			uniforms: {
+				uTexture: {
 					// type:'t',
 					value: texture
 				},
-				cameraNear:{
+				cameraNear: {
 					// type:'t',
 					value: 0
 				},
-				cameraFar:{
-					value: 0
-				},
-				uSize:{
+				cameraFar: {value: 0},
+				uSize: {
 					// type:'v4',
-					value:new Vector4(1,1,0,0)
+					value: new Vector4(1, 1, 0, 0)
 				}
 			},
 
 			vertexShader: defaultVertexShader,
 
-			fragmentShader: fragmentShader ? fragmentShader  as string : defaultFragmentShader,
+			fragmentShader: fragmentShader ? fragmentShader as string : defaultFragmentShader,
 
 			depthWrite: false
 
@@ -95,8 +104,8 @@ export default class ScreenQuad extends Mesh{
 		this.height = height;
 
 
-		//cleanup
-		this._pixels = [false,false,false,false]; //w h t l 
+		// cleanup
+		this._pixels = [false, false, false, false]; // w h t l 
 
 		this._componentSetters = [
 			this.setWidth,
@@ -112,29 +121,32 @@ export default class ScreenQuad extends Mesh{
 			'left'
 		];
 
-		this.screenSize = new Vector2( 1 , 1 );
+		this.screenSize = new Vector2( 1, 1 );
 			
-		this.setSize( width , height );
+		this.setSize( width, height );
 
-		this.setOffset( top , left );
+		this.setOffset( top, left );
 
 	}
 
-	setScreenSize( width , height ){
+	public setScreenSize( width, height ): void
+	{
 
 		// this.material.uniforms.uScreenSize.value.set( width , height , 1 / width , 1 / height );
-		this.screenSize.set( width , height );
+		this.screenSize.set( width, height );
 
-		this._pixels.forEach( ( p , pi )=>{
+		this._pixels.forEach( ( p, pi ) => 
+		{
 
-			//if a component is set in pixels, update the uniform 
-			if ( p ) this._componentSetters[ pi ].call(this , this[ this._components[pi] ] );  
+			// if a component is set in pixels, update the uniform 
+			if ( p ) {this._componentSetters[pi].call(this, this[this._components[pi]] );}  
 			
 		});
 
 	}
 
-	setSize( width , height ){
+	public setSize( width, height ): void
+	{
 
 
 		this.setWidth( width );
@@ -142,17 +154,21 @@ export default class ScreenQuad extends Mesh{
 
 	}
 
-	setWidth( v ) {
+	public setWidth( v ): void
+	{
 
 		this.width = v;
 
-		if( isNaN( v ) ){
+		if ( isNaN( v ) )
+		{
 
 			this.material.uniforms.uSize.value.x = parseInt( v ) / this.screenSize.x;
 
 			this._pixels[0] = true;
 
-		} else {
+		}
+		else 
+		{
 
 			this.material.uniforms.uSize.value.x = v;
 
@@ -162,17 +178,21 @@ export default class ScreenQuad extends Mesh{
 
 	}
 
-	setHeight( v ){
+	public setHeight( v ): void
+	{
 
 		this.height = v;
 
-		if( isNaN( v ) ){
+		if ( isNaN( v ) )
+		{
 
 			this.material.uniforms.uSize.value.y = parseInt( v ) / this.screenSize.y;
 
 			this._pixels[1] = true;
 
-		} else {
+		}
+		else 
+		{
 
 			this.material.uniforms.uSize.value.y = v;
 
@@ -182,7 +202,8 @@ export default class ScreenQuad extends Mesh{
 
 	}
 
-	setOffset( top , left ){
+	public setOffset( top, left ): void
+	{
 
 		// this.material.uniforms.uSize.value.z = top;
 
@@ -193,18 +214,22 @@ export default class ScreenQuad extends Mesh{
 
 	}
 
-	setTop( v ) {
+	public setTop( v ): void
+	{
 
 
 		this.top = v;
 
-		if( isNaN( v ) ){
+		if ( isNaN( v ) )
+		{
 
 			this.material.uniforms.uSize.value.z = parseInt( v ) / this.screenSize.y;
 
 			this._pixels[2] = true;
 
-		} else {
+		}
+		else 
+		{
 
 			this.material.uniforms.uSize.value.z = v;
 
@@ -214,18 +239,22 @@ export default class ScreenQuad extends Mesh{
 
 	}
 
-	setLeft( v ){
+	public setLeft( v ): void
+	{
 
 
 		this.left = v;
 
-		if( isNaN( v ) ){
+		if ( isNaN( v ) )
+		{
 
 			this.material.uniforms.uSize.value.w = parseInt( v ) / this.screenSize.x;
 
 			this._pixels[3] = true;
 
-		} else {
+		}
+		else 
+		{
 
 			this.material.uniforms.uSize.value.w = v;
 

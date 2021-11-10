@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
       "baseUrl": ".",
-      "target": "es2015",
+      "target": "es2019",
       "lib": ["dom", "dom.iterable", "esnext"],
       "allowJs": true,
       "skipLibCheck": true,
@@ -16,6 +16,6 @@
       "jsx": "preserve"
     },
     "exclude": ["node_modules"],
-    "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "SunLight.ts"]
+    "include": ["**/*.ts"]
   }
   

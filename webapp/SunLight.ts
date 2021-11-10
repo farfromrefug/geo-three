@@ -6,40 +6,40 @@ export class SunLight extends Object3D
 {
 	// Latitude and longtitude of the current location on the world
 	// Measured as decimal degrees. North and east is positive
-	coordinates
+	coordinates;
 
-		// The unit vector that is pointing the north in the scene
-		north
+	// The unit vector that is pointing the north in the scene
+	north;
 
-		// The unit vector that is pointing the east in the scene
-		east
+	// The unit vector that is pointing the east in the scene
+	east;
 
-		// The unit vector that is pointing the ground in the scene, same as gravity
-		nadir
+	// The unit vector that is pointing the ground in the scene, same as gravity
+	nadir;
 
-	type
+	type;
 
 	// The distance of the directional light from this object and it's target.
 	// the given north vector is multiplied with this value and the resulting
 	// vector is the displacement of the directional light from the target.
-	sun_distance
+	sun_distance;
 
-		// The azimuth of the sun. Starts from the north, clockwise. In radians.
-		azimuth
+	// The azimuth of the sun. Starts from the north, clockwise. In radians.
+	azimuth;
 
-		// The elevation of the sun. Starts from the horizon. In radians.
-		elevation
+	// The elevation of the sun. Starts from the horizon. In radians.
+	elevation;
 
-		// Local date and time
-		localDate: Date
+	// Local date and time
+	localDate: Date;
 
-		// The directional light which is used as the sun light
-		directionalLight: DirectionalLight
+	// The directional light which is used as the sun light
+	directionalLight: DirectionalLight;
 
-		// The directional light in js is managed by a directional vector.
-		// To make life easier, I'm adding the light as a child to this hinge object
-		// and rotating this object in order to set the light's direction
-	hingeObject
+	// The directional light in js is managed by a directional vector.
+	// To make life easier, I'm adding the light as a child to this hinge object
+	// and rotating this object in order to set the light's direction
+	hingeObject;
 
 	constructor(coordinates_, north_, east_, nadir_, sun_distance_ = 1.0) 
 	{

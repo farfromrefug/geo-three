@@ -2098,8 +2098,9 @@ function isSelectedFeature(f)
 	return selectedItem && f.properties.name === selectedItem.properties.name && f.properties.ele === selectedItem.properties.ele;
 }
 
-function getDistanceToMouse(f) {
-	return Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2))
+function getDistanceToMouse(f) 
+{
+	return Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
 }
 function drawFeatures() 
 {

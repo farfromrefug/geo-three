@@ -1,4 +1,4 @@
-import {MapProvider} from './MapProvider';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -9,7 +9,7 @@ import {MapProvider} from './MapProvider';
  * API Reference
  *  - https://www.maptiler.com/
  */
-export class MapTilerProvider extends MapProvider 
+export class MapTilerProvider extends RasterMapProvider 
 {
 	/**
 	 * Server API access token.
@@ -41,7 +41,7 @@ export class MapTilerProvider extends MapProvider
 
 	public constructor(apiKey, category, style, format) 
 	{
-		super();
+		super('https://api.maptiler.com/');
 
 		this.apiKey = apiKey !== undefined ? apiKey : '';
 
@@ -54,21 +54,8 @@ export class MapTilerProvider extends MapProvider
 		this.resolution = 512;
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any> 
+	protected buildURL(zoom, x, y): string
 	{
-		return new Promise((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-			image.src = 'https://api.maptiler.com/' + this.category + '/' + this.style + '/' + zoom + '/' + x + '/' + y + '.' + this.format + '?key=' + this.apiKey;
-		});
+		return this.address + this.category + '/' + this.style + '/' + zoom + '/' + x + '/' + y + '.' + this.format + '?key=' + this.apiKey;
 	}
 }

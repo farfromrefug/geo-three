@@ -1,4 +1,4 @@
-import {MapProvider} from './MapProvider';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -7,7 +7,7 @@ import {MapProvider} from './MapProvider';
  * API Reference
  *  - https://developer.here.com/documentation/map-tile/topics/example-satellite-map.html
  */
-export class HereMapsProvider extends MapProvider 
+export class HereMapsProvider extends RasterMapProvider 
 {
 	/**
 	 * Path to map tile API.
@@ -122,26 +122,11 @@ export class HereMapsProvider extends MapProvider
 
 	public getMetaData(): void {}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	protected buildURL(zoom, x, y): string
 	{
 		this.nextServer();
-
-		return new Promise((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-
-			image.src = 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +
-				this.version + '/' + this.scheme + '/' + zoom + '/' + x + '/' + y + '/' +
-				this.size + '/' + this.format + '?app_id=' + this.appId + '&app_code=' + this.appCode;
-		});
+		return 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +
+		this.version + '/' + this.scheme + '/' + zoom + '/' + x + '/' + y + '/' +
+		this.size + '/' + this.format + '?app_id=' + this.appId + '&app_code=' + this.appCode;
 	}
 }

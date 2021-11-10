@@ -1,4 +1,4 @@
-import {MapProvider} from './MapProvider';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -6,14 +6,8 @@ import {MapProvider} from './MapProvider';
  *
  * Works with any service that uses a address/zoom/x/y.format URL for tile access.
  */
-export class OpenStreetMapsProvider extends MapProvider 
+export class OpenStreetMapsProvider extends RasterMapProvider 
 {
-	/**
-	* Map server address.
-	*
-	* By default the open OSM tile server is used.
-	*/
-	public address: string;
 
 	/**
 	* Map image tile format.
@@ -22,27 +16,12 @@ export class OpenStreetMapsProvider extends MapProvider
 
 	public constructor(address: string = 'https://a.tile.openstreetmap.org/')
 	{
-		super();
-
-		this.address = address;
+		super(address);
 		this.format = 'png';
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	protected buildURL(zoom, x, y): string
 	{
-		return new Promise<HTMLImageElement>((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-			image.src = this.address + zoom + '/' + x + '/' + y + '.' + this.format;
-		});
+		return this.address + zoom + '/' + x + '/' + y + '.' + this.format;
 	}
 }

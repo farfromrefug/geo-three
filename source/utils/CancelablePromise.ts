@@ -19,8 +19,13 @@ export class CancelablePromise<T>
 
 	public value: T;
 
-	public constructor(executor: (resolve: (value: T | PromiseLike<T>)=> void, reject: (reason?: any)=> void)=> void) 
+	protected cancelRunner: ()=> boolean;
+
+	protected rejectHandler;
+
+	public constructor(executor: (resolve: (value: T | PromiseLike<T>)=> void, reject: (reason?: any)=> void)=> void, cancelRunner?) 
 	{
+		this.cancelRunner = cancelRunner;
 		const resolve = (v): void =>
 		{
 			this.fulfilled = true;
@@ -33,7 +38,7 @@ export class CancelablePromise<T>
 			}
 		};
 
-		const reject = (reason): void =>
+		const reject = this.rejectHandler = (reason): void =>
 		{
 			this.rejected = true;
 			this.value = reason;
@@ -61,8 +66,16 @@ export class CancelablePromise<T>
 	 * @returns True if the promise is canceled successfully, false otherwise.
 	 */
 	public cancel(): boolean
-	{
-		// TODO <ADD CODE HERE>
+	{	
+		if (this.cancelRunner) 
+		{
+			if (!this.cancelRunner()) 
+			{
+				this.rejectHandler('cancelled');
+
+			}
+			return true;
+		}
 		return false;
 	}
 

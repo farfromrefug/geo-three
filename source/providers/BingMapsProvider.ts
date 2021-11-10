@@ -1,5 +1,5 @@
-import {MapProvider} from './MapProvider';
 import {XHRUtils} from '../utils/XHRUtils';
+import RasterMapProvider from './RasterMapProvider';
 
 /**
  * Bing maps tile provider.
@@ -9,7 +9,7 @@ import {XHRUtils} from '../utils/XHRUtils';
  *  - https://msdn.microsoft.com/en-us/library/mt823633.aspx (Directly accessing the Bing Maps tiles)
  *  - https://www.bingmapsportal.com/
  */
-export class BingMapsProvider extends MapProvider 
+export class BingMapsProvider extends RasterMapProvider 
 {
 	/**
 	 * Maximum zoom level allows by the provider.
@@ -130,21 +130,8 @@ export class BingMapsProvider extends MapProvider
 		return quad;
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	protected buildURL(zoom, x, y): string
 	{
-		return new Promise((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-			image.src = 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
-		});
+		return 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
 	}
 }

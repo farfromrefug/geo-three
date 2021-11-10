@@ -1,5 +1,6 @@
-import {MapProvider} from './MapProvider';
+import {CancelablePromise} from '../utils/CancelablePromise';
 import {XHRUtils} from '../utils/XHRUtils';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -8,7 +9,7 @@ import {XHRUtils} from '../utils/XHRUtils';
  * API Reference
  *  - https://www.mapbox.com/
  */
-export class MapBoxProvider extends MapProvider 
+export class MapBoxProvider extends RasterMapProvider 
 {
 	public static ADDRESS: string = 'https://api.mapbox.com/';
 
@@ -124,29 +125,28 @@ export class MapBoxProvider extends MapProvider
 		});
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): CancelablePromise<any>
 	{
-		return new Promise((resolve, reject) => 
+		if (this.mode === MapBoxProvider.STYLE) 
 		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
+			return XHRUtils.loadImageCancelable(MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken);
+		}
+		else 
+		{
+			return XHRUtils.loadImageCancelable(MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken);
 
-			if (this.mode === MapBoxProvider.STYLE) 
-			{
-				image.src = MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken;
-			}
-			else 
-			{
-				image.src = MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken;
-			}
-		});
+		}
+	}
+
+	protected buildURL(zoom, x, y): string
+	{
+		if (this.mode === MapBoxProvider.STYLE) 
+		{
+			return MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken;
+		}
+		else 
+		{
+			return MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken;
+		}
 	}
 }

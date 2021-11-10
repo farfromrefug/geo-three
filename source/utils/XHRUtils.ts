@@ -1,3 +1,5 @@
+import {CancelablePromise} from './CancelablePromise';
+
 /**
  * XHR utils contains public static methods to allow easy access to services via XHR.
  */
@@ -143,5 +145,33 @@ export class XHRUtils
 		}
 
 		return xhr;
+	}
+
+	public static loadImageCancelable(url: string): CancelablePromise<any> 
+	{
+		return new CancelablePromise(function(resolve, reject)
+		{
+			const image = this.imageHandler = document.createElement('img');
+			image.onload = () =>
+			{
+				this.imageHandler = null;
+				resolve(image);
+			};
+			image.onerror = () =>
+			{
+				this.imageHandler = null;
+				reject();
+			};
+			image.crossOrigin = 'Anonymous';
+			image.src = url;
+		}, function() 
+		{
+			if (this.imageHandler) 
+			{
+
+				this.imageHandler.src = null;
+				this.imageHandler = null;
+			}
+		});
 	}
 }

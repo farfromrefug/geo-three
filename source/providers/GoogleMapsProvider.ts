@@ -1,5 +1,6 @@
-import {MapProvider} from './MapProvider';
+import {CancelablePromise} from '../utils/CancelablePromise';
 import {XHRUtils} from '../utils/XHRUtils';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -11,7 +12,7 @@ import {XHRUtils} from '../utils/XHRUtils';
  *  - https://developers.google.com/maps/documentation/javascript/coordinates
  *  - https://developers.google.com/maps/documentation/tile
  */
-export class GoogleMapsProvider extends MapProvider 
+export class GoogleMapsProvider extends RasterMapProvider 
 {
 	/**
 	 * Server API access token.
@@ -55,7 +56,7 @@ export class GoogleMapsProvider extends MapProvider
 
 	public constructor(apiToken: string) 
 	{
-		super();
+		super('https://www.googleapis.com/tile/v1/tiles/');
 
 		this.apiToken = apiToken !== undefined ? apiToken : '';
 
@@ -89,21 +90,13 @@ export class GoogleMapsProvider extends MapProvider
 		});
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	public fetchImage(zoom: number, x: number, y: number): CancelablePromise<any>
 	{
-		return new Promise((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-			image.src = 'https://www.googleapis.com/tile/v1/tiles/' + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken;
-		});
+		return XHRUtils.loadImageCancelable('https://www.googleapis.com/tile/v1/tiles/' + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken);
+	}
+
+	protected buildURL(zoom, x, y): string
+	{
+		return this.address + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken;
 	}
 }

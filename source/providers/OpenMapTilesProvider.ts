@@ -1,5 +1,5 @@
-import {MapProvider} from './MapProvider';
 import {XHRUtils} from '../utils/XHRUtils';
+import RasterMapProvider from './RasterMapProvider';
 
 
 /**
@@ -8,15 +8,8 @@ import {XHRUtils} from '../utils/XHRUtils';
  * API Reference
  *  - https://openmaptiles.org/
  */
-export class OpenMapTilesProvider extends MapProvider 
+export class OpenMapTilesProvider extends RasterMapProvider 
 {
-	/**
-	 * Map server address.
-	 *
-	 * By default the open OSM tile server is used.
-	 */
-	public address: string;
-
 	/**
 	 * Map image tile format.
 	 */
@@ -33,7 +26,7 @@ export class OpenMapTilesProvider extends MapProvider
 
 	public constructor(address: string, format: string = 'png', theme: string = 'klokantech-basic') 
 	{
-		super();
+		super(address);
 		
 		this.address = address;
 		this.format = format;
@@ -56,21 +49,8 @@ export class OpenMapTilesProvider extends MapProvider
 		});
 	}
 
-	public fetchImage(zoom: number, x: number, y: number): Promise<any>
+	protected buildURL(zoom, x, y): string
 	{
-		return new Promise((resolve, reject) => 
-		{
-			const image = document.createElement('img');
-			image.onload = function() 
-			{
-				resolve(image);
-			};
-			image.onerror = function() 
-			{
-				reject();
-			};
-			image.crossOrigin = 'Anonymous';
-			image.src = this.address + 'styles/' + this.theme + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
-		});
+		return this.address + 'styles/' + this.theme + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
 	}
 }

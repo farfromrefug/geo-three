@@ -356,23 +356,14 @@ export abstract class MapNode extends Mesh
 
 	public setMaterialValues(values): void
 	{
-		const mat = this.material;
+		// @ts-ignore
+		const userData = this.material.userData;
 		Object.keys(values).forEach((k) => 
 		{
 			// eslint-disable-next-line no-prototype-builtins
-			if (mat.hasOwnProperty(k)) 
+			if (userData.hasOwnProperty(k)) 
 			{
-				mat[k] = values[k];
-			}
-			else 
-			{
-				// @ts-ignore
-				// eslint-disable-next-line no-prototype-builtins
-				if (mat.userData.hasOwnProperty(k)) 
-				{
-				// @ts-ignore
-					mat.userData[k].value = values[k];
-				}
+				userData[k].value = values[k];
 			}
 		});
 	}

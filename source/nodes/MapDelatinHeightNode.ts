@@ -317,7 +317,7 @@ export class MapDelatinHeightNode extends MapHeightNode
 
 		return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(async(image) => 
 		{
-			this.onHeightImage(image);
+			await this.onHeightImage(image);
 		}).finally(() => 
 		{
 			this.heightLoaded = true;

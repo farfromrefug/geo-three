@@ -170,7 +170,7 @@ export class MapHeightNode extends MapNode
 
 	public heightListeners = []
 
-	protected handleParentOverZoomTile(resolve?): void 
+	protected async handleParentOverZoomTile(resolve?): Promise<void> 
 	{
 		throw new Error('not implemented');
 	}
@@ -214,7 +214,7 @@ export class MapHeightNode extends MapNode
 			else 
 			{
 				const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
-				this.onHeightImage(image);
+				await this.onHeightImage(image);
 			}
 
 		}
@@ -236,18 +236,18 @@ export class MapHeightNode extends MapNode
 	 * @returns Returns a promise indicating when the geometry generation has finished.
 	 */
 	public onHeightImage(image): void
-		{
-			const canvas = CanvasUtils.createOffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
+	{
+		const canvas = CanvasUtils.createOffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
 
-			const context = canvas.getContext('2d');
-			context.imageSmoothingEnabled = false;
-			context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
+		const context = canvas.getContext('2d');
+		context.imageSmoothingEnabled = false;
+		context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
 
-			const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-			const geometry = new MapNodeHeightGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize, true, 10.0, imageData, true);
+		const geometry = new MapNodeHeightGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize, true, 10.0, imageData, true);
 
-			this.geometry = geometry;
+		this.geometry = geometry;
 		
 	}
 

@@ -131,7 +131,7 @@ export class MapHeightNodeShader extends MapHeightNode
 		}
 	}
 
-	protected handleParentOverZoomTile(resolve?): void
+	protected async handleParentOverZoomTile(resolve?): Promise<any>
 	{
 		const tileBox = tileToBBOX([this.x, this.y, this.level]);
 		const parent = this.parent as MapHeightNodeShader;
@@ -145,7 +145,7 @@ export class MapHeightNodeShader extends MapHeightNode
 		this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
 
 		this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
-		this.onHeightImage(parent.material.userData.heightMap.value);
+		await this.onHeightImage(parent.material.userData.heightMap.value);
 
 		if (resolve) 
 		{

@@ -5,7 +5,7 @@ import {Martini} from './Martini';
 import {MapHeightNode} from './MapHeightNode';
 import {MapNode} from './MapNode';
 import {CanvasUtils} from '../utils/CanvasUtils';
-import { UnitsUtils } from '../Main';
+import {UnitsUtils} from '../utils/UnitsUtils';
 
 /** 
  * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
@@ -264,38 +264,38 @@ export class MapMartiniHeightNode extends MapHeightNode
 	{
 		if (image) 
 		{
-		const tileSize = image.width;
-		const gridSize = tileSize + 1;
-		var canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
+			const tileSize = image.width;
+			const gridSize = tileSize + 1;
+			var canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
 
-		var context = canvas.getContext('2d');
-		context.imageSmoothingEnabled = false;
-		context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+			var context = canvas.getContext('2d');
+			context.imageSmoothingEnabled = false;
+			context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
 		
-		var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-		var data = imageData.data;
+			var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+			var data = imageData.data;
 
-		const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
-		const martini = new Martini(gridSize);
-		const tile = martini.createTile(terrain);
+			const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+			const martini = new Martini(gridSize);
+			const tile = martini.createTile(terrain);
 			const {vertices, triangles} = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
 
-		const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+			const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
 
-		this.geometry = new BufferGeometry();
-		this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
-		this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
-		this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
-		this.geometry.rotateX(Math.PI);
+			this.geometry = new BufferGeometry();
+			this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+			this.geometry.setAttribute('position', new Float32BufferAttribute( attributes.position.value, attributes.position.size));
+			this.geometry.setAttribute('uv', new Float32BufferAttribute( attributes.uv.value, attributes.uv.size));
+			this.geometry.rotateX(Math.PI);
 
-		var texture = new Texture(image);
-		texture.generateMipmaps = false;
-		texture.format = RGBFormat;
-		texture.magFilter = NearestFilter;
-		texture.minFilter = NearestFilter;
-		texture.needsUpdate = true;
-		this.material.userData.heightMap.value = texture;
-	}
+			var texture = new Texture(image);
+			texture.generateMipmaps = false;
+			texture.format = RGBFormat;
+			texture.magFilter = NearestFilter;
+			texture.minFilter = NearestFilter;
+			texture.needsUpdate = true;
+			this.material.userData.heightMap.value = texture;
+		}
 	
 	}
 	
@@ -311,7 +311,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 
 		return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(async(image) => 
 		{
-			this.onHeightImage(image);
+			return this.onHeightImage(image);
 		}).finally(() => 
 		{
 			this.heightLoaded = true;

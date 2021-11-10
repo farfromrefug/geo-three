@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES6",
+    "target": "es2019",
     "module": "ES6",
     "moduleResolution": "node",
     "outDir": "./build",
@@ -31,7 +31,8 @@
         "types": ["node"]
   },
   "include": [
-    "source/**/*"
+    "source/**/*",
+    "webapp/references.d.ts"
   ],
   "exclude": [
     "node_modules/**/*",

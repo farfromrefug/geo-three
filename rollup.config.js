@@ -1,9 +1,9 @@
 import strip from '@rollup/plugin-strip';
 import typescript from '@rollup/plugin-typescript';
-
-import { terser } from "rollup-plugin-terser";
+import {terser} from 'rollup-plugin-terser';
 import {nodeResolve} from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import replace from '@rollup/plugin-replace';
 
 
 export default [{
@@ -28,22 +28,24 @@ export default [{
 		}
 	]
 }, {
-		input: 'webapp/app.ts',
-		plugins: [
-			nodeResolve({
-				mainFields: ['browser', 'module', 'main'],
-			}),
-			commonjs(),
-			typescript({tsconfig: 'webapp/tsconfig.json'}),
-			strip({functions: ['assert.*', 'debug', 'alert']}),
-			terser()
-		],
-		output: [
-			{
-				esModule: false,
-				format: 'iife',
-				name: 'webapp',
-				file: 'example/app.js'
-			}
-		]
+	input: 'webapp/app.ts',
+	plugins: [
+		nodeResolve({mainFields: ['browser', 'module', 'main']}),
+		commonjs(),
+		typescript({tsconfig: 'webapp/tsconfig.json'}),
+		strip({functions: ['assert.*', 'debug', 'alert']}),
+		terser(),
+		replace({
+			'FORCE_MOBILE': 'false',
+			'EXTERNAL_APP': 'false'
+		})
+	],
+	output: [
+		{
+			esModule: false,
+			format: 'iife',
+			name: 'webapp',
+			file: 'example/app.js'
+		}
+	]
 }];

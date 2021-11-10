@@ -1,11 +1,9 @@
-import {LODRadial} from './LODRadial';
 import {Frustum, Matrix4, Vector3} from 'three';
 import {MapNode} from '../nodes/MapNode';
 import {MapHeightNode} from '../nodes/MapHeightNode';
 import {MapView} from '../MapView';
-import {UnitsUtils} from '../utils/UnitsUtils';
 
-import {bboxToTile} from '@mapbox/tilebelt'; 
+import {LODControl} from './LODControl';
 
 const projection = new Matrix4();
 const pov = new Vector3();
@@ -145,8 +143,21 @@ export class LODFrustum extends LODRadial
 		return toHandle;
 	}
 
-	public updateLOD(view: MapView, camera, renderer, scene): void
+	private lastMatrix: Matrix4
+
+	private handled = new Set<MapNode>();
+
+	public updateLOD(view: MapView, camera, renderer, scene, force = false): void
 	{
+		if (!force && this.lastMatrix && this.lastMatrix.equals(camera.matrixWorldInverse) ) 
+		{
+			return;
+		}
+		if (!this.lastMatrix) 
+		{
+			this.lastMatrix = new Matrix4();
+		}
+		this.lastMatrix.copy(camera.matrixWorldInverse);
 		projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projection);
 		
@@ -155,7 +166,9 @@ export class LODFrustum extends LODRadial
 		const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
 
 		const toHandle = this.getChildrenToTraverse(view.children[0]);
-		// console.log('updateLOD', toHandle.length);
-		toHandle.forEach( (node) => {return this.handleNode(node, camera, minZoom, maxZoom);});
+		// console.log('updateLOD', toHandle.size);
+		let handled = this.handled;
+		toHandle.forEach( (node) => {return this.handleNode(node, handled, camera, minZoom, maxZoom);});
+		handled.clear();
 	}
 }

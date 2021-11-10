@@ -5,6 +5,7 @@ import Delatin from 'delatin';
 import {MapHeightNode} from './MapHeightNode';
 import {MapNode} from './MapNode.js';
 import {UnitsUtils} from '../utils/UnitsUtils';
+import {CanvasUtils} from '../utils/CanvasUtils';
 
 /** 
  * Represents a height map tile node using the RTIN method from the paper "Right Triangulated Irregular Networks".
@@ -264,7 +265,7 @@ export class MapDelatinHeightNode extends MapHeightNode
 		{
 			const tileSize = image.width;
 			const gridSize = tileSize + 1;
-			var canvas = new OffscreenCanvas(tileSize, tileSize);
+			const canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
 	
 			var context = canvas.getContext('2d');
 			context.imageSmoothingEnabled = false;

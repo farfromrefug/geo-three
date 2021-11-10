@@ -42,7 +42,7 @@ function tilesToZoom(tiles, zoom): any[]
 
 export default abstract class RasterMapProvider extends MapProvider 
 {
-	public address: string
+	public address: string;
 
 	public constructor(address?: string)
 	{

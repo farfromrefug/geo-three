@@ -1,5 +1,4 @@
-const loadQueue = require('load-queue');
-
+import Queue from '@akylas/load-queue';
 class LruCache<T> 
 {
 	private values: Map<string, T> = new Map<string, T>();
@@ -103,13 +102,13 @@ const runningFetchOptions: {[k: string]: {
 	[k: string]: any
     fetchOptions?: FetchOptions;
 }} = {};
-const queue = new loadQueue.Queue(TaskLoader, 50);
+const queue = new Queue(TaskLoader, 50);
 
 export class FetchLoader
 {
 	public options: FetchLoaderOptions;
 
-	public cache: LruCache<any>
+	public cache: LruCache<any>;
 
 	public constructor(options: FetchLoaderOptions = {}) 
 	{
@@ -163,7 +162,7 @@ export class FetchLoader
 
 export class ImageBitmapLoader extends FetchLoader
 {
-	public cache: LruCache<ImageBitmap>
+	public cache: LruCache<ImageBitmap>;
 
 	public constructor(options ={}) 
 	{

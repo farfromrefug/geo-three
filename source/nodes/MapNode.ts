@@ -2,6 +2,23 @@ import {Group, LinearFilter, Material, Mesh, MeshPhongMaterial, Object3D, RGBFor
 import {MapView} from '../MapView';
 import {CanvasUtils} from '../utils/CanvasUtils';
 
+
+export function clearCacheRecursive(item: MapNode): void
+{
+	if (item.childrenCache) 
+	{
+		item.childrenCache.forEach(clearCacheRecursive);
+		item.childrenCache = null;
+		item.nodesLoaded = 0;
+	}
+	if (item.children?.length > 0) 
+	{
+		item.children.forEach((c) => {return c instanceof MapNode && clearCacheRecursive(c);});
+		item.children = [];
+	}
+	item.dispose();
+}
+
 /**
  * Represents a map tile node inside of the tiles quad-tree
  *
@@ -42,6 +59,7 @@ export abstract class MapNode extends Mesh
 	 * Tile y position.
 	 */
 	public y: number;
+
 
 	/**
 	 * Variable indicating if it ready to be drawn
@@ -165,9 +183,10 @@ export abstract class MapNode extends Mesh
 		this.add(this.objectsHolder);
 		if (autoLoad) 
 		{
-		this.initialize();
+			this.initialize();
+		}
 	}
-	}
+
 
 	/**
 	 * Initialize resources that require access to data from the MapView.
@@ -176,6 +195,17 @@ export abstract class MapNode extends Mesh
 	 */
 	public initialize(): void 
 	{
+	}
+
+	public dispose(): void 
+	{
+		// console.log('dispose', this.level, this.x, this.y);
+		this.mapView.provider.cancelTile(this.level, this.x, this.y);
+		this.geometry = null;
+		this.material = null;
+		this.objectsHolder = null;
+		this.mapView = null;
+		this.parentNode = null;
 	}
 
 	/**
@@ -229,6 +259,7 @@ export abstract class MapNode extends Mesh
 		}
 	}
 
+
 	/**
 	 * Simplify node, remove all children from node, store them in cache.
 	 *
@@ -236,21 +267,25 @@ export abstract class MapNode extends Mesh
 	 *
 	 * This base method assumes that the node implementation is based off Mesh and that the isMesh property is used to toggle visibility.
 	 */
-	public simplify(distance, far): MapNode[]
+	public simplify(distance, far): void
 	{
 		if (!this.subdivided) 
 		{
 			return;
 		}
-		let removed = [];
 		this.subdivided = false;
 
 		// try to find multiple rules to clean up memory
 		if (this.mapView.lowMemoryUsage || distance > far/100 || this.parentNode?.subdivided && this.parentNode?.parentNode?.subdivided) 
 		{
-			if (this.childrenCache && this.children.length > 1) 
+			if (this.children?.length) 
 			{
-				removed.push(...this.childrenCache);
+				this.children.forEach((c) => {return c instanceof MapNode && clearCacheRecursive(c);});
+				this.children = [];
+			}
+			if (this.childrenCache) 
+			{
+				this.childrenCache.forEach((c) => {return c instanceof MapNode && clearCacheRecursive(c);});
 				this.childrenCache = null;
 				this.nodesLoaded = 0;
 			}
@@ -264,16 +299,14 @@ export abstract class MapNode extends Mesh
 				{
 					if (c.childrenCache && c.children.length > 1) 
 					{
-						removed.push(...c.childrenCache);
 						c.childrenCache = null;
-						c.nodesLoaded = [];
+						c.nodesLoaded = 0;
 					}
 				});
 			}
 		}
 		this.show();
 		this.didSimplify();
-		return removed;
 	}
 
 	protected didSimplify(): void

@@ -72,6 +72,13 @@ export class MapHeightNode extends MapNode
 		return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
 	}
 
+
+	public dispose(): void
+	{
+		this.mapView.heightProvider.cancelTile(this.level, this.x, this.y);
+		super.dispose();
+	}
+
 	/**
 	 * Handle loaded texture
 	 *
@@ -113,7 +120,7 @@ export class MapHeightNode extends MapNode
 
 	public nodeReady(): void 
 	{
-		if (!this.heightLoaded || !this.textureLoaded) 
+		if (!this.mapView || !this.heightLoaded || !this.textureLoaded) 
 		{
 			return;
 		}
@@ -157,6 +164,8 @@ export class MapHeightNode extends MapNode
 		node.updateMatrixWorld(true);
 	}
 
+	public parentNode: MapHeightNode;
+
 	public parent: MapHeightNode;
 
 	public heightListeners = []
@@ -168,7 +177,7 @@ export class MapHeightNode extends MapNode
 
 	public async loadHeightGeometry(): Promise<any> 
 	{
-		if (this.isHeightReady) 
+		if (this.isHeightReady || !this.mapView) 
 		{
 			return;
 		}
@@ -183,10 +192,10 @@ export class MapHeightNode extends MapNode
 			const zoom = this.level;
 			if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) 
 			{
-				const parent = this.parent;
+				const parent = this.parentNode;
 				if (parent.heightLoaded ) 
 				{
-					this.handleParentOverZoomTile();
+					await this.handleParentOverZoomTile();
 				}
 				else 
 				{
@@ -211,10 +220,13 @@ export class MapHeightNode extends MapNode
 		}
 		finally 
 		{
-			this.heightLoaded = true;
-			this.heightListeners.forEach((l) => {return l();});
+			if (this.mapView) 
+			{
+				this.heightLoaded = true;
+				this.heightListeners.forEach((l) => {return l();});
+				this.nodeReady();
+			}
 			this.heightListeners = [];
-			this.nodeReady();
 		}
 	}
 

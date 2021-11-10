@@ -28,7 +28,7 @@
     "esModuleInterop": true,
         "importHelpers": false,
         "lib": ["dom"],
-        "types": ["node"]
+        "types": ["node", "offscreencanvas"]
   },
   "include": [
     "source/**/*",

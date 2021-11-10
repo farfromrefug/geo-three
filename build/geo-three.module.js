@@ -1,31 +1,275 @@
-import { BufferGeometry, Float32BufferAttribute, Mesh, Group, Texture, RGBFormat, LinearFilter, Vector2, MeshBasicMaterial, Vector3, MeshPhongMaterial, Matrix4, Quaternion, Vector4, NearestFilter, Raycaster, DoubleSide, Uint32BufferAttribute, Frustum, Color } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Mesh, Group, Texture, RGBFormat, LinearFilter, Vector2, Vector3, MeshBasicMaterial, MeshPhongMaterial, Matrix4, Quaternion, Vector4, NearestFilter, Raycaster, DoubleSide, Uint32BufferAttribute, Frustum, Color } from 'three';
 import { getChildren, tileToBBOX, pointToTile } from '@mapbox/tilebelt';
 
-/*! *****************************************************************************
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-***************************************************************************** */
-
-function __awaiter(thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
+class CancelablePromise {
+    constructor(executor, cancelRunner) {
+        this.fulfilled = false;
+        this.rejected = false;
+        this.called = false;
+        this.cancelRunner = cancelRunner;
+        const resolve = (v) => {
+            this.fulfilled = true;
+            this.value = v;
+            if (typeof this.onResolve === 'function') {
+                this.onResolve(this.value);
+                this.called = true;
+            }
+        };
+        const reject = this.rejectHandler = (reason) => {
+            this.rejected = true;
+            this.value = reason;
+            if (typeof this.onReject === 'function') {
+                this.onReject(this.value);
+                this.called = true;
+            }
+        };
+        try {
+            executor(resolve, reject);
+        }
+        catch (error) {
+            reject(error);
+        }
+    }
+    cancel() {
+        if (this.cancelRunner) {
+            if (!this.cancelRunner()) {
+                this.rejectHandler('cancelled');
+            }
+            return true;
+        }
+        return false;
+    }
+    then(callback) {
+        this.onResolve = callback;
+        if (this.fulfilled && !this.called) {
+            this.called = true;
+            this.onResolve(this.value);
+        }
+        return this;
+    }
+    catch(callback) {
+        this.onReject = callback;
+        if (this.rejected && !this.called) {
+            this.called = true;
+            this.onReject(this.value);
+        }
+        return this;
+    }
+    finally(callback) {
+        return this;
+    }
+    static resolve(val) {
+        return new CancelablePromise(function executor(resolve, _reject) {
+            resolve(val);
+        });
+    }
+    static reject(reason) {
+        return new CancelablePromise(function executor(resolve, reject) {
+            reject(reason);
+        });
+    }
+    static all(promises) {
+        const fulfilledPromises = [];
+        const result = [];
+        function executor(resolve, reject) {
+            promises.forEach((promise, index) => {
+                return promise
+                    .then((val) => {
+                    fulfilledPromises.push(true);
+                    result[index] = val;
+                    if (fulfilledPromises.length === promises.length) {
+                        return resolve(result);
+                    }
+                })
+                    .catch((error) => { return reject(error); });
+            });
+        }
+        return new CancelablePromise(executor);
+    }
 }
 
+class CanvasUtils {
+    static createOffscreenCanvas(width, height) {
+        try {
+            return new OffscreenCanvas(width, height);
+        }
+        catch (err) {
+            let canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            return canvas;
+        }
+    }
+}
+
+const loadQueue = require('load-queue');
+class LruCache {
+    constructor() {
+        this.values = new Map();
+        this.maxEntries = 20;
+    }
+    get(key) {
+        const hasKey = this.values.has(key);
+        let entry;
+        if (hasKey) {
+            entry = this.values.get(key);
+            this.values.delete(key);
+            this.values.set(key, entry);
+        }
+        return entry;
+    }
+    put(key, value) {
+        if (this.values.size >= this.maxEntries) {
+            const keyToDelete = this.values.keys().next().value;
+            this.values.delete(keyToDelete);
+        }
+        this.values.set(key, value);
+    }
+}
+class TaskLoader {
+    constructor(entry, success, failure) {
+        this.abortController = new AbortController();
+        this.load(entry, success, failure);
+        this.url = entry.url;
+    }
+    async load(entry, success, failure) {
+        try {
+            const options = runningFetchOptions[entry.url];
+            const fetchOptions = options.fetchOptions;
+            fetchOptions.signal = this.abortController.signal;
+            const res = await fetch(entry.url, fetchOptions);
+            let result;
+            switch ((fetchOptions === null || fetchOptions === void 0 ? void 0 : fetchOptions.output) || 'arraybuffer') {
+                case 'json':
+                    result = await res.json();
+                    break;
+                case 'blob':
+                    result = await res.blob();
+                    break;
+                case 'text':
+                    result = await res.text();
+                    break;
+                case 'imageBitmap': {
+                    const blob = await res.blob();
+                    result = await createImageBitmap(blob, options);
+                    break;
+                }
+                default:
+                    result = await res.arrayBuffer();
+                    break;
+            }
+            success(result);
+            delete runningFetchOptions[entry.url];
+        }
+        catch (err) {
+            failure(err);
+            delete runningFetchOptions[entry.url];
+        }
+    }
+    cancel() {
+        this.abortController.abort();
+    }
+}
+const runningFetchOptions = {};
+const queue = new loadQueue.Queue(TaskLoader, 50);
+class FetchLoader {
+    constructor(options = {}) {
+        this.cache = new LruCache();
+        this.options = options;
+    }
+    async load(url, requestOptions) {
+        if (url === undefined) {
+            url = '';
+        }
+        const cached = this.cache.get(url);
+        if (cached !== undefined) {
+            return cached;
+        }
+        const options = { ...this.options };
+        options.fetchOptions = { ...options.fetchOptions || {}, ...requestOptions || {} };
+        runningFetchOptions[url] = options;
+        return new Promise((resolve, reject) => {
+            queue.add(url, function (resUrl, res) {
+                if (res instanceof Error) {
+                    reject(res);
+                }
+                else {
+                    resolve(res);
+                }
+            }, reject);
+        }).then((res) => {
+            if (res) {
+                this.cache.put(url, res);
+            }
+            return res;
+        });
+    }
+    cancel(url) {
+        queue.cancel(url);
+    }
+}
+class ImageBitmapLoader extends FetchLoader {
+    constructor(options = {}) {
+        super({ premultiplyAlpha: 'none', colorSpaceConversion: 'none', ...options });
+        this.options.fetchOptions = this.options.fetchOptions || {};
+        if (!this.options.fetchOptions.output) {
+            this.options.fetchOptions.output = 'imageBitmap';
+        }
+    }
+}
+let bitmapLoaders = {};
+function getSharedImageBitmapLoader(options) {
+    const key = JSON.stringify(options || {});
+    if (!bitmapLoaders[key]) {
+        bitmapLoaders[key] = new ImageBitmapLoader(options);
+    }
+    return bitmapLoaders[key];
+}
+
+class MapProvider {
+    constructor() {
+        this.name = '';
+        this.minZoom = 0;
+        this.maxZoom = 20;
+        this.maxOverZoom = 0;
+        this.zoomDelta = 0;
+        this.minLevelForZoomDelta = 0;
+        this.bounds = [];
+        this.center = [];
+        this.fetchingTilesPromises = new Map();
+    }
+    get actualMaxZoom() {
+        return this.maxZoom + this.maxOverZoom;
+    }
+    fetchImage(zoom, x, y) {
+        return null;
+    }
+    getMetaData() { }
+    async fetchTileImage(zoom, x, y) {
+        const key = `${zoom}_${x}_${y}`;
+        const promise = this.fetchingTilesPromises[key] = this.fetchImage(zoom, x, y);
+        this.fetchingTilesPromises[key] = promise;
+        try {
+            return await promise;
+        }
+        finally {
+            delete this.fetchingTilesPromises[key];
+        }
+    }
+    cancelTile(zoom, x, y) {
+        const key = `${zoom}_${x}_${y}`;
+        const promise = this.fetchingTilesPromises[key];
+        if (promise) {
+            promise.cancel();
+            delete this.fetchingTilesPromises[key];
+        }
+    }
+    async fetchTile(zoom, x, y) {
+        return this.fetchTileImage(zoom, x, y);
+    }
+}
+
+const imageBitmapLoader = getSharedImageBitmapLoader({ imageOrientation: 'flipY', fetchOptions: { credentials: 'same-origin' } });
 function zoomTiles(zoomedTiles, zoom) {
     if (zoomedTiles[0][2] === zoom) {
         return zoomedTiles;
@@ -49,96 +293,141 @@ function tilesToZoom(tiles, zoom) {
     var newTiles = zoomTiles(tiles, zoom);
     return newTiles;
 }
-class MapProvider {
-    constructor() {
-        this.name = '';
-        this.minZoom = 0;
-        this.maxZoom = 20;
-        this.maxOverZoom = 0;
-        this.zoomDelta = 0;
-        this.minLevelForZoomDelta = 0;
-        this.bounds = [];
-        this.center = [];
+class RasterMapProvider extends MapProvider {
+    constructor(address) {
+        super();
+        this.address = address;
     }
-    get actualMaxZoom() {
-        return this.maxZoom + this.maxOverZoom;
+    getImageBitmapLoader() {
+        return imageBitmapLoader;
+    }
+    async fetchTileImage(zoom, x, y) {
+        const key = `${zoom}_${x}_${y}`;
+        if (zoom === 4 && x === 7 && y === 7) {
+            console.log('test', new Error().stack);
+        }
+        let promise;
+        if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
+            promise = this.fetchingTilesPromises[key] = this.fetchImage(zoom, x, y);
+        }
+        else {
+            const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => {
+                return valB[1] - valA[1] ||
+                    valA[0] - valB[0];
+            });
+            let promises;
+            promise = new CancelablePromise((resolve, reject) => {
+                Promise.all(promises = tiles.map((t) => { return this.fetchImage(t[2], t[0], t[1]); })).then((images) => {
+                    try {
+                        promises = null;
+                        images = images.filter((i) => { return Boolean(i); });
+                        if (!images || !images.length) {
+                            return resolve(null);
+                        }
+                        const width = images[0].width * Math.floor(this.zoomDelta * 2);
+                        const fullWidth = width / Math.sqrt(images.length);
+                        const canvas = CanvasUtils.createOffscreenCanvas(width, width);
+                        var context = canvas.getContext('2d');
+                        let tileY = tiles[0][1];
+                        let ix = 0;
+                        let iy = 0;
+                        let x, y;
+                        images.forEach((image, index) => {
+                            if (tileY !== tiles[index][1]) {
+                                tileY = tiles[index][1];
+                                ix = 0;
+                                iy += 1;
+                            }
+                            x = ix * fullWidth;
+                            y = iy * fullWidth;
+                            context.save();
+                            context.drawImage(image, x, y, fullWidth, fullWidth);
+                            context.restore();
+                            ix += 1;
+                        });
+                        resolve(createImageBitmap(canvas));
+                    }
+                    catch (error) {
+                        reject(error);
+                    }
+                }).catch(function (err) {
+                    promises = null;
+                    reject(err);
+                });
+            }, function () {
+                if (promises) {
+                    promises.forEach((item) => { return item.cancel(); });
+                    promises = null;
+                }
+                return true;
+            });
+        }
+        this.fetchingTilesPromises[key] = promise;
+        try {
+            return await promise;
+        }
+        finally {
+            delete this.fetchingTilesPromises[key];
+        }
     }
     fetchImage(zoom, x, y) {
-        return null;
-    }
-    getMetaData() { }
-    fetchTile(zoom, x, y) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
-                return this.fetchImage(zoom, x, y);
+        const url = this.buildURL(zoom, x, y);
+        return new CancelablePromise(async (resolve, reject) => {
+            try {
+                resolve(await this.getImageBitmapLoader().load(url));
             }
-            else {
-                const tiles = tilesToZoom([[x, y, zoom]], zoom + this.zoomDelta).sort((valA, valB) => {
-                    return valA[1] - valB[1] ||
-                        valA[0] - valB[0];
-                });
-                const images = (yield Promise.all(tiles.map((t) => { return this.fetchImage(t[2], t[0], t[1]); })));
-                const width = images[0].width * Math.floor(this.zoomDelta * 2);
-                const fullWidth = width / Math.sqrt(images.length);
-                const canvas = new OffscreenCanvas(width, width);
-                var context = canvas.getContext('2d');
-                let tileY = tiles[0][1];
-                let ix = 0;
-                let iy = 0;
-                images.forEach((image, index) => {
-                    if (tileY !== tiles[index][1]) {
-                        tileY = tiles[index][1];
-                        ix = 0;
-                        iy += 1;
-                    }
-                    context.drawImage(image, ix * fullWidth, iy * fullWidth, fullWidth, fullWidth);
-                    ix += 1;
-                });
-                return canvas;
+            catch (err) {
+                console.log('catched error', err);
+                reject(err);
             }
+        }, () => {
+            this.getImageBitmapLoader().cancel(url);
+            return true;
         });
     }
 }
 
-class OpenStreetMapsProvider extends MapProvider {
+class OpenStreetMapsProvider extends RasterMapProvider {
     constructor(address = 'https://a.tile.openstreetmap.org/') {
-        super();
-        this.address = address;
+        super(address);
         this.format = 'png';
     }
-    fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = this.address + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
-        });
+    buildURL(zoom, x, y) {
+        return this.address + zoom + '/' + x + '/' + y + '.' + this.format;
     }
 }
 
 class MapNodeGeometry extends BufferGeometry {
-    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0) {
+    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, options = { skirt: false, skirtDepth: 10.0, uvs: true }) {
         super();
+        const indices = [];
+        const vertices = [];
+        const uvs = options.uvs ? [] : undefined;
+        MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
+        if (options.skirt) {
+            MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, options.skirtDepth, indices, vertices, uvs);
+        }
+        this.setIndex(indices);
+        this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+        if (options.uvs) {
+            this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+        }
+    }
+    static buildPlane(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, indices, vertices, uvs) {
         const widthHalf = width / 2;
         const heightHalf = height / 2;
         const gridX = widthSegments + 1;
         const gridZ = heightSegments + 1;
         const segmentWidth = width / widthSegments;
         const segmentHeight = height / heightSegments;
-        const indices = [];
-        const vertices = [];
-        const uvs = [];
         for (let iz = 0; iz < gridZ; iz++) {
             const z = iz * segmentHeight - heightHalf;
             for (let ix = 0; ix < gridX; ix++) {
                 const x = ix * segmentWidth - widthHalf;
                 vertices.push(x, 0, z);
-                uvs.push(ix / widthSegments, 1 - iz / heightSegments);
+                if (uvs) {
+                    uvs.push(ix / widthSegments, 1 - iz / heightSegments);
+                }
             }
         }
         for (let iz = 0; iz < heightSegments; iz++) {
@@ -150,71 +439,95 @@ class MapNodeGeometry extends BufferGeometry {
                 indices.push(a, b, d, b, c, d);
             }
         }
-        if (skirt) {
-            let start = vertices.length / 3;
-            for (let ix = 0; ix < gridX; ix++) {
-                const x = ix * segmentWidth - widthHalf;
-                const z = -heightHalf;
-                vertices.push(x, -skirtDepth, z);
+    }
+    static buildSkirt(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirtDepth, indices, vertices, uvs) {
+        const widthHalf = width / 2;
+        const heightHalf = height / 2;
+        const gridX = widthSegments + 1;
+        const gridZ = heightSegments + 1;
+        const segmentWidth = width / widthSegments;
+        const segmentHeight = height / heightSegments;
+        let start = vertices.length / 3;
+        for (let ix = 0; ix < gridX; ix++) {
+            const x = ix * segmentWidth - widthHalf;
+            const z = -heightHalf;
+            vertices.push(x, -skirtDepth, z);
+            if (uvs) {
                 uvs.push(ix / widthSegments, 1);
             }
-            for (let ix = 0; ix < widthSegments; ix++) {
-                const a = ix;
-                const d = ix + 1;
-                const b = ix + start;
-                const c = ix + start + 1;
-                indices.push(d, b, a, d, c, b);
-            }
-            start = vertices.length / 3;
-            for (let ix = 0; ix < gridX; ix++) {
-                const x = ix * segmentWidth - widthHalf;
-                const z = heightSegments * segmentHeight - heightHalf;
-                vertices.push(x, -skirtDepth, z);
+        }
+        for (let ix = 0; ix < widthSegments; ix++) {
+            const a = ix;
+            const d = ix + 1;
+            const b = ix + start;
+            const c = ix + start + 1;
+            indices.push(d, b, a, d, c, b);
+        }
+        start = vertices.length / 3;
+        for (let ix = 0; ix < gridX; ix++) {
+            const x = ix * segmentWidth - widthHalf;
+            const z = heightSegments * segmentHeight - heightHalf;
+            vertices.push(x, -skirtDepth, z);
+            if (uvs) {
                 uvs.push(ix / widthSegments, 0);
             }
-            let offset = gridX * gridZ - widthSegments - 1;
-            for (let ix = 0; ix < widthSegments; ix++) {
-                const a = offset + ix;
-                const d = offset + ix + 1;
-                const b = ix + start;
-                const c = ix + start + 1;
-                indices.push(a, b, d, b, c, d);
-            }
-            start = vertices.length / 3;
-            for (let iz = 0; iz < gridZ; iz++) {
-                const z = iz * segmentHeight - heightHalf;
-                const x = -widthHalf;
-                vertices.push(x, -skirtDepth, z);
+        }
+        let offset = gridX * gridZ - widthSegments - 1;
+        for (let ix = 0; ix < widthSegments; ix++) {
+            const a = offset + ix;
+            const d = offset + ix + 1;
+            const b = ix + start;
+            const c = ix + start + 1;
+            indices.push(a, b, d, b, c, d);
+        }
+        start = vertices.length / 3;
+        for (let iz = 0; iz < gridZ; iz++) {
+            const z = iz * segmentHeight - heightHalf;
+            const x = -widthHalf;
+            vertices.push(x, -skirtDepth, z);
+            if (uvs) {
                 uvs.push(0, 1 - iz / heightSegments);
             }
-            for (let iz = 0; iz < heightSegments; iz++) {
-                const a = iz * gridZ;
-                const d = (iz + 1) * gridZ;
-                const b = iz + start;
-                const c = iz + start + 1;
-                indices.push(a, b, d, b, c, d);
-            }
-            start = vertices.length / 3;
-            for (let iz = 0; iz < gridZ; iz++) {
-                const z = iz * segmentHeight - heightHalf;
-                const x = widthSegments * segmentWidth - widthHalf;
-                vertices.push(x, -skirtDepth, z);
+        }
+        for (let iz = 0; iz < heightSegments; iz++) {
+            const a = iz * gridZ;
+            const d = (iz + 1) * gridZ;
+            const b = iz + start;
+            const c = iz + start + 1;
+            indices.push(a, b, d, b, c, d);
+        }
+        start = vertices.length / 3;
+        for (let iz = 0; iz < gridZ; iz++) {
+            const z = iz * segmentHeight - heightHalf;
+            const x = widthSegments * segmentWidth - widthHalf;
+            vertices.push(x, -skirtDepth, z);
+            if (uvs) {
                 uvs.push(1.0, 1 - iz / heightSegments);
             }
-            for (let iz = 0; iz < heightSegments; iz++) {
-                const a = iz * gridZ + heightSegments;
-                const d = (iz + 1) * gridZ + heightSegments;
-                const b = iz + start;
-                const c = iz + start + 1;
-                indices.push(d, b, a, d, c, b);
-            }
         }
-        this.setIndex(indices);
-        this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-        this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+        for (let iz = 0; iz < heightSegments; iz++) {
+            const a = iz * gridZ + heightSegments;
+            const d = (iz + 1) * gridZ + heightSegments;
+            const b = iz + start;
+            const c = iz + start + 1;
+            indices.push(d, b, a, d, c, b);
+        }
     }
 }
 
+function clearCacheRecursive(item) {
+    var _a;
+    if (item.childrenCache) {
+        item.childrenCache.forEach(clearCacheRecursive);
+        item.childrenCache = null;
+        item.nodesLoaded = 0;
+    }
+    if (((_a = item.children) === null || _a === void 0 ? void 0 : _a.length) > 0) {
+        item.children.forEach((c) => { return c instanceof MapNode && clearCacheRecursive(c); });
+        item.children = [];
+    }
+    item.dispose();
+}
 class MapNode extends Mesh {
     constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = null, material = null) {
         super(geometry, material);
@@ -242,6 +555,14 @@ class MapNode extends Mesh {
         }
     }
     initialize() {
+    }
+    dispose() {
+        this.mapView.provider.cancelTile(this.level, this.x, this.y);
+        this.geometry = null;
+        this.material = null;
+        this.objectsHolder = null;
+        this.mapView = null;
+        this.parentNode = null;
     }
     createChildNodes() { }
     subdivide() {
@@ -272,15 +593,18 @@ class MapNode extends Mesh {
         }
     }
     simplify(distance, far) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         if (!this.subdivided) {
             return;
         }
-        let removed = [];
         this.subdivided = false;
         if (this.mapView.lowMemoryUsage || distance > far / 100 || ((_a = this.parentNode) === null || _a === void 0 ? void 0 : _a.subdivided) && ((_c = (_b = this.parentNode) === null || _b === void 0 ? void 0 : _b.parentNode) === null || _c === void 0 ? void 0 : _c.subdivided)) {
-            if (this.childrenCache && this.children.length > 1) {
-                removed.push(...this.childrenCache);
+            if ((_d = this.children) === null || _d === void 0 ? void 0 : _d.length) {
+                this.children.forEach((c) => { return c instanceof MapNode && clearCacheRecursive(c); });
+                this.children = [];
+            }
+            if (this.childrenCache) {
+                this.childrenCache.forEach((c) => { return c instanceof MapNode && clearCacheRecursive(c); });
                 this.childrenCache = null;
                 this.nodesLoaded = 0;
             }
@@ -290,16 +614,14 @@ class MapNode extends Mesh {
             if (this.childrenCache) {
                 this.childrenCache.forEach((c) => {
                     if (c.childrenCache && c.children.length > 1) {
-                        removed.push(...c.childrenCache);
                         c.childrenCache = null;
-                        c.nodesLoaded = [];
+                        c.nodesLoaded = 0;
                     }
                 });
             }
         }
         this.show();
         this.didSimplify();
-        return removed;
     }
     didSimplify() {
         this.children = [this.objectsHolder];
@@ -327,13 +649,10 @@ class MapNode extends Mesh {
         }
     }
     setMaterialValues(values) {
-        const mat = this.material;
+        const userData = this.material.userData;
         Object.keys(values).forEach((k) => {
-            if (mat.hasOwnProperty(k)) {
-                mat[k] = values[k];
-            }
-            else {
-                mat.userData[k].value = values[k];
+            if (userData.hasOwnProperty(k)) {
+                userData[k].value = values[k];
             }
         });
     }
@@ -343,7 +662,7 @@ class MapNode extends Mesh {
         }
         this.isTextureReady = true;
         return this.mapView.provider.fetchTile(this.level, this.x, this.y).then((image) => { return this.onTextureImage(image); }).catch(() => {
-            const canvas = new OffscreenCanvas(1, 1);
+            const canvas = CanvasUtils.createOffscreenCanvas(1, 1);
             const context = canvas.getContext('2d');
             context.fillStyle = '#FF0000';
             context.fillRect(0, 0, 1, 1);
@@ -351,7 +670,12 @@ class MapNode extends Mesh {
             texture.generateMipmaps = false;
             texture.needsUpdate = true;
             this.material.map = texture;
+        }).catch((err) => {
+            console.error('error fetching image', err);
         }).finally(() => {
+            if (!this.mapView) {
+                return;
+            }
             this.textureLoaded = true;
             this.nodeReady();
         });
@@ -417,7 +741,7 @@ class UnitsUtils {
         const longitude = x / UnitsUtils.EARTH_ORIGIN * 180.0;
         let latitude = y / UnitsUtils.EARTH_ORIGIN * 180.0;
         latitude = 180.0 / Math.PI * (2 * Math.atan(Math.exp(latitude * Math.PI / 180.0)) - Math.PI / 2.0);
-        return { latitude: latitude, longitude: longitude };
+        return { latitude: Math.round(latitude * 10000) / 10000, longitude: Math.round(longitude * 10000) / 10000 };
     }
     static quadtreeToDatums(zoom, x, y) {
         const n = Math.pow(2.0, zoom);
@@ -476,9 +800,74 @@ class MapPlaneNode extends MapNode {
         return false;
     }
 }
-MapPlaneNode.geometry = new MapNodeGeometry(1, 1, 1, 1, false);
+MapPlaneNode.geometry = new MapNodeGeometry(1, 1, 1, 1, { skirt: false });
 MapPlaneNode.baseGeometry = MapPlaneNode.geometry;
 MapPlaneNode.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1.0, UnitsUtils.EARTH_PERIMETER);
+
+class MapNodeHeightGeometry extends BufferGeometry {
+    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirt = false, skirtDepth = 10.0, imageData = null, calculateNormals = true) {
+        super();
+        const indices = [];
+        const vertices = [];
+        const normals = [];
+        const uvs = [];
+        MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
+        const data = imageData.data;
+        for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
+            vertices[j + 1] = value;
+        }
+        if (skirt) {
+            MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, skirtDepth, indices, vertices, uvs);
+        }
+        this.setIndex(indices);
+        this.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+        this.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+        this.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+        if (calculateNormals) {
+            this.computeNormals(widthSegments, heightSegments);
+        }
+    }
+    computeNormals(widthSegments, heightSegments) {
+        const positionAttribute = this.getAttribute('position');
+        if (positionAttribute !== undefined) {
+            let normalAttribute = this.getAttribute('normal');
+            const normalLength = heightSegments * widthSegments;
+            for (let i = 0; i < normalLength; i++) {
+                normalAttribute.setXYZ(i, 0, 0, 0);
+            }
+            const pA = new Vector3(), pB = new Vector3(), pC = new Vector3();
+            const nA = new Vector3(), nB = new Vector3(), nC = new Vector3();
+            const cb = new Vector3(), ab = new Vector3();
+            const indexLength = heightSegments * widthSegments * 6;
+            for (let i = 0; i < indexLength; i += 3) {
+                const vA = this.index.getX(i + 0);
+                const vB = this.index.getX(i + 1);
+                const vC = this.index.getX(i + 2);
+                pA.fromBufferAttribute(positionAttribute, vA);
+                pB.fromBufferAttribute(positionAttribute, vB);
+                pC.fromBufferAttribute(positionAttribute, vC);
+                cb.subVectors(pC, pB);
+                ab.subVectors(pA, pB);
+                cb.cross(ab);
+                nA.fromBufferAttribute(normalAttribute, vA);
+                nB.fromBufferAttribute(normalAttribute, vB);
+                nC.fromBufferAttribute(normalAttribute, vC);
+                nA.add(cb);
+                nB.add(cb);
+                nC.add(cb);
+                normalAttribute.setXYZ(vA, nA.x, nA.y, nA.z);
+                normalAttribute.setXYZ(vB, nB.x, nB.y, nB.z);
+                normalAttribute.setXYZ(vC, nC.x, nC.y, nC.z);
+            }
+            this.normalizeNormals();
+            normalAttribute.needsUpdate = true;
+        }
+    }
+}
 
 class MapHeightNode extends MapNode {
     constructor(parentNode = null, mapView = null, location = MapNode.root, level = 0, x = 0, y = 0, geometry = MapHeightNode.geometry, material = new MeshPhongMaterial({ color: 0x000000, emissive: 0xffffff })) {
@@ -492,6 +881,10 @@ class MapHeightNode extends MapNode {
     initialize() {
         super.initialize();
         return Promise.all([this.loadTexture(), this.loadHeightGeometry()]);
+    }
+    dispose() {
+        this.mapView.heightProvider.cancelTile(this.level, this.x, this.y);
+        super.dispose();
     }
     onTextureImage(image) {
         if (image) {
@@ -515,7 +908,7 @@ class MapHeightNode extends MapNode {
         });
     }
     nodeReady() {
-        if (!this.heightLoaded || !this.textureLoaded) {
+        if (!this.mapView || !this.heightLoaded || !this.textureLoaded) {
             return;
         }
         super.nodeReady();
@@ -550,65 +943,56 @@ class MapHeightNode extends MapNode {
         node.updateMatrix();
         node.updateMatrixWorld(true);
     }
-    handleParentOverZoomTile(resolve) {
+    async handleParentOverZoomTile(resolve) {
         throw new Error('not implemented');
     }
-    loadHeightGeometry() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this.isHeightReady) {
-                return;
-            }
-            this.isHeightReady = true;
-            const heightProvider = this.mapView.heightProvider;
-            if (heightProvider === null) {
-                throw new Error('GeoThree: MapView.heightProvider provider is null.');
-            }
-            try {
-                const zoom = this.level;
-                if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
-                    const parent = this.parent;
-                    if (parent.heightLoaded) {
-                        this.handleParentOverZoomTile();
-                    }
-                    else {
-                        const promise = new Promise((resolve) => {
-                            parent.heightListeners.push(() => { return this.handleParentOverZoomTile(resolve); });
-                        });
-                        if (!parent.isHeightReady) {
-                            parent.loadHeightGeometry();
-                        }
-                        yield promise;
-                    }
+    async loadHeightGeometry() {
+        if (this.isHeightReady || !this.mapView) {
+            return;
+        }
+        this.isHeightReady = true;
+        const heightProvider = this.mapView.heightProvider;
+        if (heightProvider === null) {
+            throw new Error('GeoThree: MapView.heightProvider provider is null.');
+        }
+        try {
+            const zoom = this.level;
+            if (zoom > heightProvider.maxZoom && zoom <= heightProvider.maxZoom + heightProvider['maxOverZoom']) {
+                const parent = this.parentNode;
+                if (parent.heightLoaded) {
+                    await this.handleParentOverZoomTile();
                 }
                 else {
-                    const image = yield this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
-                    this.onHeightImage(image);
+                    const promise = new Promise((resolve) => {
+                        parent.heightListeners.push(() => { return this.handleParentOverZoomTile(resolve); });
+                    });
+                    if (!parent.isHeightReady) {
+                        parent.loadHeightGeometry();
+                    }
+                    await promise;
                 }
             }
-            finally {
+            else {
+                const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
+                await this.onHeightImage(image);
+            }
+        }
+        finally {
+            if (this.mapView) {
                 this.heightLoaded = true;
                 this.heightListeners.forEach((l) => { return l(); });
-                this.heightListeners = [];
                 this.nodeReady();
             }
-        });
+            this.heightListeners = [];
+        }
     }
     onHeightImage(image) {
-        const geometry = new MapNodeGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize);
-        const vertices = geometry.attributes.position.array;
-        const canvas = new OffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
+        const canvas = CanvasUtils.createOffscreenCanvas(MapHeightNode.geometrySize + 1, MapHeightNode.geometrySize + 1);
         const context = canvas.getContext('2d');
         context.imageSmoothingEnabled = false;
         context.drawImage(image, 0, 0, MapHeightNode.tileSize, MapHeightNode.tileSize, 0, 0, canvas.width, canvas.height);
         const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        for (let i = 0, j = 0; i < data.length && j < vertices.length; i += 4, j += 3) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const value = (r * 65536 + g * 256 + b) * 0.1 - 1e4;
-            vertices[j + 1] = value;
-        }
+        const geometry = new MapNodeHeightGeometry(1, 1, MapHeightNode.geometrySize, MapHeightNode.geometrySize, true, 10.0, imageData, true);
         this.geometry = geometry;
     }
     raycast(raycaster, intersects) {
@@ -801,7 +1185,7 @@ class MapHeightNodeShader extends MapHeightNode {
             this.material.userData.heightMap.value = texture;
         }
     }
-    handleParentOverZoomTile(resolve) {
+    async handleParentOverZoomTile(resolve) {
         const tileBox = tileToBBOX([this.x, this.y, this.level]);
         const parent = this.parent;
         const parentOverZoomFactor = parent.overZoomFactor;
@@ -813,7 +1197,7 @@ class MapHeightNodeShader extends MapHeightNode {
         this.heightMapLocation[1] = parent.heightMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10) / 10 / parentOverZoomFactor;
         this.heightMapLocation[2] = this.heightMapLocation[3] = 1 / this.overZoomFactor;
         this.material.userData.heightMapLocation.value.set(...this.heightMapLocation);
-        this.onHeightImage(parent.material.userData.heightMap.value);
+        await this.onHeightImage(parent.material.userData.heightMap.value);
         if (resolve) {
             resolve();
         }
@@ -1154,25 +1538,24 @@ class MapMartiniHeightNode extends MapHeightNode {
 					gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
 				} else if (!drawTexture) {
 					gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
-				}
-					`);
+				}`);
             shader.vertexShader = shader.vertexShader.replace('#include <fog_vertex>', `
-					#include <fog_vertex>
+				#include <fog_vertex>
 
-					// queried pixels:
-					// +-----------+
-					// |   |   |   |
-					// | a | b | c |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | d | e | f |
-					// |   |   |   |
-					// +-----------+
-					// |   |   |   |
-					// | g | h | i |
-					// |   |   |   |
-					// +-----------+
+				// queried pixels:
+				// +-----------+
+				// |   |   |   |
+				// | a | b | c |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | d | e | f |
+				// |   |   |   |
+				// +-----------+
+				// |   |   |   |
+				// | g | h | i |
+				// |   |   |   |
+				// +-----------+
 
 					// if (computeNormals) {
 					// 	float e = getElevation(vUv, 0.0);
@@ -1198,7 +1581,7 @@ class MapMartiniHeightNode extends MapHeightNode {
 					// 	v2.z = (e+ h + i + f) / 4.0;
 					// 	vNormal = (normalize(cross(v2 - v0, v1 - v0))).rbg;
 					// }
-					`);
+				`);
         };
         return material;
     }
@@ -1245,44 +1628,42 @@ class MapMartiniHeightNode extends MapHeightNode {
             uv: { value: texCoords, size: 2 }
         };
     }
-    onHeightImage(image) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (image) {
-                const tileSize = image.width;
-                const gridSize = tileSize + 1;
-                var canvas = new OffscreenCanvas(tileSize, tileSize);
-                var context = canvas.getContext('2d');
-                context.imageSmoothingEnabled = false;
-                context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
-                var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                var data = imageData.data;
-                const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
-                const martini = new Martini(gridSize);
-                const tile = martini.createTile(terrain);
-                const { vertices, triangles } = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
-                const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
-                this.geometry = new BufferGeometry();
-                this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
-                this.geometry.setAttribute('position', new Float32BufferAttribute(attributes.position.value, attributes.position.size));
-                this.geometry.setAttribute('uv', new Float32BufferAttribute(attributes.uv.value, attributes.uv.size));
-                this.geometry.rotateX(Math.PI);
-                var texture = new Texture(image);
-                texture.generateMipmaps = false;
-                texture.format = RGBFormat;
-                texture.magFilter = NearestFilter;
-                texture.minFilter = NearestFilter;
-                texture.needsUpdate = true;
-                this.material.userData.heightMap.value = texture;
-            }
-        });
+    async onHeightImage(image) {
+        if (image) {
+            const tileSize = image.width;
+            const gridSize = tileSize + 1;
+            var canvas = CanvasUtils.createOffscreenCanvas(tileSize, tileSize);
+            var context = canvas.getContext('2d');
+            context.imageSmoothingEnabled = false;
+            context.drawImage(image, 0, 0, tileSize, tileSize, 0, 0, canvas.width, canvas.height);
+            var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            var data = imageData.data;
+            const terrain = MapMartiniHeightNode.getTerrain(data, tileSize, this.elevationDecoder);
+            const martini = new Martini(gridSize);
+            const tile = martini.createTile(terrain);
+            const { vertices, triangles } = tile.getMesh(typeof this.meshMaxError === 'function' ? this.meshMaxError(this.level) : this.meshMaxError, false);
+            const attributes = MapMartiniHeightNode.getMeshAttributes(vertices, terrain, tileSize, [-0.5, -0.5, 0.5, 0.5], this.exageration);
+            this.geometry = new BufferGeometry();
+            this.geometry.setIndex(new Uint32BufferAttribute(triangles, 1));
+            this.geometry.setAttribute('position', new Float32BufferAttribute(attributes.position.value, attributes.position.size));
+            this.geometry.setAttribute('uv', new Float32BufferAttribute(attributes.uv.value, attributes.uv.size));
+            this.geometry.rotateX(Math.PI);
+            var texture = new Texture(image);
+            texture.generateMipmaps = false;
+            texture.format = RGBFormat;
+            texture.magFilter = NearestFilter;
+            texture.minFilter = NearestFilter;
+            texture.needsUpdate = true;
+            this.material.userData.heightMap.value = texture;
+        }
     }
     loadHeightGeometry() {
         if (this.mapView.heightProvider === null) {
             throw new Error('GeoThree: MapView.heightProvider provider is null.');
         }
-        return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then((image) => __awaiter(this, void 0, void 0, function* () {
-            this.onHeightImage(image);
-        })).finally(() => {
+        return this.mapView.heightProvider.fetchTile(this.level, this.x, this.y).then(async (image) => {
+            return this.onHeightImage(image);
+        }).finally(() => {
             this.heightLoaded = true;
             this.nodeReady();
         });
@@ -1290,7 +1671,7 @@ class MapMartiniHeightNode extends MapHeightNode {
 }
 MapMartiniHeightNode.geometrySize = 16;
 MapMartiniHeightNode.emptyTexture = new Texture();
-MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, MapMartiniHeightNode.geometrySize, MapMartiniHeightNode.geometrySize);
+MapMartiniHeightNode.geometry = new MapNodeGeometry(1, 1, 1, 1);
 MapMartiniHeightNode.tileSize = 256;
 MapMartiniHeightNode.baseScale = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
@@ -1303,6 +1684,7 @@ class MapView extends Mesh {
         this.root = null;
         this.onNodeReady = null;
         this.lowMemoryUsage = false;
+        this.maxZoomForObjectHolders = 14;
         this.lod = new LODRaycast();
         this.provider = provider;
         this.heightProvider = heightProvider;
@@ -1410,55 +1792,60 @@ const projection = new Matrix4();
 const pov = new Vector3();
 const frustum = new Frustum();
 const position = new Vector3();
-new Vector3();
-class LODFrustum extends LODRadial {
+class LODFrustum {
     constructor() {
-        super(...arguments);
         this.subdivideDistance = 120;
         this.simplifyDistance = 400;
         this.testCenter = true;
         this.pointOnly = false;
+        this.toHandle = new Set();
+        this.handled = new Set();
     }
     isChildReady(node) {
         return node.isTextureReady && (!(node instanceof MapHeightNode) || node.isHeightReady);
     }
-    handleNode(node, camera, minZoom, maxZoom, inFrustum = false, canSubdivideOrSimplify = true) {
-        if (!(node instanceof MapNode)) {
+    handleNode(node, handled, camera, minZoom, maxZoom, inFrustum = false, canSubdivide = true, canSimplify = true) {
+        if (!(node instanceof MapNode) || handled.has(node)) {
             return;
         }
+        if (!node.mapView) {
+            return;
+        }
+        handled.add(node);
         node.getWorldPosition(position);
         var worldDistance = pov.distanceTo(position);
         const distance = worldDistance / Math.pow(2, 20 - node.level);
         inFrustum = inFrustum || (this.pointOnly ? frustum.containsPoint(position) : frustum.intersectsObject(node));
-        if (canSubdivideOrSimplify && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
+        if (canSubdivide && (maxZoom > node.level && distance < this.subdivideDistance) && inFrustum) {
             node.subdivide();
             const children = node.children;
             if (children) {
                 for (let index = 0; index < children.length; index++) {
                     const n = children[index];
                     if (n instanceof MapNode) {
-                        this.handleNode(n, camera, minZoom, maxZoom, false);
+                        this.handleNode(n, handled, camera, minZoom, maxZoom, false, true, false);
                     }
                 }
             }
             node.hide();
         }
-        else if (canSubdivideOrSimplify && (node.level > maxZoom || (!inFrustum || minZoom < node.level) && distance > this.simplifyDistance) && node.parentNode) {
+        else if (canSimplify && (node.level > maxZoom || (!inFrustum || minZoom < node.level) && distance > this.simplifyDistance) && node.parentNode) {
             const parentNode = node.parentNode;
             parentNode.simplify(distance, camera.far);
-            this.handleNode(parentNode, camera, minZoom, maxZoom, false, false);
+            this.handleNode(parentNode, handled, camera, minZoom, maxZoom, false, false, true);
         }
-        else if ((inFrustum || distance < this.subdivideDistance) && minZoom <= node.level) {
+        else if ((!canSimplify && !canSubdivide || inFrustum || distance < this.simplifyDistance) && minZoom <= node.level && worldDistance < camera.far) {
             if (!this.isChildReady(node)) {
                 node.initialize();
             }
         }
     }
     getChildrenToTraverse(parent) {
-        const toHandle = [];
+        const toHandle = this.toHandle;
+        toHandle.clear();
         function handleChild(child) {
             if (child instanceof MapNode && !child.subdivided) {
-                toHandle.push(child);
+                toHandle.add(child);
             }
             else {
                 child.children.forEach((c) => {
@@ -1471,14 +1858,23 @@ class LODFrustum extends LODRadial {
         handleChild(parent);
         return toHandle;
     }
-    updateLOD(view, camera, renderer, scene) {
+    updateLOD(view, camera, renderer, scene, force = false) {
+        if (!force && this.lastMatrix && this.lastMatrix.equals(camera.matrixWorldInverse)) {
+            return;
+        }
+        if (!this.lastMatrix) {
+            this.lastMatrix = new Matrix4();
+        }
+        this.lastMatrix.copy(camera.matrixWorldInverse);
         projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
         frustum.setFromProjectionMatrix(projection);
         camera.getWorldPosition(pov);
         const minZoom = view.provider.minZoom;
         const maxZoom = view.provider.maxZoom + view.provider.maxOverZoom;
         const toHandle = this.getChildrenToTraverse(view.children[0]);
-        toHandle.forEach((node) => { return this.handleNode(node, camera, minZoom, maxZoom); });
+        let handled = this.handled;
+        toHandle.forEach((node) => { return this.handleNode(node, handled, camera, minZoom, maxZoom); });
+        handled.clear();
     }
 }
 
@@ -1554,9 +1950,29 @@ class XHRUtils {
         }
         return xhr;
     }
+    static loadImageCancelable(url) {
+        return new CancelablePromise(function (resolve, reject) {
+            const image = this.imageHandler = document.createElement('img');
+            image.onload = () => {
+                this.imageHandler = null;
+                resolve(image);
+            };
+            image.onerror = () => {
+                this.imageHandler = null;
+                reject();
+            };
+            image.crossOrigin = 'Anonymous';
+            image.src = url;
+        }, function () {
+            if (this.imageHandler) {
+                this.imageHandler.src = null;
+                this.imageHandler = null;
+            }
+        });
+    }
 }
 
-class BingMapsProvider extends MapProvider {
+class BingMapsProvider extends RasterMapProvider {
     constructor(apiKey = '', type = BingMapsProvider.AERIAL) {
         super();
         this.maxZoom = 19;
@@ -1587,18 +2003,8 @@ class BingMapsProvider extends MapProvider {
         }
         return quad;
     }
-    fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
-        });
+    buildURL(zoom, x, y) {
+        return 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
     }
 }
 BingMapsProvider.AERIAL = 'a';
@@ -1607,9 +2013,9 @@ BingMapsProvider.AERIAL_LABELS = 'h';
 BingMapsProvider.OBLIQUE = 'o';
 BingMapsProvider.OBLIQUE_LABELS = 'b';
 
-class GoogleMapsProvider extends MapProvider {
+class GoogleMapsProvider extends RasterMapProvider {
     constructor(apiToken) {
-        super();
+        super('https://www.googleapis.com/tile/v1/tiles/');
         this.sessionToken = null;
         this.orientation = 0;
         this.format = 'png';
@@ -1636,21 +2042,14 @@ class GoogleMapsProvider extends MapProvider {
         });
     }
     fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = 'https://www.googleapis.com/tile/v1/tiles/' + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken;
-        });
+        return XHRUtils.loadImageCancelable('https://www.googleapis.com/tile/v1/tiles/' + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken);
+    }
+    buildURL(zoom, x, y) {
+        return this.address + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken;
     }
 }
 
-class HereMapsProvider extends MapProvider {
+class HereMapsProvider extends RasterMapProvider {
     constructor(appId, appCode, style, scheme, format, size) {
         super();
         this.appId = appId !== undefined ? appId : '';
@@ -1666,26 +2065,16 @@ class HereMapsProvider extends MapProvider {
         this.server = this.server % 4 === 0 ? 1 : this.server + 1;
     }
     getMetaData() { }
-    fetchImage(zoom, x, y) {
+    buildURL(zoom, x, y) {
         this.nextServer();
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +
-                this.version + '/' + this.scheme + '/' + zoom + '/' + x + '/' + y + '/' +
-                this.size + '/' + this.format + '?app_id=' + this.appId + '&app_code=' + this.appCode;
-        });
+        return 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +
+            this.version + '/' + this.scheme + '/' + zoom + '/' + x + '/' + y + '/' +
+            this.size + '/' + this.format + '?app_id=' + this.appId + '&app_code=' + this.appCode;
     }
 }
 HereMapsProvider.PATH = '/maptile/2.1/';
 
-class MapBoxProvider extends MapProvider {
+class MapBoxProvider extends RasterMapProvider {
     constructor(apiToken = '', id = '', mode = MapBoxProvider.STYLE, format = 'png', useHDPI = false, version = 'v4') {
         super();
         this.apiToken = apiToken;
@@ -1708,55 +2097,43 @@ class MapBoxProvider extends MapProvider {
         });
     }
     fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            if (this.mode === MapBoxProvider.STYLE) {
-                image.src = MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken;
-            }
-            else {
-                image.src = MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken;
-            }
-        });
+        if (this.mode === MapBoxProvider.STYLE) {
+            return XHRUtils.loadImageCancelable(MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken);
+        }
+        else {
+            return XHRUtils.loadImageCancelable(MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken);
+        }
+    }
+    buildURL(zoom, x, y) {
+        if (this.mode === MapBoxProvider.STYLE) {
+            return MapBoxProvider.ADDRESS + 'styles/v1/' + this.style + '/tiles/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x?access_token=' : '?access_token=') + this.apiToken;
+        }
+        else {
+            return MapBoxProvider.ADDRESS + 'v4/' + this.mapId + '/' + zoom + '/' + x + '/' + y + (this.useHDPI ? '@2x.' : '.') + this.format + '?access_token=' + this.apiToken;
+        }
     }
 }
 MapBoxProvider.ADDRESS = 'https://api.mapbox.com/';
 MapBoxProvider.STYLE = 100;
 MapBoxProvider.MAP_ID = 101;
 
-class MapTilerProvider extends MapProvider {
+class MapTilerProvider extends RasterMapProvider {
     constructor(apiKey, category, style, format) {
-        super();
+        super('https://api.maptiler.com/');
         this.apiKey = apiKey !== undefined ? apiKey : '';
         this.format = format !== undefined ? format : 'png';
         this.category = category !== undefined ? category : 'maps';
         this.style = style !== undefined ? style : 'satellite';
         this.resolution = 512;
     }
-    fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = 'https://api.maptiler.com/' + this.category + '/' + this.style + '/' + zoom + '/' + x + '/' + y + '.' + this.format + '?key=' + this.apiKey;
-        });
+    buildURL(zoom, x, y) {
+        return this.address + this.category + '/' + this.style + '/' + zoom + '/' + x + '/' + y + '.' + this.format + '?key=' + this.apiKey;
     }
 }
 
-class OpenMapTilesProvider extends MapProvider {
+class OpenMapTilesProvider extends RasterMapProvider {
     constructor(address, format = 'png', theme = 'klokantech-basic') {
-        super();
+        super(address);
         this.address = address;
         this.format = format;
         this.theme = theme;
@@ -1773,18 +2150,8 @@ class OpenMapTilesProvider extends MapProvider {
             this.center = meta.center;
         });
     }
-    fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            const image = document.createElement('img');
-            image.onload = function () {
-                resolve(image);
-            };
-            image.onerror = function () {
-                reject();
-            };
-            image.crossOrigin = 'Anonymous';
-            image.src = this.address + 'styles/' + this.theme + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
-        });
+    buildURL(zoom, x, y) {
+        return this.address + 'styles/' + this.theme + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
     }
 }
 
@@ -1794,8 +2161,8 @@ class DebugProvider extends MapProvider {
         this.resolution = 256;
     }
     fetchImage(zoom, x, y) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const canvas = new OffscreenCanvas(this.resolution, this.resolution);
+        return new CancelablePromise((resolve, reject) => {
+            const canvas = CanvasUtils.createOffscreenCanvas(this.resolution, this.resolution);
             const context = canvas.getContext('2d');
             const green = new Color(0x00ff00);
             const red = new Color(0xff0000);
@@ -1808,25 +2175,28 @@ class DebugProvider extends MapProvider {
             context.font = 'bold ' + this.resolution * 0.1 + 'px arial';
             context.fillText('(' + zoom + ')', this.resolution / 2, this.resolution * 0.4);
             context.fillText('(' + x + ', ' + y + ')', this.resolution / 2, this.resolution * 0.6);
-            return canvas;
+            resolve(canvas);
         });
     }
 }
 
-class HeightDebugProvider extends MapProvider {
+class HeightDebugProvider extends RasterMapProvider {
     constructor(provider) {
         super();
         this.fromColor = new Color(0xff0000);
         this.toColor = new Color(0x00ff00);
         this.provider = provider;
     }
+    buildURL(zoom, x, y) {
+        return null;
+    }
     fetchImage(zoom, x, y) {
-        return new Promise((resolve, reject) => {
-            this.provider
-                .fetchTile(zoom, x, y)
-                .then((image) => {
+        let initialPromise = this.provider
+            .fetchImage(zoom, x, y);
+        return new CancelablePromise((resolve, reject) => {
+            initialPromise.then((image) => {
                 const resolution = 256;
-                const canvas = new OffscreenCanvas(resolution, resolution);
+                const canvas = CanvasUtils.createOffscreenCanvas(resolution, resolution);
                 const context = canvas.getContext('2d');
                 context.drawImage(image, 0, 0, resolution, resolution, 0, 0, resolution, resolution);
                 const imageData = context.getImageData(0, 0, resolution, resolution);
@@ -1846,88 +2216,10 @@ class HeightDebugProvider extends MapProvider {
                 resolve(canvas);
             })
                 .catch(reject);
+        }, () => {
+            return initialPromise.cancel();
         });
     }
 }
 
-class CancelablePromise {
-    constructor(executor) {
-        this.fulfilled = false;
-        this.rejected = false;
-        this.called = false;
-        const resolve = (v) => {
-            this.fulfilled = true;
-            this.value = v;
-            if (typeof this.onResolve === 'function') {
-                this.onResolve(this.value);
-                this.called = true;
-            }
-        };
-        const reject = (reason) => {
-            this.rejected = true;
-            this.value = reason;
-            if (typeof this.onReject === 'function') {
-                this.onReject(this.value);
-                this.called = true;
-            }
-        };
-        try {
-            executor(resolve, reject);
-        }
-        catch (error) {
-            reject(error);
-        }
-    }
-    cancel() {
-        return false;
-    }
-    then(callback) {
-        this.onResolve = callback;
-        if (this.fulfilled && !this.called) {
-            this.called = true;
-            this.onResolve(this.value);
-        }
-        return this;
-    }
-    catch(callback) {
-        this.onReject = callback;
-        if (this.rejected && !this.called) {
-            this.called = true;
-            this.onReject(this.value);
-        }
-        return this;
-    }
-    finally(callback) {
-        return this;
-    }
-    static resolve(val) {
-        return new CancelablePromise(function executor(resolve, _reject) {
-            resolve(val);
-        });
-    }
-    static reject(reason) {
-        return new CancelablePromise(function executor(resolve, reject) {
-            reject(reason);
-        });
-    }
-    static all(promises) {
-        const fulfilledPromises = [];
-        const result = [];
-        function executor(resolve, reject) {
-            promises.forEach((promise, index) => {
-                return promise
-                    .then((val) => {
-                    fulfilledPromises.push(true);
-                    result[index] = val;
-                    if (fulfilledPromises.length === promises.length) {
-                        return resolve(result);
-                    }
-                })
-                    .catch((error) => { return reject(error); });
-            });
-        }
-        return new CancelablePromise(executor);
-    }
-}
-
-export { BingMapsProvider, CancelablePromise, DebugProvider, GoogleMapsProvider, HeightDebugProvider, HereMapsProvider, LODFrustum, LODRadial, LODRaycast, MapBoxProvider, MapHeightNode, MapHeightNodeShader, MapNode, MapNodeGeometry, MapPlaneNode, MapProvider, MapSphereNode, MapSphereNodeGeometry, MapTilerProvider, MapView, OpenMapTilesProvider, OpenStreetMapsProvider, UnitsUtils, XHRUtils };
+export { BingMapsProvider, CancelablePromise, DebugProvider, GoogleMapsProvider, HeightDebugProvider, HereMapsProvider, LODFrustum, LODRadial, LODRaycast, MapBoxProvider, MapHeightNode, MapHeightNodeShader, MapNode, MapNodeGeometry, MapNodeHeightGeometry, MapPlaneNode, MapProvider, MapSphereNode, MapSphereNodeGeometry, MapTilerProvider, MapView, OpenMapTilesProvider, OpenStreetMapsProvider, UnitsUtils, XHRUtils };

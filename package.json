@@ -43,6 +43,7 @@
 		"@types/hammerjs": "^2.0.40",
 		"@types/mapbox__tilebelt": "^1.0.0",
 		"@types/node": "~14.6.4",
+		"@types/offscreencanvas": "^2019.6.4",
 		"@typescript-eslint/eslint-plugin": "^4.22.1",
 		"@typescript-eslint/parser": "^4.22.1",
 		"camera-controls": "^1.33.1",

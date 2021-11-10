@@ -1,4 +1,4 @@
-import {Queue} from 'load-queue';
+const loadQueue = require('load-queue');
 
 class LruCache<T> 
 {
@@ -103,8 +103,7 @@ const runningFetchOptions: {[k: string]: {
 	[k: string]: any
     fetchOptions?: FetchOptions;
 }} = {};
-const queue = new Queue(TaskLoader, 50);
-
+const queue = new loadQueue.Queue(TaskLoader, 50);
 
 export class FetchLoader
 {

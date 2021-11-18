@@ -168,7 +168,7 @@ export class MapHeightNode extends MapNode
 
 	public parent: MapHeightNode;
 
-	public heightListeners = []
+	public heightListeners = [];
 
 	protected async handleParentOverZoomTile(resolve?): Promise<void> 
 	{
@@ -216,7 +216,6 @@ export class MapHeightNode extends MapNode
 				const image = await this.mapView.heightProvider.fetchTile(zoom, this.x, this.y);
 				await this.onHeightImage(image);
 			}
-
 		}
 		finally 
 		{

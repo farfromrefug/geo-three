@@ -49,7 +49,7 @@ export class OpenMapTilesProvider extends RasterMapProvider
 		});
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		return this.address + 'styles/' + this.theme + '/' + zoom + '/' + x + '/' + y + '.' + this.format;
 	}

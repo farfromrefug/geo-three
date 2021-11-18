@@ -138,7 +138,7 @@ export class MapBoxProvider extends RasterMapProvider
 		}
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		if (this.mode === MapBoxProvider.STYLE) 
 		{

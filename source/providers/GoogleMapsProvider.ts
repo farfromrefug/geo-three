@@ -95,7 +95,7 @@ export class GoogleMapsProvider extends RasterMapProvider
 		return XHRUtils.loadImageCancelable('https://www.googleapis.com/tile/v1/tiles/' + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken);
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		return this.address + zoom + '/' + x + '/' + y + '?session=' + this.sessionToken + '&orientation=' + this.orientation + '&key=' + this.apiToken;
 	}

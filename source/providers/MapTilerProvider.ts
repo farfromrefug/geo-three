@@ -54,7 +54,7 @@ export class MapTilerProvider extends RasterMapProvider
 		this.resolution = 512;
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		return this.address + this.category + '/' + this.style + '/' + zoom + '/' + x + '/' + y + '.' + this.format + '?key=' + this.apiKey;
 	}

@@ -130,7 +130,7 @@ export class BingMapsProvider extends RasterMapProvider
 		return quad;
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		return 'http://ecn.' + this.subdomain + '.tiles.virtualearth.net/tiles/' + this.type + BingMapsProvider.quadKey(zoom, x, y) + '.jpeg?g=1173';
 	}

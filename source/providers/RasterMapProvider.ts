@@ -50,7 +50,7 @@ export default abstract class RasterMapProvider extends MapProvider
 		this.address = address;
 	}
 
-	protected abstract buildURL(zoom: number, x: number, y: number): string;
+	public abstract buildURL(zoom: number, x: number, y: number): string;
 
 	// protected tilesAbortControllers: {[k: string]: AbortController} = {}
 

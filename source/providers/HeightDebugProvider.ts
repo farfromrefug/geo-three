@@ -32,7 +32,7 @@ export class HeightDebugProvider extends RasterMapProvider
 		this.provider = provider;
 	}
 
-	protected buildURL(zoom: number, x: number, y: number): string 
+	public buildURL(zoom: number, x: number, y: number): string 
 	{
 		return null;
 	}

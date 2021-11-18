@@ -20,7 +20,7 @@ export class OpenStreetMapsProvider extends RasterMapProvider
 		this.format = 'png';
 	}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		return this.address + zoom + '/' + x + '/' + y + '.' + this.format;
 	}

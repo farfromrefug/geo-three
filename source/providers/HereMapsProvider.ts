@@ -122,7 +122,7 @@ export class HereMapsProvider extends RasterMapProvider
 
 	public getMetaData(): void {}
 
-	protected buildURL(zoom, x, y): string
+	public buildURL(zoom, x, y): string
 	{
 		this.nextServer();
 		return 'https://' + this.server + '.' + this.style + '.maps.api.here.com/maptile/2.1/maptile/' +

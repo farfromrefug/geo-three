@@ -3,6 +3,17 @@ import {MapView} from '../MapView';
 import {CanvasUtils} from '../utils/CanvasUtils';
 
 
+const nodesMap = new Map<string, MapNode>();
+
+export function getNode(level, x, y): MapNode
+{
+	return nodesMap.get(`${level}_${x}_${y}`);
+}
+export function clearNodeCache(): void
+{
+	nodesMap.clear();
+}
+
 export function clearCacheRecursive(item: MapNode): void
 {
 	if (item.childrenCache) 
@@ -170,7 +181,7 @@ export abstract class MapNode extends Mesh
 		this.level = level;
 		this.x = x;
 		this.y = y;
-
+		nodesMap.set(`${level}_${x}_${y}`, this);
 
 		const autoLoad = mapView.nodeShouldAutoLoad();
 
@@ -206,6 +217,7 @@ export abstract class MapNode extends Mesh
 		this.objectsHolder = null;
 		this.mapView = null;
 		this.parentNode = null;
+		nodesMap.delete(`${this.level}_${this.x}_${this.y}`);
 	}
 
 	/**
@@ -449,7 +461,7 @@ export abstract class MapNode extends Mesh
 		{
 			this.show();
 		}
-		this.mapView.onNodeReady();
+		this.mapView.onNodeReady(this);
 	}
 
 	/**

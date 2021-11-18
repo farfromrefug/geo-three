@@ -1,6 +1,6 @@
 import {BufferGeometry, Camera, Group, Material, Mesh, MeshBasicMaterial, Object3D, Raycaster, Scene, WebGLRenderer} from 'three';
 import {OpenStreetMapsProvider} from './providers/OpenStreetMapsProvider';
-import {MapNode} from './nodes/MapNode';
+import {clearNodeCache, MapNode} from './nodes/MapNode';
 import {MapHeightNode} from './nodes/MapHeightNode';
 import {MapPlaneNode} from './nodes/MapPlaneNode';
 import {MapSphereNode} from './nodes/MapSphereNode';
@@ -99,11 +99,13 @@ export class MapView extends Mesh
 	 * @param root - Map view node modes can be SPHERICAL, HEIGHT or PLANAR. PLANAR is used by default. Can also be a custom MapNode instance.
 	 * @param provider - Map color tile provider by default a OSM maps provider is used if none specified.
 	 * @param heightProvider - Map height tile provider, by default no height provider is used.
+	 * @param nodeAutoLoad - Wether to auto load a node upon creation(slower and heavier in memory).
+	 * @param onNodeReady - Custom function to handle node ready (images loaded).
 	 */
 	public constructor(root: (number | MapNode) = MapView.PLANAR, provider: MapProvider = new OpenStreetMapsProvider(), heightProvider: MapProvider = null, nodeAutoLoad = false, onNodeReady?: Function) 
 	{
 		super(undefined, new MeshBasicMaterial({transparent: true, opacity: 0.0}));
-
+		clearNodeCache();
 		this.lod = new LODRaycast();
 
 		this.provider = provider;

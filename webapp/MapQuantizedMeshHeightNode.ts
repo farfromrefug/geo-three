@@ -4,7 +4,7 @@ import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapNode} from '../source/nodes/MapNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {debugFeaturePoints, exageration, FAR, featuresByColor, requestRenderIfNotRequested} from './app';
+import {debugFeaturePoints, exageration, FAR, requestRenderIfNotRequested} from './app';
 
 export let currentColor = 0xffffff;
 
@@ -400,7 +400,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 							f.x = this.x;
 							f.y = this.y;
 							const color = f.color = currentColor--;
-							featuresByColor[color] = f;
+							// featuresByColor[color] = f;
 							f.localCoords.y = 1;
 							colors.push(
 								(color >> 16 & 255) /

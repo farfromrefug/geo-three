@@ -881,124 +881,10 @@
 	    }
 	}
 
-	class MapNodeGeometry extends three.BufferGeometry {
-	    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, options = { skirt: false, skirtDepth: 10.0, uvs: true }) {
-	        super();
-	        const indices = [];
-	        const vertices = [];
-	        const uvs = options.uvs ? [] : undefined;
-	        MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
-	        if (options.skirt) {
-	            MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, options.skirtDepth, indices, vertices, uvs);
-	        }
-	        this.setIndex(indices);
-	        this.setAttribute('position', new three.Float32BufferAttribute(vertices, 3));
-	        if (options.uvs) {
-	            this.setAttribute('uv', new three.Float32BufferAttribute(uvs, 2));
-	        }
-	    }
-	    static buildPlane(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, indices, vertices, uvs) {
-	        const widthHalf = width / 2;
-	        const heightHalf = height / 2;
-	        const gridX = widthSegments + 1;
-	        const gridZ = heightSegments + 1;
-	        const segmentWidth = width / widthSegments;
-	        const segmentHeight = height / heightSegments;
-	        for (let iz = 0; iz < gridZ; iz++) {
-	            const z = iz * segmentHeight - heightHalf;
-	            for (let ix = 0; ix < gridX; ix++) {
-	                const x = ix * segmentWidth - widthHalf;
-	                vertices.push(x, 0, z);
-	                if (uvs) {
-	                    uvs.push(ix / widthSegments, 1 - iz / heightSegments);
-	                }
-	            }
-	        }
-	        for (let iz = 0; iz < heightSegments; iz++) {
-	            for (let ix = 0; ix < widthSegments; ix++) {
-	                const a = ix + gridX * iz;
-	                const b = ix + gridX * (iz + 1);
-	                const c = ix + 1 + gridX * (iz + 1);
-	                const d = ix + 1 + gridX * iz;
-	                indices.push(a, b, d, b, c, d);
-	            }
-	        }
-	    }
-	    static buildSkirt(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirtDepth, indices, vertices, uvs) {
-	        const widthHalf = width / 2;
-	        const heightHalf = height / 2;
-	        const gridX = widthSegments + 1;
-	        const gridZ = heightSegments + 1;
-	        const segmentWidth = width / widthSegments;
-	        const segmentHeight = height / heightSegments;
-	        let start = vertices.length / 3;
-	        for (let ix = 0; ix < gridX; ix++) {
-	            const x = ix * segmentWidth - widthHalf;
-	            const z = -heightHalf;
-	            vertices.push(x, -skirtDepth, z);
-	            if (uvs) {
-	                uvs.push(ix / widthSegments, 1);
-	            }
-	        }
-	        for (let ix = 0; ix < widthSegments; ix++) {
-	            const a = ix;
-	            const d = ix + 1;
-	            const b = ix + start;
-	            const c = ix + start + 1;
-	            indices.push(d, b, a, d, c, b);
-	        }
-	        start = vertices.length / 3;
-	        for (let ix = 0; ix < gridX; ix++) {
-	            const x = ix * segmentWidth - widthHalf;
-	            const z = heightSegments * segmentHeight - heightHalf;
-	            vertices.push(x, -skirtDepth, z);
-	            if (uvs) {
-	                uvs.push(ix / widthSegments, 0);
-	            }
-	        }
-	        let offset = gridX * gridZ - widthSegments - 1;
-	        for (let ix = 0; ix < widthSegments; ix++) {
-	            const a = offset + ix;
-	            const d = offset + ix + 1;
-	            const b = ix + start;
-	            const c = ix + start + 1;
-	            indices.push(a, b, d, b, c, d);
-	        }
-	        start = vertices.length / 3;
-	        for (let iz = 0; iz < gridZ; iz++) {
-	            const z = iz * segmentHeight - heightHalf;
-	            const x = -widthHalf;
-	            vertices.push(x, -skirtDepth, z);
-	            if (uvs) {
-	                uvs.push(0, 1 - iz / heightSegments);
-	            }
-	        }
-	        for (let iz = 0; iz < heightSegments; iz++) {
-	            const a = iz * gridZ;
-	            const d = (iz + 1) * gridZ;
-	            const b = iz + start;
-	            const c = iz + start + 1;
-	            indices.push(a, b, d, b, c, d);
-	        }
-	        start = vertices.length / 3;
-	        for (let iz = 0; iz < gridZ; iz++) {
-	            const z = iz * segmentHeight - heightHalf;
-	            const x = widthSegments * segmentWidth - widthHalf;
-	            vertices.push(x, -skirtDepth, z);
-	            if (uvs) {
-	                uvs.push(1.0, 1 - iz / heightSegments);
-	            }
-	        }
-	        for (let iz = 0; iz < heightSegments; iz++) {
-	            const a = iz * gridZ + heightSegments;
-	            const d = (iz + 1) * gridZ + heightSegments;
-	            const b = iz + start;
-	            const c = iz + start + 1;
-	            indices.push(d, b, a, d, c, b);
-	        }
-	    }
+	const nodesMap = new Map();
+	function clearNodeCache() {
+	    nodesMap.clear();
 	}
-
 	function clearCacheRecursive(item) {
 	    var _a;
 	    if (item.childrenCache) {
@@ -1027,6 +913,7 @@
 	        this.level = level;
 	        this.x = x;
 	        this.y = y;
+	        nodesMap.set(`${level}_${x}_${y}`, this);
 	        const autoLoad = mapView.nodeShouldAutoLoad();
 	        this.isMesh = false;
 	        this.matrixAutoUpdate = false;
@@ -1047,6 +934,7 @@
 	        this.objectsHolder = null;
 	        this.mapView = null;
 	        this.parentNode = null;
+	        nodesMap.delete(`${this.level}_${this.x}_${this.y}`);
 	    }
 	    createChildNodes() { }
 	    subdivide() {
@@ -1190,7 +1078,7 @@
 	        else if (!this.subdivided) {
 	            this.show();
 	        }
-	        this.mapView.onNodeReady();
+	        this.mapView.onNodeReady(this);
 	    }
 	    getNeighborsDirection(direction) {
 	        return null;
@@ -1209,30 +1097,151 @@
 	MapNode.bottomLeft = 2;
 	MapNode.bottomRight = 3;
 
+	class MapNodeGeometry extends three.BufferGeometry {
+	    constructor(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, options = { skirt: false, skirtDepth: 10.0, uvs: true }) {
+	        super();
+	        const indices = [];
+	        const vertices = [];
+	        const uvs = options.uvs ? [] : undefined;
+	        MapNodeGeometry.buildPlane(width, height, widthSegments, heightSegments, indices, vertices, uvs);
+	        if (options.skirt) {
+	            MapNodeGeometry.buildSkirt(width, height, widthSegments, heightSegments, options.skirtDepth, indices, vertices, uvs);
+	        }
+	        this.setIndex(indices);
+	        this.setAttribute('position', new three.Float32BufferAttribute(vertices, 3));
+	        if (options.uvs) {
+	            this.setAttribute('uv', new three.Float32BufferAttribute(uvs, 2));
+	        }
+	    }
+	    static buildPlane(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, indices, vertices, uvs) {
+	        const widthHalf = width / 2;
+	        const heightHalf = height / 2;
+	        const gridX = widthSegments + 1;
+	        const gridZ = heightSegments + 1;
+	        const segmentWidth = width / widthSegments;
+	        const segmentHeight = height / heightSegments;
+	        for (let iz = 0; iz < gridZ; iz++) {
+	            const z = iz * segmentHeight - heightHalf;
+	            for (let ix = 0; ix < gridX; ix++) {
+	                const x = ix * segmentWidth - widthHalf;
+	                vertices.push(x, 0, z);
+	                if (uvs) {
+	                    uvs.push(ix / widthSegments, 1 - iz / heightSegments);
+	                }
+	            }
+	        }
+	        for (let iz = 0; iz < heightSegments; iz++) {
+	            for (let ix = 0; ix < widthSegments; ix++) {
+	                const a = ix + gridX * iz;
+	                const b = ix + gridX * (iz + 1);
+	                const c = ix + 1 + gridX * (iz + 1);
+	                const d = ix + 1 + gridX * iz;
+	                indices.push(a, b, d, b, c, d);
+	            }
+	        }
+	    }
+	    static buildSkirt(width = 1.0, height = 1.0, widthSegments = 1.0, heightSegments = 1.0, skirtDepth, indices, vertices, uvs) {
+	        const widthHalf = width / 2;
+	        const heightHalf = height / 2;
+	        const gridX = widthSegments + 1;
+	        const gridZ = heightSegments + 1;
+	        const segmentWidth = width / widthSegments;
+	        const segmentHeight = height / heightSegments;
+	        let start = vertices.length / 3;
+	        for (let ix = 0; ix < gridX; ix++) {
+	            const x = ix * segmentWidth - widthHalf;
+	            const z = -heightHalf;
+	            vertices.push(x, -skirtDepth, z);
+	            if (uvs) {
+	                uvs.push(ix / widthSegments, 1);
+	            }
+	        }
+	        for (let ix = 0; ix < widthSegments; ix++) {
+	            const a = ix;
+	            const d = ix + 1;
+	            const b = ix + start;
+	            const c = ix + start + 1;
+	            indices.push(d, b, a, d, c, b);
+	        }
+	        start = vertices.length / 3;
+	        for (let ix = 0; ix < gridX; ix++) {
+	            const x = ix * segmentWidth - widthHalf;
+	            const z = heightSegments * segmentHeight - heightHalf;
+	            vertices.push(x, -skirtDepth, z);
+	            if (uvs) {
+	                uvs.push(ix / widthSegments, 0);
+	            }
+	        }
+	        let offset = gridX * gridZ - widthSegments - 1;
+	        for (let ix = 0; ix < widthSegments; ix++) {
+	            const a = offset + ix;
+	            const d = offset + ix + 1;
+	            const b = ix + start;
+	            const c = ix + start + 1;
+	            indices.push(a, b, d, b, c, d);
+	        }
+	        start = vertices.length / 3;
+	        for (let iz = 0; iz < gridZ; iz++) {
+	            const z = iz * segmentHeight - heightHalf;
+	            const x = -widthHalf;
+	            vertices.push(x, -skirtDepth, z);
+	            if (uvs) {
+	                uvs.push(0, 1 - iz / heightSegments);
+	            }
+	        }
+	        for (let iz = 0; iz < heightSegments; iz++) {
+	            const a = iz * gridZ;
+	            const d = (iz + 1) * gridZ;
+	            const b = iz + start;
+	            const c = iz + start + 1;
+	            indices.push(a, b, d, b, c, d);
+	        }
+	        start = vertices.length / 3;
+	        for (let iz = 0; iz < gridZ; iz++) {
+	            const z = iz * segmentHeight - heightHalf;
+	            const x = widthSegments * segmentWidth - widthHalf;
+	            vertices.push(x, -skirtDepth, z);
+	            if (uvs) {
+	                uvs.push(1.0, 1 - iz / heightSegments);
+	            }
+	        }
+	        for (let iz = 0; iz < heightSegments; iz++) {
+	            const a = iz * gridZ + heightSegments;
+	            const d = (iz + 1) * gridZ + heightSegments;
+	            const b = iz + start;
+	            const c = iz + start + 1;
+	            indices.push(d, b, a, d, c, b);
+	        }
+	    }
+	}
+
 	class UnitsUtils {
 	    static get(onResult, onError) {
 	        navigator.geolocation.getCurrentPosition(function (result) {
 	            onResult(result.coords, result.timestamp);
 	        }, onError);
 	    }
-	    static datumsToSpherical(latitude, longitude) {
+	    static datumsToSpherical(latitude, longitude, output) {
 	        const x = longitude * UnitsUtils.EARTH_ORIGIN / 180.0;
 	        let y = Math.log(Math.tan((90 + latitude) * Math.PI / 360.0)) / (Math.PI / 180.0);
 	        y = y * UnitsUtils.EARTH_ORIGIN / 180.0;
+	        if (output) {
+	            return output.set(x, y);
+	        }
 	        return new three.Vector2(x, y);
 	    }
 	    static sphericalToDatums(x, y) {
 	        const longitude = x / UnitsUtils.EARTH_ORIGIN * 180.0;
 	        let latitude = y / UnitsUtils.EARTH_ORIGIN * 180.0;
 	        latitude = 180.0 / Math.PI * (2 * Math.atan(Math.exp(latitude * Math.PI / 180.0)) - Math.PI / 2.0);
-	        return { latitude: Math.round(latitude * 10000) / 10000, longitude: Math.round(longitude * 10000) / 10000 };
+	        return { lat: Math.round(latitude * 10000) / 10000, lon: Math.round(longitude * 10000) / 10000 };
 	    }
 	    static quadtreeToDatums(zoom, x, y) {
 	        const n = Math.pow(2.0, zoom);
 	        const longitude = x / n * 360.0 - 180.0;
 	        const latitudeRad = Math.atan(Math.sinh(Math.PI * (1.0 - 2.0 * y / n)));
 	        const latitude = 180.0 * (latitudeRad / Math.PI);
-	        return { latitude: latitude, longitude: longitude };
+	        return { lat: latitude, lon: longitude };
 	    }
 	}
 	UnitsUtils.EARTH_RADIUS = 6378137;
@@ -2169,6 +2178,7 @@
 	        this.onNodeReady = null;
 	        this.lowMemoryUsage = false;
 	        this.maxZoomForObjectHolders = 14;
+	        clearNodeCache();
 	        this.lod = new LODRaycast();
 	        this.provider = provider;
 	        this.heightProvider = heightProvider;

@@ -9,7 +9,7 @@ const imageBitmapLoader = getSharedImageBitmapLoader({
 	fetchOptions: {credentials: 'same-origin'}
 });
 
-export const locahostServer = '192.168.1.159';
+export const locahostServer = '192.168.1.51';
 export class LocalHeightProvider extends RasterMapProvider 
 {
 	public local: boolean;
@@ -26,7 +26,7 @@ export class LocalHeightProvider extends RasterMapProvider
 		this.maxZoom = local ? 12 : 15;
 	}
 
-	protected buildURL(zoom, x, y): string 
+	public buildURL(zoom, x, y): string 
 	{
 		if (this.local) 
 		{

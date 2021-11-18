@@ -8,7 +8,7 @@ import Stats from 'stats.js';
 import {
 	AmbientLight,
 	AxesHelper,
-	Box3, Clock, Color, Euler, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Uniform, Vector2,
+	Box3, Clock, Color, Euler, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
 	Vector3,
 	Vector4,
 	WebGLRenderer,
@@ -17,16 +17,18 @@ import {
 import {Sky} from 'three/examples/jsm/objects/Sky';
 import {LODFrustum} from '../source/lod/LODFrustum';
 import {MapView} from '../source/MapView';
-import {clearCacheRecursive, MapNode} from '../source/nodes/MapNode';
+import {clearCacheRecursive, getNode, MapNode} from '../source/nodes/MapNode';
 import {DebugProvider} from '../source/providers/DebugProvider';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {EmptyProvider} from './EmptyProvider';
 import {LocalHeightProvider} from './LocalHeightProvider';
-import {MaterialHeightShader} from './MaterialHeightShader';
+import {featuresByColor, getImageData, getPixel, MaterialHeightShader, testColor} from './MaterialHeightShader';
 import RasterMapProvider from './TestMapProvider';
 import {SunLight} from './SunLight';
 import {KeyboardKeyHold} from 'hold-event';
 import RenderTargetHelper from 'three-rt-helper';
+import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
+import {log} from 'console';
 
 const TO_RAD = Math.PI / 180;
 const PI_DIV4 = Math.PI / 4;
@@ -320,7 +322,6 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 				uniforms: new Map([
 					['outlineColor', new Uniform(new Color(darkTheme ? 0xffffff : 0x000000))],
 					['multiplierParameters', new Uniform(new Vector3(depthBiais, depthMultiplier, depthPostMultiplier))]
-					// ['multiplierParameters', new Uniform(new Vector2(1, 40))]
 				])
 			}
 		);
@@ -400,6 +401,7 @@ export const isMobile = FORCE_MOBILE || /Android|webOS|iPhone|iPad|iPod|BlackBer
 const devicePixelRatio = window.devicePixelRatio;
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
 export let debug = false;
+export let generateColor = false;
 export let showStats = false;
 export let mapMap = false;
 export let drawTexture = true;
@@ -422,21 +424,22 @@ export let exageration = 2;
 export let depthBiais = 0.44;
 export let depthMultiplier = 1;
 export let depthPostMultiplier = 110;
-export let featuresByColor = {};
 export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let currentViewingDistance = 0;
 export let FAR = FORCE_MOBILE || isMobile? 163000: 173000;
 export let NEAR = 10;
-const TEXT_HEIGHT = 120;
 let currentPositionAltitude = -1;
-let currentPosition;
-let elevation = -1;
+let currentPosition: {lat: number, lon: number, altitude?: number};
+let needsCurrentPositionElevation = false;
+let currentGroundElevation;
+let currentElevation = -1;
 const clock = new Clock();
 let selectedItem = null;
 let map: MapView;
 const EPS = 1e-5;
 let pixelsBuffer;
-const AA = true;
+const TEXT_HEIGHT = FORCE_MOBILE || isMobile? 170 : 120;
+
 let showingCamera = false;
 // let showMagnify = false;
 let mousePosition = null;
@@ -464,27 +467,16 @@ canvas.addEventListener('touchstart', () => { return clock.getDelta(); }, {passi
 
 const renderer = new WebGLRenderer({
 	canvas: canvas,
-	// logarithmicDepthBuffer: true,
 	antialias: false,
 	alpha: true,
 	powerPreference: 'high-performance',
 	stencil: false
-	// precision: isMobile ? 'mediump' : 'highp'
 });
 renderer.debug.checkShaderErrors = true;
 // const magnify3d = new Magnify3d();
 // const magnify3dTarget = new WebGLRenderTarget(0, 0); 
 
 renderer.setClearColor(0x000000, 0);
-
-// const squadScene = new Scene();
-// const screenQuad = new ScreenQuad({
-// 	width: 0.25,
-// 	height: 0.25,
-// 	top: '150px',
-// 	left: '0px'
-// })
-// squadScene.add(screenQuad);
 
 // const rendererMagnify = new WebGLRenderer({
 // 	canvas: document.getElementById('canvas5') as HTMLCanvasElement,
@@ -508,7 +500,7 @@ const composer = new POSTPROCESSING.EffectComposer(renderer, {});
 
 export function shouldComputeNormals() 
 {
-	return drawNormals || (debug || mapMap) && (computeNormals || dayNightCycle);
+	return computeNormals || drawNormals || generateColor || (debug || mapMap) && dayNightCycle;
 }
 
 export function shouldRenderSky() 
@@ -596,10 +588,6 @@ export function toggleDeviceSensors()
 	}
 	else 
 	{
-		// if (currentPositionAltitude !== -1) 
-		// {
-		// 	setElevation(currentPositionAltitude, true);
-		// }
 		controls.startDeviceOrientation();
 	}
 }
@@ -651,9 +639,8 @@ export function setDebugMode(value, shouldRender = true)
 
 			node.setMaterialValues({
 				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap) && drawTexture
+				drawTexture: (debug || mapMap || generateColor) && drawTexture
 			});
-			// node.material.flatShading = (mapMap && !mapMapNormal);
 		});
 		if (shouldRender) 
 		{
@@ -696,7 +683,7 @@ export function setMapMode(value, shouldRender = true)
 			}
 			node.setMaterialValues({
 				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap) && drawTexture
+				drawTexture: (debug || mapMap || generateColor) && drawTexture
 			});
 			// node.material.flatShading = (mapMap && !mapMapNormal);
 		});
@@ -731,7 +718,7 @@ export function setPredefinedMapMode(value, shouldRender = true)
 			}
 			node.setMaterialValues({
 				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap) && drawTexture
+				drawTexture: (debug || mapMap || generateColor) && drawTexture
 			});
 		});
 		if (shouldRender) 
@@ -760,7 +747,7 @@ export function setDrawTexture(value, shouldRender = true)
 	{
 		applyOnNodes((node) => 
 		{
-			node.setMaterialValues({drawTexture: (debug || mapMap) && drawTexture});
+			node.setMaterialValues({drawTexture: (debug || mapMap || generateColor) && drawTexture});
 		});
 	}
 	requestRenderIfNotRequested();
@@ -784,7 +771,8 @@ export function setNormalsInDebug(value, shouldRender = true)
 		{
 			node.setMaterialValues({
 				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap) && drawTexture
+				drawNormals: drawNormals,
+				drawTexture: (debug || mapMap || generateColor) && drawTexture
 			});
 		});
 	}
@@ -938,12 +926,7 @@ export function setDebugFeaturePoints(value, shouldRender = true)
 	{
 		applyOnNodes((node) => 
 		{
-			// node.objectsHolder.visible = node.isVisible() && debugFeaturePoints;
 			node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided);
-			if (node.pointsMesh) 
-			{
-				node.pointsMesh.userData.forViewing.value = debugFeaturePoints;
-			}
 		});
 	}
 	if (shouldRender) 
@@ -1068,7 +1051,6 @@ if (!EXTERNAL_APP)
 	debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
 	debugGPUPickingCheckbox.onchange = (event: any) => { return setDebugGPUPicking(event.target.checked); };
 	debugGPUPickingCheckbox.checked = debugGPUPicking as any;
-	// canvas3.style.visibility = debugGPUPicking ? 'visible' : 'hidden';
 
 	readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
 	readFeaturesCheckbox.onchange = (event: any) => { return setReadFeatures(event.target.checked); };
@@ -1092,7 +1074,7 @@ if (!EXTERNAL_APP)
 
 	elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
 	elevationSlider.oninput = (event: any) => { return setElevation(event.target.value); };
-	elevationSlider.value = elevation as any;
+	elevationSlider.value = currentElevation as any;
 
 	exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
 	exagerationSlider.oninput = (event: any) => { return setExageration(event.target.value); };
@@ -1176,36 +1158,25 @@ function updateCompass()
 		const hFOV = cameraFOV * viewWidth / viewHeight;
 		compassSlice.style.backgroundImage = `conic-gradient(transparent 0deg,transparent ${180 - hFOV / 2}deg, #15BFCC ${180 - hFOV / 2}deg, #15BFCC ${180 + hFOV / 2}deg, transparent ${180 + hFOV / 2}deg)`;
 		compassSlice.style.transform = `rotateZ(${-angle - 180}deg)`;
-		// compass.style.transform = `rotateX(${90 - pitch}deg)`;
 	}
 }
 function onControlUpdate(forceLOD = false) 
 {
+	controls.getPosition(tempVector);
 	updateLODThrottle(forceLOD);
 	updateCompass();
-	// if (window['nsWebViewBridge']) 
-	// {
-	// 	window['nsWebViewBridge'].emit('controls', {
-	// 		// distance: controls.distance,
-	// 		azim: controls.azimuthAngle * TO_DEG
-	// 	});
-	// }
 	requestRenderIfNotRequested();
 }
 function setupLOD() 
 {
 	heightProvider.maxOverZoom = FORCE_MOBILE || isMobile?0:2;
-	// lod.subdivideDistance = 60;
-	// lod.simplifyDistance = 150;
 	if (FORCE_MOBILE || isMobile) 
 	{
-
 		lod.subdivideDistance = 60;
 		lod.simplifyDistance = 160;
 	}
 	else 
 	{
-
 		lod.subdivideDistance = 70;
 		lod.simplifyDistance = 170;
 	}
@@ -1233,6 +1204,22 @@ function createProvider()
 	provider.minLevelForZoomDelta = 11;
 	return provider;
 }
+
+function onNodeReady(node: MaterialHeightShader) 
+{
+	requestRenderIfNotRequested();
+	if (currentPosition && needsCurrentPositionElevation && node.level > heightProvider.maxZoom - 3) 
+	{
+		const tileBox = tileToBBOX([node.x, node.y, node.level]);
+		// console.log('onNodeReady', node.level, node.x, node.y, tileBox, currentPosition, map.provider['buildURL'](node.level, node.x, node.y) );
+		if (currentPosition.lat >= tileBox[1] && currentPosition.lat <= tileBox[3] && 
+			currentPosition.lon >= tileBox[0] && currentPosition.lon <= tileBox[2]) 
+		{
+			updateCurrentMinElevation(currentPosition, node);
+		}
+	// lon 	bbox[0] + (bbox[2] - bbox[0])/2
+	}
+}
 function createMap() 
 {	
 	if (map !== undefined) 
@@ -1241,14 +1228,11 @@ function createMap()
 		clearCacheRecursive(map.root);
 	}
 	const provider = createProvider();
-	map = new MapView(null, provider, heightProvider, false, requestRenderIfNotRequested);
+	map = new MapView(null, provider, heightProvider, false, onNodeReady);
 	// map.lowMemoryUsage = isMobile;
 	map.lowMemoryUsage = true;
 	map.maxZoomForObjectHolders = 13;
-	// map.setRoot(new MapQuantizedMeshHeightNode(null, map, MapNode.root, 0, 0, 0),{exageration:exageration});
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.root, 0, 0, 0));
-	// map.setRoot(new MapMartiniHeightNode(null, map, MapNode.root, 0, 0, 0,{exageration:exageration, meshMaxError:(level)=>480 / level, elevationDecoder:elevationDecoder}));
-	// map.setRoot(new MapDelatinHeightNode(null, map, MapNode.root, 0, 0, 0,{exageration:exageration, meshMaxError:(level)=>480 / level, elevationDecoder:elevationDecoder} ));
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
@@ -1391,19 +1375,6 @@ const ambientLight = new AmbientLight(0xffffff, 1);
 scene.add(ambientLight);
 ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
 
-// const fog = new Fog(0xffffff, camera.near, camera.far * 2);
-
-// Adjust the directional light's shadow camera dimensions
-// sunLight.directionalLight.shadow.camera.right = 30.0;
-// sunLight.directionalLight.shadow.camera.left = -30.0;
-// sunLight.directionalLight.shadow.camera.top = 30.0;
-// sunLight.directionalLight.shadow.camera.bottom = -30.0;
-// sunLight.directionalLight.shadow.camera.near = camera.near;
-// sunLight.directionalLight.shadow.camera.far = camera.far;
-// sunLight.directionalLight.shadow.mapSize.width = 512;
-// sunLight.directionalLight.shadow.mapSize.height = 512;
-// sunLight.directionalLight.castShadow = true;
-
 // const axesHelper = new AxesHelper(50);
 // scene.add( axesHelper );
 
@@ -1457,7 +1428,7 @@ function getRhumbLineBearing(originLL, destLL)
 	// return the angle, normalized
 	return (Math.atan2(diffLon, diffPhi) * TO_DEG + 360) % 360;
 }
-export function setPosition(coords, animated = false, updateCtrls = true) 
+export function setPosition(coords: {lat, lon, altitude?}, animated = false, updateCtrls = true) 
 {
 	if (coords === currentPosition) 
 	{
@@ -1465,9 +1436,7 @@ export function setPosition(coords, animated = false, updateCtrls = true)
 	}
 	// axesHelper.position.set(newPosition.x, 1300, -newPosition.y - 1000);
 	controls.getPosition(tempVector);
-	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-	const currentCoords = {lat: point.latitude, lon: point.longitude};
-	if (coords.lat === currentCoords.lat && coords.lon === currentCoords.lon) {return;}
+	const currentCoords = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
 	if (sky) 
 	{
 		sunLight.setPosition(coords.lat, coords.lon);
@@ -1480,35 +1449,24 @@ export function setPosition(coords, animated = false, updateCtrls = true)
 	if (animated) 
 	{
 		const distance = getDistance(currentCoords, coords);
-		const startAimingAngle = controls.azimuthAngle * TO_DEG % 360;
-		let endAimingAngle = -getRhumbLineBearing(currentCoords, coords);
-		// if (Math.abs(topAimingAngle - 360 -startAimingAngle ) < Math.abs(topAimingAngle-startAimingAngle )) 
-		// {
-		// 	topAimingAngle -= 360;
-		// }
-		const startElevation = elevation * exageration;
+		const startElevation = currentElevation;
 		let endElevation = startElevation;
 		if (coords.altitude) 
 		{
 			currentPositionAltitude = coords.altitude + 100;
-			endElevation = currentPositionAltitude * exageration;
+			endElevation = currentPositionAltitude;
 		}
-		currentPosition = coords;
-		// else 
-		// {
-		// 	currentPositionAltitude = -1;
-		// }
 		// always move to be "over" the peak
 		const topElevation = distance > 100000 ? 11000 * exageration : endElevation;
 		startAnimation({
-			from: {...currentPosition, progress: 0},
+			from: {...{x: tempVector.x, y: -tempVector.z}, progress: 0},
 			to: {...newPosition, progress: 1},
 			duration: Math.min(distance / 20, 3000),
 			preventComputeFeatures: true,
 			onUpdate: (value) => 
 			{
 				const {progress, ...newPos} = value;
-				currentPosition = newPos;
+				// currentPosition = newPos;
 				if (progress <= 0.2) 
 				{
 					const cProgress = 5 * progress;
@@ -1517,25 +1475,21 @@ export function setPosition(coords, animated = false, updateCtrls = true)
 				if (progress <= 0.5) 
 				{
 					const cProgress = 2 * progress;
-					controls.moveTo(currentPosition.x, startElevation + cProgress * (topElevation - startElevation), -currentPosition.y, false);
+					controls.moveTo(newPos.x, (startElevation + cProgress * (topElevation - startElevation)) * exageration, -newPos.y, false);
 				}
 				else 
 				{
 					const cProgress = (progress - 0.5) * 2;
-					controls.moveTo(currentPosition.x, topElevation + cProgress * (endElevation - topElevation), -currentPosition.y, false);
+					controls.moveTo(newPos.x, (topElevation + cProgress * (endElevation - topElevation)) * exageration, -newPos.y, false);
 				}
 				updateControls();
 			},
 			onEnd: () => 
 			{
-				setElevation(Math.round(endElevation / exageration), false);
+				currentPosition = coords;
+				setElevation(endElevation, false);
 				updateCurrentViewingDistance();
-				if (window['nsWebViewBridge']) 
-				{
-					controls.getPosition(tempVector);
-					const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-					window['nsWebViewBridge'].emit('position', {...point, altitude: elevation});
-				}
+				updateExternalPosition();
 			}
 		});
 	}
@@ -1545,9 +1499,8 @@ export function setPosition(coords, animated = false, updateCtrls = true)
 		{
 			setElevation(coords.altitude, false);
 		}
-		currentPosition = newPosition;
-
-		controls.moveTo(currentPosition.x, elevation * exageration + 30, -currentPosition.y, false);
+		// currentPosition = coords;
+		controls.moveTo(newPosition.x, currentElevation * exageration, -newPosition.y, false);
 		updateCurrentViewingDistance();
 		if (updateCtrls) 
 		{
@@ -1555,16 +1508,79 @@ export function setPosition(coords, animated = false, updateCtrls = true)
 		}
 	}
 }
+
+function updateCurrentMinElevation(pos = currentPosition, node?, diff = 60) 
+{
+	needsCurrentPositionElevation = false;
+	if (pos) 
+	{
+		const groundElevation = getElevation(pos, node);
+		if (groundElevation === -100000 || isNaN(groundElevation)) 
+		{
+			needsCurrentPositionElevation = true;
+		}
+		else 
+		{
+			const oldGroundElevation = currentGroundElevation ||groundElevation;
+			const currentDiff = currentElevation - oldGroundElevation;
+			currentGroundElevation = groundElevation;
+			if (currentDiff > 0 && currentDiff < 500) 
+			{
+				setElevation(currentGroundElevation + Math.max(currentDiff, diff), true);
+			}
+		}
+	}
+	else 
+	{
+		currentGroundElevation = undefined;
+	}
+}
+
+export function getElevation(coord: {lat, lon}, node?: MaterialHeightShader): number
+{
+	const maxZoom = map.heightProvider.maxZoom;
+	let zoom = maxZoom;
+	let fractionTile;
+	while (!node && zoom > maxZoom - 3) 
+	{
+		fractionTile = pointToTileFraction(coord.lon, coord.lat, zoom);
+		node = getNode(fractionTile[2], Math.floor(fractionTile[0]), Math.floor(fractionTile[1])) as MaterialHeightShader;
+		zoom -= 1;
+	}
+	if (node && node.heightLoaded && node.userData.heightMap.value) 
+	{
+		const texture = node.userData.heightMap.value as Texture;
+		const heightMapLocation =node.userData.heightMapLocation.value;
+		const pixel = getPixel(getImageData(texture.image as ImageBitmap), heightMapLocation, coord, node.level);
+		const elevation = pixel[0]/255* elevationDecoder[0] + pixel[1]/255* elevationDecoder[1] + pixel[2]/255* elevationDecoder[2]+ elevationDecoder[3];
+
+		return elevation;
+	}
+	else 
+	{
+		return -100000;
+	}
+}
+
 export function setElevation(newValue, updateCtrls = true) 
 {
 	if (typeof newValue === 'string') 
 	{
 		newValue = parseFloat(newValue);
 	}
-	if (elevation === newValue) {return;}
-	elevation = newValue;
-	controls.getTarget(tempVector);
-	controls.moveTo(tempVector.x, elevation * exageration, tempVector.z);
+	if (currentGroundElevation !== undefined && newValue < currentGroundElevation) 
+	{
+		newValue = currentGroundElevation;
+	}
+	if (currentElevation === newValue) {return;}
+	currentElevation = newValue;
+	controls.getPosition(tempVector);
+	// console.log('setElevation', updateCtrls, currentElevation, tempVector);
+	controls.moveTo(tempVector.x, currentElevation * exageration, tempVector.z);
+	if (!EXTERNAL_APP) 
+	{
+		elevationSlider.value = currentElevation;
+	}
 	if (updateCtrls) 
 	{
 		updateControls();
@@ -1653,48 +1669,55 @@ export function setDate(secondsInDay, shouldRender = true)
 		requestRenderIfNotRequested();
 	}
 }
-let lastPosition;
 let updateExternalPosition;
 export function setUpdateExternalPositionThrottleTime(value) 
 {
 	updateExternalPosition = throttle(function() 
 	{
-		controls.getPosition(tempVector);
-		const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-		if (!lastPosition || lastPosition.latitude !== point.latitude || lastPosition.longitude !== point.longitude) 
+
+		if (window['electron']) 
 		{
-			// console.log('updateExternalPosition')
-			lastPosition = point;
-			if (window['electron']) 
-			{
-				const ipcRenderer = window['electron'].ipcRenderer;
-				ipcRenderer.send('message', {...lastPosition, altitude: elevation});
-			}
-			if (window['nsWebViewBridge']) 
-			{
-				window['nsWebViewBridge'].emit('position', {...lastPosition, altitude: elevation});
-			}
+			const ipcRenderer = window['electron'].ipcRenderer;
+			ipcRenderer.send('message', {...currentPosition, altitude: currentElevation});
+		}
+		if (window['nsWebViewBridge']) 
+		{
+			window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: currentElevation});
 		}
 	}, value);
 }
 setUpdateExternalPositionThrottleTime(100);
+
+function updateCurrentPosition() 
+{
+	controls.getPosition(tempVector);
+	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+	// console.log('point', tempVector, point);
+
+	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon) 
+	{
+		currentPosition = point;
+		updateCurrentMinElevation();
+		updateExternalPosition();
+	}
+}
+
 controls.addEventListener('update', () => 
 {
 	if (!animating) 
 	{
-		updateExternalPosition();
+		updateCurrentPosition();
 	}
 	onControlUpdate();
 });
-let lastFinalPosition;
 controls.addEventListener('controlend', () => 
 {
 	updateLODThrottle();
 	controls.getPosition(tempVector);
 	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-	if (!lastFinalPosition || lastFinalPosition.latitude !== point.latitude || lastFinalPosition.longitude !== point.longitude || lastFinalPosition.altitude !== elevation ) 
+	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon || currentPosition.altitude !== currentElevation ) 
 	{
-		lastFinalPosition = {...point, altitude: elevation};
+		currentPosition = {...point, altitude: currentElevation};
 		updateCurrentViewingDistance();
 	}
 	// force a render at the end of the movement to make sure we show the correct peaks
@@ -1745,19 +1768,13 @@ class OutlinePass extends POSTPROCESSING.EffectPass
 	render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest) 
 	{
 		map.visible = false;
-		// scene.remove(map)
 		super.render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest);
-		// scene.add(map)
 		map.visible = true;
 	}
 }
 const mainPass = new POSTPROCESSING.RenderPass(scene, camera);
 composer.addPass(mainPass);
 mainPass.renderToScreen = true;
-// const peaksPass = new PeaksPass();
-// composer.addPass(peaksPass);
-// peaksPass.renderToScreen = true;
-// mainPass.clear = false;
 const outlineEffect = new CustomOutlineEffect();
 const outlinePass = new OutlinePass(camera, outlineEffect);
 outlinePass.renderToScreen = true;
@@ -1796,19 +1813,11 @@ function actualComputeFeatures()
 		if (node.pointsMesh) 
 		{
 			node.pointsMesh.userData.depthTexture.value = depthTexture;
-			node.pointsMesh.userData.forViewing.value = debugFeaturePoints;
 		}
 	});
 	if (debugFeaturePoints) 
 	{
 		renderer.render(scene, camera);
-		applyOnNodes((node) => 
-		{
-			if (node.pointsMesh) 
-			{
-				node.pointsMesh.userData.forViewing.value = false;
-			}
-		});
 	}
 	renderer.setRenderTarget(pointBufferTarget);
 	renderer.clear();
@@ -1846,12 +1855,12 @@ document.body.onresize = function()
 	const scale = viewWidth / viewHeight;
 	if (scale > 1) 
 	{
-		offWidth = FORCE_MOBILE || isMobile ? 200: 400;
+		offWidth = FORCE_MOBILE || isMobile ? 800: 800;
 		offHeight = Math.round(offWidth / scale);
 	}
 	else 
 	{
-		offHeight = FORCE_MOBILE || isMobile ? 200: 400;
+		offHeight = FORCE_MOBILE || isMobile ? 800: 800;
 		offWidth = Math.round(offHeight * scale);
 	}
 
@@ -1908,10 +1917,7 @@ function toScreenXY(pos3D)
 
 function applyOnNode(node, cb) 
 {
-	// if (node.isVisible()) 
-	// {
 	cb(node);
-	// }
 	node.children.forEach((n) => 
 	{
 		if (n instanceof MapNode) 
@@ -1930,37 +1936,9 @@ function applyOnNode(node, cb)
 		});
 	}
 }
-function applyOnVisibleNode(node, cb) 
-{
-	if (node.isVisible()) 
-	{
-		cb(node);
-	}
-	node.children.forEach((n) => 
-	{
-		if (n instanceof MapNode) 
-		{
-			applyOnVisibleNode(n, cb);
-		}
-	});
-	if (node.childrenCache) 
-	{
-		node.childrenCache.forEach((n) => 
-		{
-			if (n instanceof MapNode) 
-			{
-				applyOnVisibleNode(n, cb);
-			}
-		});
-	}
-}
 function applyOnNodes(cb) 
 {
 	applyOnNode(map.children[0], cb);
-}
-function applyOnVisibleNodes(cb) 
-{
-	applyOnVisibleNode(map.children[0], cb);
 }
 
 function wrapText(context, text, x, y, maxWidth, lineHeight, measureOnly = false) 
@@ -2022,9 +2000,8 @@ function truncate(str, maxlength)
 }
 function updateSelectedPeakLabel() 
 {
-	const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
 	const point2 = {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
-	const distance = getDistance(point1, point2);
+	const distance = getDistance(currentPosition, point2);
 	selectedPeakLabel.innerText = selectedItem.properties.name + ' ' + selectedItem.properties.ele + 'm(' + Math.round(distance / 100) / 10 + 'km)';
 }
 
@@ -2046,7 +2023,6 @@ function sendSelectedToNS()
 }
 function setSelectedItem(f) 
 {
-	// console.log('setSelectedItem', f);
 	mousePosition = null;
 	if (f === selectedItem) 
 	{
@@ -2084,7 +2060,7 @@ export function focusSelectedItem()
 		controls.getPosition(tempVector);
 		const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
 		const point2 = {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0]};
-		const angle = 360 - getRhumbLineBearing({lat: point1.latitude, lon: point1.longitude}, point2);
+		const angle = 360 - getRhumbLineBearing(point1, point2);
 		setAzimuth(angle);
 	}
 }
@@ -2102,45 +2078,71 @@ function getDistanceToMouse(f)
 {
 	return Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
 }
+const minDistance = isMobile ? 26 : 44;
+const windowSize = minDistance;
 function drawFeatures() 
 {
-	if (!readFeatures || !drawLines || animating) 
+	if (!readFeatures || animating) 
 	{
 		return;
 	}
 
-	const minDistance = 44;
 	const featuresGroupedX = new Array(viewWidth);
 	let lastX = 0;
-	// console.log('featuresToShow', featuresToShow.findIndex((f) => {return f.properties.name.startsWith('Monte Bianco');}) );
+	let maxEle = -10000;
+	let maxEleX;
+	// console.log(featuresToShow.length, featuresToShow.findIndex((f) => {return f.properties.name.endsWith('Monte Bianco');}));
+	const featuresToDraw = [];
 	featuresToShow.forEach((f) => 
 	{
 		const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
-		tempVector.set(coords.x, (f.properties.ele || 0) * exageration, -coords.y);
+		const ele = f.properties.ele || 0;
+		tempVector.set(coords.x, ele * exageration, -coords.y);
 		const vector = toScreenXY(tempVector);
 		const x = Math.floor(vector.x);
 		const y = vector.y;
 		const z = vector.z;
-		if (y < TEXT_HEIGHT || z > FAR + 1000 || z / f.properties.ele > FAR / 3000) 
+		if (y < TEXT_HEIGHT- 20 || z > FAR + 1000 || z / ele > FAR / 3000) 
 		{
+			// if (f.properties.name.endsWith('Monte Bianco')) 
+			// {
+			// 	console.log('ignoring', f.properties.name, z, z / ele > FAR / 3000, z > FAR + 1000 );
+
+			// }
 			return;
 		}
-		lastX = Math.max(lastX, x);
+		
+		// lastX = Math.max(lastX, x);
+		// if (f.properties.name.endsWith('Monte Bianco')) 
+		// {
+		// 	console.log('test', x );
+
+		// }
+		if (ele > maxEle) 
+		{
+			maxEleX = x;
+			maxEle = ele;
+		}
 		const array = featuresGroupedX[x] = featuresGroupedX[x] || [];
 		array.push({...f, x: x, y: y, z: z});
 	});
-	const featuresToDraw = [];
-	let windowStartX = 0;
-	while (windowStartX < lastX) 
+	let windowStartX = maxEleX;
+	function handleWindowSize(startX, endX, distance) 
 	{
-		const array = featuresGroupedX.slice(windowStartX, windowStartX + minDistance).filter((s) => {return Boolean(s);}).flat();
+		// console.log('test1', windowStartX);
+		const array = featuresGroupedX.slice(startX, endX).filter((s) => {return Boolean(s);}).flat();
 		if (array.length === 0) 
 		{
-			windowStartX += minDistance;
-			continue;
+			windowStartX += distance;
+			return true;
 		}
+		// const indexTet = array.findIndex((f) => {return f.properties.name.endsWith('Monte Bianco');});
+		// if (indexTet !== -1) 
+		// {
+		// 	console.log('found Monte Bianco!');
+		// }
 		let nextFeature;
-		if (mousePosition && mousePosition.x >=windowStartX && mousePosition.x <= windowStartX + minDistance) 
+		if (mousePosition && mousePosition.x >=startX && mousePosition.x <= endX) 
 		{
 			const mouseObj= array.reduce((p, c) => 
 			{
@@ -2162,11 +2164,27 @@ function drawFeatures()
 		}
 		if (!nextFeature) 
 		{
-			// console.log('test', array.findIndex((f) => {return f.properties.name.startsWith('Monte Bianco');}), array)
-			nextFeature = array.reduce((p, c) => {return p.properties.ele > c.properties.ele ? p : c;});
+			nextFeature = array.reduce((p, c) => {return Math.pow(p.properties.ele, 2) >Math.pow(c.properties.ele, 2) ? p : c;});
 		}
-		windowStartX = nextFeature.x + minDistance;
+		windowStartX = nextFeature.x + distance;
 		featuresToDraw.push(nextFeature);
+	}
+	// console.log('maxEleX', maxEleX, maxEle);
+	windowStartX = maxEleX - minDistance /2;
+	while (windowStartX < viewWidth) 
+	{
+		if (handleWindowSize(windowStartX, windowStartX+ minDistance, minDistance)) 
+		{
+			continue;
+		}
+	}
+	windowStartX = maxEleX - minDistance;
+	while (windowStartX >= 0) 
+	{
+		if (handleWindowSize(windowStartX - minDistance, windowStartX, -minDistance)) 
+		{
+			continue;
+		}
 	}
 
 	// console.log('featuresToDraw', featuresToDraw );
@@ -2175,6 +2193,11 @@ function drawFeatures()
 }
 
 const labelFontSize = 15;
+const textRotation = -Math.PI / 4;
+const textMaxWidth = Math.round(TEXT_HEIGHT / Math.cos(textRotation) - 20);
+const rectTop = -16;
+const rectBottom = 21;
+const canWrap = !(FORCE_MOBILE || isMobile);
 function drawFeaturesLabels(featuresToDraw: any[]) 
 {
 	const screenRatio = devicePixelRatio;
@@ -2182,33 +2205,30 @@ function drawFeaturesLabels(featuresToDraw: any[])
 	ctx2d.save();
 	ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
 	ctx2d.scale(screenRatio, screenRatio);
-	const rectTop = -16;
-	const rectBottom = 21;
 
 	const textColor = darkTheme ? 'white' : 'black';
 	const color = darkTheme ? '#000000' : '#ffffff';
-	const textRotation = -Math.PI / 4;
-	const textMaxWidth = Math.round(TEXT_HEIGHT / Math.cos(textRotation) - 20);
+	let f, y, isSelected, text, realTextWidth, textWidth, textWidth2, transform, point, test;
 	for (let index = 0; index < toShow; index++) 
 	{
-		const f = featuresToDraw[index];
-		// const y = f.screenY ?? f.y;
-		const y = f.y;
-		// if (y < TEXT_HEIGHT || f.z >= FAR || f.z / f.properties.ele > FAR / 3000) 
-		// {
-		// 	continue;
-		// }
-
-		ctx2d.beginPath();
-		ctx2d.strokeStyle = textColor;
-		ctx2d.moveTo(f.x, TEXT_HEIGHT);
-		ctx2d.lineTo(f.x, y);
-		ctx2d.closePath();
-		ctx2d.stroke();
+		f = featuresToDraw[index];
+		y = f.y;
+		isSelected = selectedItem && isSelectedFeature(f);
+		if (drawLines && y>TEXT_HEIGHT) 
+		{
+			ctx2d.beginPath();
+			ctx2d.strokeStyle = textColor;
+			ctx2d.lineWidth = isSelected?3:1;
+			ctx2d.moveTo(f.x, TEXT_HEIGHT);
+			ctx2d.lineTo(f.x, y);
+			ctx2d.closePath();
+			ctx2d.stroke();
+		}
+		
 		ctx2d.save();
 		ctx2d.translate(f.x, TEXT_HEIGHT);
 		ctx2d.rotate(textRotation);
-		if (selectedItem && isSelectedFeature(f)) 
+		if (isSelected) 
 		{
 			ctx2d.font = `bold ${labelFontSize}px Noto Sans`;
 		}
@@ -2216,11 +2236,11 @@ function drawFeaturesLabels(featuresToDraw: any[])
 		{
 			ctx2d.font = `${labelFontSize}px Noto Sans`;
 		}
-		const text = f.properties.name;
-		const realTextWidth = ctx2d.measureText(text).width;
-		const textWidth = Math.min(realTextWidth, textMaxWidth);
-		let wrapValues = {y: drawElevations?labelFontSize:0, x: 0};
-		if (realTextWidth !== textWidth) 
+		text = canWrap? f.properties.name: truncate(f.properties.name, 30);
+		realTextWidth = ctx2d.measureText(text).width;
+		textWidth = Math.min(realTextWidth, textMaxWidth);
+		let wrapValues = {y: canWrap && drawElevations?labelFontSize:0, x: canWrap? 0 :textWidth};
+		if (canWrap && realTextWidth !== textWidth) 
 		{
 			wrapValues = wrapText(ctx2d, text, 5, 0, textWidth, labelFontSize, true);
 		}
@@ -2229,14 +2249,14 @@ function drawFeaturesLabels(featuresToDraw: any[])
 		if (drawElevations) 
 		{
 			text2 = f.properties.ele + 'm';
-			const textWidth2 = ctx2d.measureText(text2).width;
+			textWidth2 = ctx2d.measureText(text2).width;
 			totalWidth += textWidth2 - 5;
 		}
 		if (mousePosition) 
 		{
-			const transform = ctx2d.getTransform().inverse();
-			var point = new DOMPoint(mousePosition.x * screenRatio, mousePosition.y * screenRatio);
-			const test = point.matrixTransform(transform);
+			transform = ctx2d.getTransform().inverse();
+			point = new DOMPoint(mousePosition.x * screenRatio, mousePosition.y * screenRatio);
+			test = point.matrixTransform(transform);
 			if (test.x >= 0 && test.x < totalWidth &&
 				test.y < -rectTop && test.y >= -(rectBottom + wrapValues.y)) 
 			{
@@ -2284,9 +2304,6 @@ function drawFeaturesLabels(featuresToDraw: any[])
 function readShownFeatures() 
 {
 	const width = offWidth;
-	const height = offHeight;
-	// const hScale = viewHeight / height;
-	// const lineWidth = 4 * width;
 	renderer.readRenderTargetPixels(pointBufferTarget, 0, 0, offWidth, offHeight, pixelsBuffer);
 	const readColors = [];
 	const rFeatures = [];
@@ -2294,15 +2311,20 @@ function readShownFeatures()
 	let lastColor;
 	function handleLastColor(pixelIndex) 
 	{
+		
 		const colorIndex = readColors.indexOf(lastColor);
 		if (colorIndex === -1) 
 		{
 			const feature = featuresByColor[lastColor];
+
+			// if (lastColor === testColor) 
+			// {
+			// 	console.log('found test color!', feature);
+			// }
 			if (feature) 
 			{
 				readColors.push(lastColor);
-				// const y = viewHeight - Math.floor((pixelIndex - 4) / lineWidth) * hScale;
-				const result = {...feature/* , color: lastColor, minColorY: y, maxColorY: y */};
+				const result = {...feature};
 				rFeatures.push(result);
 				if (needsToClearSelectedItem && isSelectedFeature(feature)) 
 				{
@@ -2314,9 +2336,6 @@ function readShownFeatures()
 		else 
 		{
 			const result = rFeatures[colorIndex];
-			// const y = viewHeight - Math.floor((pixelIndex - 4) / lineWidth) * hScale;
-			// result.minColorY = Math.min(y, result.minColorY || 10000000);
-			// result.maxColorY = Math.max(y, result.maxColorY || -10000000);
 			return result;
 		}
 	}
@@ -2327,6 +2346,7 @@ function readShownFeatures()
 		if (pixelsBuffer[index + 3] !== 0 && (pixelsBuffer[index] !== 0 || pixelsBuffer[index + 1] !== 0 || pixelsBuffer[index + 2] !== 0)) 
 		{
 			const color = (pixelsBuffer[index] << 16) + (pixelsBuffer[index + 1] << 8) + pixelsBuffer[index + 2];
+			
 			if (lastColor !== color) 
 			{
 				if (lastColor) 
@@ -2355,37 +2375,15 @@ function readShownFeatures()
 	{
 		setSelectedItem(null);
 	}
-	// if (needsSelectedItem) 
-	// {
-	// 	rFeatures.push({...selectedItem, screenY: null});
-	// }
 	featuresToShow = rFeatures;
 }
 
 function withoutOutline() 
 {
-	return (debug || mapMap) && !mapoutline;
+	return (debug || mapMap || generateColor) && !mapoutline;
 }
 function actualRender(forceComputeFeatures) 
 {
-
-	// }
-	// applyOnNodes((node) =>
-	// {
-
-	// 	node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === 14 && node.parentNode.subdivided);
-	// 	if (node.pointsMesh) 
-	// 	{
-	// 		node.pointsMesh.material.uniforms.forViewing.value = debugFeaturePoints;
-	// 	}
-	// });
-
-	// if (withoutComposer()) 
-	// {
-	// 	renderer.render(scene, camera);
-	// }
-	// else 
-	// {
 	composer.render(clock.getDelta());
 	if (!animating && readFeatures && pixelsBuffer) 
 	{
@@ -2399,11 +2397,6 @@ function actualRender(forceComputeFeatures)
 		}
 	}
 	drawFeatures();
-	// screenQuad.material.uniforms.uTexture.value = composer.depthTexture;
-	// screenQuad.material.uniforms.cameraNear.value = camera.near;
-	// screenQuad.material.uniforms.cameraFar.value = camera.far;
-	// renderer.render(squadScene, camera)
-	// }
 }
 export function requestRenderIfNotRequested(forceComputeFeatures = false) 
 {
@@ -2476,12 +2469,8 @@ if (datelabel)
 {
 	exports.init = function() 
 	{
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': false, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 71001, 'setDebugMode': false, 'setReadFeatures': true, 'setShowStats': true, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 71001, 'setDebugMode': true, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
 	};
-	
-	// setElevation(500, false);
-	// controls.azimuthAngle = -86 * Math.PI / 180;
-	// setInitialPosition();
 }
 
 function startAnimation({from, to, duration, onUpdate, onEnd, preventComputeFeatures}: { from, to, duration, onUpdate?, onEnd?, preventComputeFeatures?}) 
@@ -2549,9 +2538,7 @@ export function setNear(value)
 export function setViewingDistance(meters: number, shouldRender = true) 
 {
 	if (FAR === meters) {return;}
-	// updateCurrentViewingDistance();
 	FAR = meters;
-	// FAR = meters / currentViewingDistance * FAR;
 	camera.far = FAR;
 	camera.updateProjectionMatrix();
 	updateCurrentViewingDistance();
@@ -2614,10 +2601,12 @@ function getDistance(start, end)
 }
 function getViewingDistance() 
 {
-
+	if (!currentPosition) 
+	{
+		return 0;
+	}
 	var farPoint = new Vector3(0, 0, -camera.far);
 	farPoint.applyMatrix4(camera.matrixWorld);
-	const point1 = UnitsUtils.sphericalToDatums(currentPosition.x, currentPosition.y);
 	const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
-	return getDistance(point1, point2);
+	return getDistance(currentPosition, point2);
 }

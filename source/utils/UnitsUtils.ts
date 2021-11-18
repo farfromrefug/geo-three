@@ -45,13 +45,17 @@ export class UnitsUtils
 	 * @param latitude - Latitude value in degrees.
 	 * @param longitude - Longitude value in degrees.
 	 */
-	public static datumsToSpherical(latitude: number, longitude: number): Vector2
+	public static datumsToSpherical(latitude: number, longitude: number, output?: Vector2): Vector2
 	{
 		const x = longitude * UnitsUtils.EARTH_ORIGIN / 180.0;
 		let y = Math.log(Math.tan((90 + latitude) * Math.PI / 360.0)) / (Math.PI / 180.0);
 
 		y = y * UnitsUtils.EARTH_ORIGIN / 180.0;
 
+		if (output) 
+		{
+			return output.set(x, y);
+		}
 		return new Vector2(x, y);
 	}
 
@@ -61,14 +65,14 @@ export class UnitsUtils
 	 * @param x - X coordinate.
 	 * @param y - Y coordinate.
 	 */
-	public static sphericalToDatums(x: number, y: number): {latitude: number, longitude: number}
+	public static sphericalToDatums(x: number, y: number): {lat: number, lon: number}
 	{
 		const longitude = x / UnitsUtils.EARTH_ORIGIN * 180.0;
 		let latitude = y / UnitsUtils.EARTH_ORIGIN * 180.0;
 
 		latitude = 180.0 / Math.PI * (2 * Math.atan(Math.exp(latitude * Math.PI / 180.0)) - Math.PI / 2.0);
 
-		return {latitude: Math.round(latitude * 10000) /10000, longitude: Math.round(longitude * 10000) /10000};
+		return {lat: Math.round(latitude * 10000) /10000, lon: Math.round(longitude * 10000) /10000};
 	}
 
 	/**
@@ -78,13 +82,13 @@ export class UnitsUtils
 	 * @param x - X coordinate.
 	 * @param y - Y coordinate.
 	 */
-	public static quadtreeToDatums(zoom: number, x: number, y: number): {latitude: number, longitude: number}
+	public static quadtreeToDatums(zoom: number, x: number, y: number): {lat: number, lon: number}
 	{
 		const n = Math.pow(2.0, zoom);
 		const longitude = x / n * 360.0 - 180.0;
 		const latitudeRad = Math.atan(Math.sinh(Math.PI * (1.0 - 2.0 * y / n)));
 		const latitude = 180.0 * (latitudeRad / Math.PI);
 
-		return {latitude: latitude, longitude: longitude};
+		return {lat: latitude, lon: longitude};
 	}
 }

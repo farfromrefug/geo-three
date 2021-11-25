@@ -17,15 +17,15 @@ export default [{
 			open: true,
 			contentBase: '.',
 			openPage: '/example',
-			host: '0.0.0.0',
-			// host: '127.0.0.1',
+			// host: '0.0.0.0',
+			host: '127.0.0.1',
 			port: 8081,
-			headers: {'Access-Control-Allow-Origin': '*'},
-			https: {
-				cert: readFileSync(resolve(__dirname, 'server.crt')),
-				key: readFileSync(resolve(__dirname, 'server.key')),
-				ca: readFileSync(resolve(__dirname, 'server.csr'))
-			}
+			headers: {'Access-Control-Allow-Origin': '*'}
+			// https: {
+			// 	cert: readFileSync(resolve(__dirname, 'server.crt')),
+			// 	key: readFileSync(resolve(__dirname, 'server.key')),
+			// 	ca: readFileSync(resolve(__dirname, 'server.csr'))
+			// }
 		}),
 		livereload('example'),
 		replace({

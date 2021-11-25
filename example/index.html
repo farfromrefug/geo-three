@@ -147,17 +147,17 @@
             transform: scale(1.5);
         }
         #settings_button {
-            left: 0px;
+            right: 0px;
             bottom: 0px;
         }
 
         #camera_button {
-            right: 0px;
-            bottom: 0px;
+            left: 0px;
+            bottom: 40px;
         }
 
         #map_button {
-            right: 0px;
+            left: 0px;
             bottom: 0px;
         }
 
@@ -285,6 +285,8 @@
                     <form>
                         <input type="checkbox" id="mapMap" name="mapMap" />
                         <label for="mapMap"> map Map</label><br />
+                        <input type="checkbox" id="generateColors" name="generateColors" />
+                        <label for="generateColors"> Generate Colors</label><br />
                         <input type="checkbox" id="debugMap" name="debugMap" />
                         <label for="debugMap"> Debug Map</label><br />
                         <input type="checkbox" id="computeNormals" name="computeNormals" onchange="webapp.toggleComputeNormals()" />

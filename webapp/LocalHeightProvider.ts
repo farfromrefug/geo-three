@@ -9,7 +9,7 @@ const imageBitmapLoader = getSharedImageBitmapLoader({
 	fetchOptions: {credentials: 'same-origin'}
 });
 
-export const locahostServer = '192.168.1.51';
+export const locahostServer = '127.0.0.1';
 export class LocalHeightProvider extends RasterMapProvider 
 {
 	public local: boolean;

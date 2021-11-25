@@ -70,8 +70,8 @@ export class SunLight extends Object3D
 		this.hingeObject = new Object3D();
 		this.add( this.hingeObject );
 
-		this.directionalLight = new DirectionalLight(0xdddddd); 
-		// this.directionalLight.castShadow = true;
+		this.directionalLight = new DirectionalLight(0xffffff); 
+		this.directionalLight.castShadow = true;
 		this.hingeObject.add( this.directionalLight );
 
 		// Add the target of the directional light as a child to this object, so
@@ -134,7 +134,7 @@ export class SunLight extends Object3D
 		}
 		else 
 		{
-			this.directionalLight.intensity = 1.0;
+			this.directionalLight.intensity = 0.7;
 		}
 		// Reset the hingeObject's quaternion
 		this.hingeObject.quaternion.copy( new Quaternion() );

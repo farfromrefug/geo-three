@@ -5,7 +5,7 @@ import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {debug, drawNormals, drawTexture, elevationDecoder, exageration, FAR, generateColor, GEOMETRY_SIZE, isMobile, mapMap, NEAR, shouldComputeNormals} from './app';
+import {elevationDecoder, exageration, GEOMETRY_SIZE, isMobile} from './app';
 
 
 export let featuresByColor = {};
@@ -122,9 +122,18 @@ class PointMaterial extends ShaderMaterial
 		this.uniformsNeedUpdate = true;
 	}
 }
-const sharedPointMaterial = new PointMaterial({
+
+const EMPTY_TEXTURE = new Texture();
+
+export const sharedPointMaterial = new PointMaterial({
 	depthWrite: false,
 	depthTest: false,
+	uniforms: {
+		exageration: {value: 1},
+		depthTexture: {value: EMPTY_TEXTURE}, 
+		cameraNear: {value: 10},
+		cameraFar: {value: 1000000}
+	},
 	vertexShader: `
 #include <packing>
 attribute vec4 color;
@@ -185,7 +194,6 @@ void main() {
 	transparent: false
 });
 
-const EMPTY_TEXTURE = new Texture();
 function pick<T extends object, U extends keyof T>(object: T, ...props: U[]): Pick<T, U> 
 {
 	return props.reduce((o, k) => { o[k] = object[k];return o;}, {} as any);
@@ -197,11 +205,10 @@ function glslifyNumber(n): string
 }
 function createSharedMaterial(): CustomMaterial 
 {
+
 	const phongShader = ShaderLib['phong'];
 	const sharedMaterial = new CustomMaterial( {
 		lights: true,
-		uniforms: pick(phongShader.uniforms, 'diffuse', 'spotLights', 'spotLightShadows', 'rectAreaLights', 'ltc_1', 'ltc_2', 'ambientLightColor', 'directionalLightShadows', 'directionalLights', 'directionalShadowMatrix', 'directionalShadowMap', 'lightMap', 'lightMapIntensity', 'lightProbe', 'pointLights', 'pointLightShadows', 'pointShadowMap', 'pointShadowMatrix', 'hemisphereLights', 'spotShadowMap', 'spotShadowMatrix', 'map'
-			, 'opacity'),
 		fragmentShader: `
 uniform bool drawNormals;
 uniform bool generateColor;
@@ -209,6 +216,7 @@ uniform bool drawTexture;
 uniform bool drawBlack;
 uniform vec4 mapMapLocation;
 uniform float exageration;
+uniform float zoomlevel;
 varying vec4 vPosition;
 // varying vec3 vViewPosition;
 #define PHONG
@@ -241,10 +249,10 @@ float Hash12(vec2 p)
     p3 += dot(p3, p3.yzx + 19.19);
     return fract((p3.x + p3.y) * p3.z);
 }
-float Noise( in vec2 x )
+float Noise( in vec2 x, float factor )
 {
-    vec2 p = floor(x*3.0);
-    vec2 f = fract(x*3.0);
+    vec2 p = floor(x*factor);
+    vec2 f = fract(x*factor);
     f = f*f*(3.0-2.0*f);
     
     float res = mix(mix( Hash12(p),          Hash12(p + add.xy),f.x),
@@ -261,47 +269,43 @@ vec3 TerrainColour(vec4 matPos, vec3 normal)
 	// ambient = .1;
 	// vec3 dir = normalize(pos-cameraPos);
 	
-	// vec3 matPos = pos;// ... I had change scale halfway though, this lazy multiply allow me to keep the graphic scales I had
-	// matPos.y / exageration;
-	// float disSqrd = dis * dis;// Squaring it gives better distance scales.
-
-	float f = clamp(Noise(matPos.xz*.05), 0.0,1.0);//*10.8;
-	f += Noise(matPos.xz*.1+normal.yz*1.08)*.85;
+	float f = clamp(Noise(matPos.xz*.05, 2.0), 0.0,1.0);//*10.8;
+	f += Noise(matPos.xz*.1+normal.yz*1.08, 2.0)*.85;
 	f *= .55;
 	vec3 m = mix(vec3(.63*f+.2, .7*f+.1, .7*f+.1), vec3(f*.43+.1, f*.3+.2, f*.35+.1), f*.65);
 	mat = m*vec3(f*m.x+.36, f*m.y+.30, f*m.z+.28);
 	// Should have used smoothstep to add colours, but left it using 'if' for sanity...
-	if (normal.y < .3)
+	if (normal.y < .5)
 	{
 		float v = normal.y;
-		float c = (.3-normal.y) * 4.0;
+		float c = (.5-normal.y) * 4.0;
 		c = clamp(c*c, 0.1, 1.0);
-		f = Noise(vec2(matPos.x*.09, matPos.z*.095+matPos.yy*0.15));
-		f += Noise(vec2(matPos.x*2.233, matPos.z*2.23))*0.5;
-		mat = mix(mat, vec3(.4*f), c);
+		f = Noise(vec2(matPos.x*.09, matPos.z*.095+matPos.yy*0.15), 1.0);
+		f += Noise(vec2(matPos.x*2.233, matPos.z*2.23), 1.0)*0.5;
+		mat = mix(mat, vec3(.4*f), c/1.6);
 		// specularStrength+=.1;
 	}
-
 	// Grass. Use the normal to decide when to plonk grass down...
-	if (matPos.y < GRASS_HEIGHT && normal.y > .65)
+	if (matPos.y < GRASS_HEIGHT && normal.y > 0.65)
 	{
 
-		m = vec3(Noise(matPos.xz*.023)*.5+.15, Noise(matPos.xz*.03)*.6+.25, 0.0);
+		m = vec3(Noise(matPos.xz*.023, 2.0)*.5+.15, Noise(matPos.xz*.03, 2.0)*.6+.25, 0.0);
 		m *= (normal.y- 0.65)*.6;
-		mat = mix(mat, m, clamp((normal.y-.65)*1.3 * (GRASS_HEIGHT-matPos.y)*0.003, 0.0, 1.0));
+		mat = mix(mat, m, clamp((normal.y-0.65)*1.3 * (GRASS_HEIGHT-matPos.y)*0.003, 0.0, 1.0));
 	}
 
 	// if (treeCol > 0.0)
 	// {
-		// mat = vec3(.02+Noise(matPos.xz*5.0)*.03, .05, .0);
-		// normal = normalize(normal+vec3(Noise(matPos.xz*33.0)*1.0-.5, .0, Noise(matPos.xz*33.0)*1.0-.5));
+		// mat = vec3(.02+Noise(matPos.xz*5.0, 1.0)*.03, .05, .0);
+		// normal = normalize(normal+vec3(Noise(matPos.xz*33.0, 1.0)*1.0-.5, .0, Noise(matPos.xz*33.0, 1.0)*1.0-.5));
 		// specular = .0;
 	// }
 	
 	// Snow topped mountains...
 	if (matPos.y > SNOW_HEIGHT && normal.y > .42)
 	{
-		float snow = clamp((matPos.y - SNOW_HEIGHT - Noise(matPos.xz * .1)*28.0) * 0.0015, 0.0, 1.0);
+		float snow = clamp(((matPos.y - SNOW_HEIGHT)*(normal.y-0.42)*3.5 - Noise(matPos.xz * .1, 1.0)*28.0) * 0.0015, 0.0, 1.0);
+		// snow *= (normal.y- .42)*.6;
 		mat = mix(mat, vec3(.7,.7,.8), snow);
 		// specular += snow;
 		// ambient+=snow *.3;
@@ -311,7 +315,7 @@ vec3 TerrainColour(vec4 matPos, vec3 normal)
 	{
 		if (normal.y > .4)
 		{
-			f = Noise(matPos.xz * .084)*1.5;
+			f = Noise(matPos.xz * .084, 1.0)*1.5;
 			f = clamp((BEACH_HEIGHT-f-matPos.y) * 1.34, 0.0, .67);
 			float t = (normal.y-.4);
 			t = (t*t);
@@ -359,7 +363,7 @@ void main() {
 	ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );
 	vec3 totalEmissiveRadiance = emissive;
 	if (generateColor) {
-		diffuseColor *= vec4(TerrainColour(vPosition, vNormal), 0.5);
+		diffuseColor = vec4(TerrainColour(vPosition, vNormal.rbg), 0.8);
 	} else {
 		vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
 		texelColor = mapTexelToLinear( texelColor );
@@ -452,7 +456,6 @@ void main() {
 	// vViewPosition.y = mean / exageration;
 	#ifndef FLAT_SHADED
 		if (computeNormals) {
-			// float offset = 1.0 / width * (1.0 + (14.0 -zoomlevel));
 			float offset = 1.0 / width;
 			float a = getElevation(vUv + vec2(-offset, -offset), width,height);
 			float b = getElevation(vUv + vec2(0, -offset), width,height);
@@ -470,36 +473,54 @@ void main() {
 			// float normalLength = 2.0+.0005 * pow(3.0,20.0 -zoomlevel) ;
 			// float normalLength = 2.0 * (1.0 + (14.0 -zoomlevel) / 10.0);
 
-			// vec3 v0 = vec3(0.0, mean, 0.0);
-			// vec3 v1 = v0 - vec3(normalLength, f, 0.0);
-			// vec3 v2 = v0 - vec3(0.0, b, -normalLength);
-			// vNormal = (normalize(cross(v1, v2)));
+			float zoomFactor = 0.0;
+			float level = zoomlevel ;
+			if (heightMapLocation.z != 1.0) {
+				level -= log(1.0/heightMapLocation.z)/log(2.0);
+			}
+			if (level < 12.0) {
+				zoomFactor = 1.0 - 0.5/(12.0 -level);
+			}
+			// vec3 v0 = vec3(0.0, 0.0, mean);
+			// vec3 v1 = v0 - vec3(0.0, normalLength, mix(b, mean, zoomFactor));
+			// vec3 v2 = v0 - vec3(normalLength, 0.0, mix(f, mean, zoomFactor));
+			// vNormal = (normalize(cross(v2, v1)));
+
 
 			vec3 v0 = vec3(0.0, 0.0, 0.0);
-			vec3 v1 = vec3(normalLength, 0.0, 0.0);
-			vec3 v2 = vec3(0.0, 0.0, -normalLength);
-			v0.y = (e + d + g + h) / 4.0;
-			v1.y = (e + b + a + d) / 4.0;
-			v2.y = (e + h + i + f) / 4.0;
-			vNormal = (normalize(cross(v0 -v1, v0 - v2)));
+			vec3 v1 = vec3(0.0, normalLength, 0.0);
+			vec3 v2 = vec3(normalLength, 0.0, 0.0);
+			v0.z = mix((e + d + g + h) / 4.0, mean, zoomFactor);
+			v1.z = mix((e + b + a + d) / 4.0, mean, zoomFactor);
+			v2.z = mix((e + h + i + f) / 4.0, mean, zoomFactor);
+			vNormal = normalize(cross(v0 -v2, v0 - v1));
 		}
 	#endif
 	vec3 _transformed = position + mean * vec3(0,1,0);
 	gl_Position = projectionMatrix * modelViewMatrix * vec4(_transformed, 1.0);
 	vPosition = modelMatrix * vec4(_transformed, 1.0);
 	vPosition.y = mean / exageration;
-	// vPosition = vec3(gl_Position.x, e / exageration, gl_Position.z);
 }
 `,
 		wireframe: false,
 		side: DoubleSide,
-		defines: {USE_UV: '', USE_MAP: ''}
+		defines: {USE_UV: '', USE_MAP: ''},
+		uniforms: Object.assign(pick(phongShader.uniforms, 'diffuse', 'spotLights', 'spotLightShadows', 'rectAreaLights', 'ltc_1', 'ltc_2', 'ambientLightColor', 'directionalLightShadows', 'directionalLights', 'directionalShadowMatrix', 'directionalShadowMap', 'lightMap', 'lightMapIntensity', 'lightProbe', 'pointLights', 'pointLightShadows', 'pointShadowMap', 'pointShadowMatrix', 'hemisphereLights', 'spotShadowMap', 'spotShadowMatrix', 'map'
+			, 'opacity'), {
+			drawNormals: {value: false},
+			computeNormals: {value: false},
+			drawTexture: {value: false},
+			elevationDecoder: {value: null},
+			generateColor: {value: false},
+			drawBlack: {value: 0},
+			exageration: {value: 1}
+		})
 	});
 	sharedMaterial['flatShading'] = false;
 	sharedMaterial['map'] = EMPTY_TEXTURE;
 	return sharedMaterial;
 }
-const sharedMaterial = createSharedMaterial();
+export const sharedMaterial = createSharedMaterial();
 
 export let currentColor = 0x000000;
 export class MaterialHeightShader extends MapHeightNode 
@@ -593,8 +614,6 @@ export class MaterialHeightShader extends MapHeightNode
 		return geo;
 	}
 
-	private map: Texture = null;
-
 	public constructor(parentNode: MapHeightNode, mapView: MapView, location: number, level: number, x: number, y: number) 
 	{
 		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.getDefaultGeometry(), MaterialHeightShader.useSharedShader? sharedMaterial : sharedMaterial.clone());
@@ -602,14 +621,7 @@ export class MaterialHeightShader extends MapHeightNode
 		const userData = {
 			heightMap: {value: null},
 			map: {value: this.material['map']},
-			drawNormals: {value: drawNormals},
-			computeNormals: {value: shouldComputeNormals()},
-			drawTexture: {value: (debug || mapMap || generateColor) && drawTexture},
-			generateColor: {value: generateColor},
-			drawBlack: {value: 0},
 			zoomlevel: {value: level},
-			exageration: {value: exageration},
-			elevationDecoder: {value: elevationDecoder},
 			heightMapLocation: {value: this.heightMapLocation},
 			mapMapLocation: {value: this.mapMapLocation}
 		};
@@ -662,21 +674,27 @@ export class MaterialHeightShader extends MapHeightNode
 					map: parentUserData.map.value,
 					mapMapLocation: mapMapLocation
 				});
+				// this.textureLoaded = true;
+				// this.isTextureReady = true;
 			}
 
 			if (!this.heightLoaded) 
 			{
-				const parentHeightOverZoomFactor = 1 / parent.heightMapLocation[2];
+				const parentHeightLocation = parent.heightMapLocation;
+				const parentHeightOverZoomFactor = 1 / parentHeightLocation[2];
 				const heightMapLocation = [0, 0, 1, 1];
-				heightMapLocation[0] = parent.heightMapLocation[0] + dx / parentHeightOverZoomFactor;
-				heightMapLocation[1] = parent.heightMapLocation[1] + dy / parentHeightOverZoomFactor;
-				heightMapLocation[2] = heightMapLocation[3] = 1 / Math.pow(2, parentHeightOverZoomFactor * deltaLevel);
+				heightMapLocation[0] = parentHeightLocation[0] + dx / parentHeightOverZoomFactor;
+				heightMapLocation[1] = parentHeightLocation[1] + dy / parentHeightOverZoomFactor;
+				heightMapLocation[2] = heightMapLocation[3] = 1 / (2* parentHeightOverZoomFactor * deltaLevel);
 				const parentUserData = MaterialHeightShader.useSharedShader ? parent.userData : parent.material.userData;
 				// const parentUserData = parent.userData;
+				this.heightMapLocation = heightMapLocation;
 				this.setMaterialValues({
 					heightMap: parentUserData.heightMap.value,
 					heightMapLocation: heightMapLocation
 				});
+				// this.heightLoaded = true;
+				// this.isHeightReady = true;
 			}
 			this.show();
 			
@@ -814,6 +832,7 @@ export class MaterialHeightShader extends MapHeightNode
 	{
 		if (this.parentNode && image) 
 		{
+			this.mapMapLocation = [0, 0, 1, 1];
 			const texture = new Texture(image as any);
 			texture.generateMipmaps = false;
 			// texture.format = RGBFormat;
@@ -829,10 +848,15 @@ export class MaterialHeightShader extends MapHeightNode
 		}
 	}
 
-	public async onHeightImage(image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement): Promise<void>
+	public async onHeightImage(image: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement, resetMapLocation = true): Promise<void>
 	{
 		if (this.mapView && image) 
 		{
+			if (resetMapLocation) 
+			{
+				this.heightMapLocation = [0, 0, 1, 1];
+
+			}
 			let texture: Texture; 
 			if (image instanceof Texture) 
 			{
@@ -954,12 +978,7 @@ export class MaterialHeightShader extends MapHeightNode
 							sharedPointMaterial,
 						);
 						const userData = MaterialHeightShader.useSharedShader ? this.userData : this.material.userData; 
-						mesh.userData = {
-							exageration: userData.exageration,
-							depthTexture: {value: EMPTY_TEXTURE}, 
-							cameraNear: {value: NEAR},
-							cameraFar: {value: FAR}
-						};
+						mesh.userData = {};
 						mesh.frustumCulled = false;
 
 						mesh.updateMatrix();
@@ -997,7 +1016,7 @@ export class MaterialHeightShader extends MapHeightNode
 
 		this.setMaterialValues({heightMapLocation: this.heightMapLocation});
 		const userData = MaterialHeightShader.useSharedShader ? parent.userData : parent.material.userData; 
-		await this.onHeightImage(userData.heightMap.value);
+		await this.onHeightImage(userData.heightMap.value, false);
 		resolve?.();
 	}
 

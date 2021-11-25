@@ -8,7 +8,7 @@ import Stats from 'stats.js';
 import {
 	AmbientLight,
 	AxesHelper,
-	Box3, Clock, Color, Euler, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
+	Box3, Clock, Color, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
 	Vector3,
 	Vector4,
 	WebGLRenderer,
@@ -22,7 +22,7 @@ import {DebugProvider} from '../source/providers/DebugProvider';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {EmptyProvider} from './EmptyProvider';
 import {LocalHeightProvider} from './LocalHeightProvider';
-import {featuresByColor, getImageData, getPixel, MaterialHeightShader, testColor} from './MaterialHeightShader';
+import {featuresByColor, getImageData, getPixel, MaterialHeightShader, sharedMaterial, sharedPointMaterial, testColor} from './MaterialHeightShader';
 import RasterMapProvider from './TestMapProvider';
 import {SunLight} from './SunLight';
 import {KeyboardKeyHold} from 'hold-event';
@@ -440,6 +440,9 @@ const EPS = 1e-5;
 let pixelsBuffer;
 const TEXT_HEIGHT = FORCE_MOBILE || isMobile? 170 : 120;
 
+const now = new Date();
+let currentSecondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
 let showingCamera = false;
 // let showMagnify = false;
 let mousePosition = null;
@@ -454,6 +457,7 @@ let rendererScaleRatio = 1;
 let renderRequested = false;
 let renderForceComputeFeatures = false;
 let sized = false;
+let canCreateMap = true;
 
 let stats;
 
@@ -510,7 +514,7 @@ export function shouldRenderSky()
 
 export function needsLights() 
 {
-	return debug || mapMap;
+	return debug || mapMap || dayNightCycle;
 }
 
 export function setTerrarium(value: boolean) 
@@ -523,13 +527,14 @@ export function setTerrarium(value: boolean)
 	{
 		elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 	}
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({elevationDecoder: elevationDecoder});
-		});
-	}
+	// if (map) 
+	// {
+	sharedMaterial.uniforms.elevationDecoder.value = elevationDecoder;
+	// applyOnNodes((node) => 
+	// {
+	// 	node.setMaterialValues({elevationDecoder: elevationDecoder});
+	// });
+	// }
 }
 
 
@@ -630,18 +635,15 @@ export function setDebugMode(value, shouldRender = true)
 	mainPass.renderToScreen = !outlinePass.enabled;
 	updateSky();
 
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
 	if (map) 
 	{
 		map.provider = createProvider();
-		applyOnNodes((node) => 
+		if (value) 
 		{
-			node.isTextureReady = !debug;
-
-			node.setMaterialValues({
-				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap || generateColor) && drawTexture
-			});
-		});
+			updateVisibleNodesImage('debug');
+		}
 		if (shouldRender) 
 		{
 			onControlUpdate();
@@ -664,6 +666,23 @@ export function setGeometrySize(value, shouldUpdate = true)
 		requestRenderIfNotRequested(true);
 	}
 }
+
+let lastMode;
+function updateVisibleNodesImage(mode) 
+{
+	const hasChanged = lastMode !== mode;
+	lastMode = mode;
+	applyOnNodes((node: MapNode) => 
+	{
+		const userData = MaterialHeightShader.useSharedShader ? node.userData : node.material['userData'];
+		if (node.isVisible() && (hasChanged || !(userData.map && userData.map.value)))
+		{
+			userData.map.value = null;
+			node.isTextureReady = false;
+			node.initialize();
+		}
+	});
+}
 export function setMapMode(value, shouldRender = true) 
 {
 	if (mapMap === value) {return;}
@@ -671,22 +690,16 @@ export function setMapMode(value, shouldRender = true)
 	outlinePass.enabled = !withoutOutline();
 	mainPass.renderToScreen = !outlinePass.enabled;
 	updateSky();
+	updateAmbientLight();
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
 	if (map) 
 	{
 		map.provider = createProvider();
-		applyOnNodes((node: MapNode) => 
+		if (value) 
 		{
-			if (mapMap && !(node.material['map'] && node.material['map'].image)) 
-			{
-				node.isTextureReady = false;
-				node.initialize();
-			}
-			node.setMaterialValues({
-				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap || generateColor) && drawTexture
-			});
-			// node.material.flatShading = (mapMap && !mapMapNormal);
-		});
+			updateVisibleNodesImage('map');
+		}
 		if (shouldRender) 
 		{
 			onControlUpdate();
@@ -706,21 +719,17 @@ export function setPredefinedMapMode(value, shouldRender = true)
 	mapMap = value;
 	mapoutline = value;
 	updateSky();
+	updateAmbientLight();
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
 	if (map) 
 	{
 		map.provider = createProvider();
-		applyOnNodes((node) => 
+		if (value) 
 		{
-			if (mapMap && !(node.material['map'] && node.material['map'].image)) 
-			{
-				node.isTextureReady = false;
-				node.initialize();
-			}
-			node.setMaterialValues({
-				computeNormals: shouldComputeNormals(),
-				drawTexture: (debug || mapMap || generateColor) && drawTexture
-			});
-		});
+			updateVisibleNodesImage('map');
+		}
+
 		if (shouldRender) 
 		{
 			onControlUpdate();
@@ -743,14 +752,27 @@ export function setDrawTexture(value, shouldRender = true)
 {
 	if (drawTexture === value) {return;}
 	drawTexture = value;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({drawTexture: (debug || mapMap || generateColor) && drawTexture});
-		});
-	}
+	// if (map) 
+	// {
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
+	// applyOnNodes((node) => 
+	// {
+	// 	node.setMaterialValues({drawTexture: (debug || mapMap || generateColor) && drawTexture});
+	// });
+	// }
 	requestRenderIfNotRequested();
+}
+export function setGenerateColors(value, shouldRender = true) 
+{
+	if (generateColor === value) {return;}
+	console.log();
+	generateColor = value;
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	sharedMaterial.uniforms.generateColor.value = generateColor;
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
+	updateAmbientLight();
+
+	requestRenderIfNotRequested(shouldRender);
 }
 
 export function toggleDrawTexture() 
@@ -765,17 +787,21 @@ export function setNormalsInDebug(value, shouldRender = true)
 {
 	if (drawNormals === value) {return;}
 	drawNormals = value;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({
-				computeNormals: shouldComputeNormals(),
-				drawNormals: drawNormals,
-				drawTexture: (debug || mapMap || generateColor) && drawTexture
-			});
-		});
-	}
+	// if (map) 
+	// {
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	sharedMaterial.uniforms.drawNormals.value = drawNormals;
+	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
+	// applyOnNodes((node) => 
+	// {
+
+	// node.setMaterialValues({
+	// 	computeNormals: shouldComputeNormals(),
+	// 	drawNormals: drawNormals,
+	// 	drawTexture: (debug || mapMap || generateColor) && drawTexture
+	// });
+	// });
+	// }
 	if (shouldRender) 
 	{
 		requestRenderIfNotRequested();
@@ -787,14 +813,15 @@ export function setComputeNormals(value, shouldRender = true)
 	if (computeNormals === value) {return;}
 	computeNormals = value;
 	updateSky();
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({computeNormals: shouldComputeNormals()});
+	// if (map) 
+	// {
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	// applyOnNodes((node) => 
+	// {
+	// 	node.setMaterialValues({computeNormals: shouldComputeNormals()});
 
-		});
-	}
+	// });
+	// }
 	if (shouldRender) 
 	{
 		requestRenderIfNotRequested();
@@ -808,8 +835,7 @@ export function toggleComputeNormals()
 
 function updateSky() 
 {
-	ambientLight.visible = needsLights();
-	ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
+	updateAmbientLight();
 	if (!sky) {return;}
 	sky.visible = sunLight.visible = shouldRenderSky();
 }
@@ -820,24 +846,36 @@ export function setDayNightCycle(value, shouldRender = true)
 	if (!sky) 
 	{
 		sky = createSky();
-		scene.add(sky);
 		sunLight = new SunLight(
-			new Vector2(45.05, 25.47),
+			new Vector2(45.05, 5.47),
 			new Vector3(0.0, 0.0, -1.0),
-			new Vector3(1.0, 0.0, 0.0),
+			new Vector3(-1.0, 0.0, 0.0),
 			new Vector3(0.0, -1.0, 0.0),
-			0.001
+			50
 		);
+		const date = new Date();
+		const hours = Math.floor(currentSecondsInDay / 3600);
+		const minutes = Math.floor((currentSecondsInDay - hours * 3600) / 60);
+		const seconds = currentSecondsInDay - hours * 3600 - minutes * 60;
+		date.setHours(hours);
+		date.setMinutes(minutes);
+		date.setSeconds(seconds);
+		sunLight.setDate(date);
+		// sunLight.directionalLight.color.setRGB(1, 1, 1);
+		scene.add(sky);
 		camera.add(sunLight as any);
 	}
+	// ambientLight.visible = !dayNightCycle;
 	updateSky();
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({computeNormals: shouldComputeNormals()});
-		});
-	}
+	updateSkyPosition();
+	// if (map) 
+	// {
+	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+	// applyOnNodes((node) => 
+	// {
+	// 	node.setMaterialValues({computeNormals: shouldComputeNormals()});
+	// });
+	// }
 	if (shouldRender) 
 	{
 		requestRenderIfNotRequested();
@@ -1026,7 +1064,7 @@ export function toggleCamera()
 // 	render(true);
 // }
 
-let datelabel, viewingDistanceLabel, selectedPeakLabel, selectedPeakDiv, elevationSlider, debugMapCheckBox, mapMapCheckBox, dayNightCycleCheckBox, debugGPUPickingCheckbox, readFeaturesCheckbox, debugFeaturePointsCheckbox, darkmodeCheckbox, wireframeCheckbox, mapoutlineCheckbox, depthMultiplierSlider, exagerationSlider, depthPostMultiplierSlider, depthBiaisSlider, dateSlider, viewingDistanceSlider, cameraCheckbox, normalsInDebugCheckbox, drawElevationsCheckbox, elevationLabel;
+let datelabel, viewingDistanceLabel, selectedPeakLabel, selectedPeakDiv, elevationSlider, debugMapCheckBox, mapMapCheckBox, dayNightCycleCheckBox, debugGPUPickingCheckbox, readFeaturesCheckbox, debugFeaturePointsCheckbox, darkmodeCheckbox, wireframeCheckbox, mapoutlineCheckbox, depthMultiplierSlider, exagerationSlider, depthPostMultiplierSlider, depthBiaisSlider, dateSlider, viewingDistanceSlider, cameraCheckbox, normalsInDebugCheckbox, drawElevationsCheckbox, elevationLabel, generateColorsCheckBox;
 
 const compass = document.getElementById('compass') as HTMLDivElement;
 const compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
@@ -1040,9 +1078,14 @@ if (!EXTERNAL_APP)
 	debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
 	debugMapCheckBox.onchange = (event: any) => { return setDebugMode(event.target.checked); };
 	debugMapCheckBox.value = debug as any;
+
 	mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
 	mapMapCheckBox.onchange = (event: any) => { return setMapMode(event.target.checked); };
 	mapMapCheckBox.checked = mapMap as any;
+
+	generateColorsCheckBox = document.getElementById('generateColors') as HTMLInputElement;
+	generateColorsCheckBox.onchange = (event: any) => { return setGenerateColors(event.target.checked); };
+	generateColorsCheckBox.checked = generateColor as any;
 
 	dayNightCycleCheckBox = document.getElementById('dayNightCycle') as HTMLInputElement;
 	dayNightCycleCheckBox.onchange = (event: any) => { return setDayNightCycle(event.target.checked); };
@@ -1091,10 +1134,9 @@ if (!EXTERNAL_APP)
 
 	dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
 
-	const now = new Date();
-	const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+	
 	dateSlider.oninput = (event: any) => { return setDate(event.target.value); };
-	dateSlider.value = secondsInDay as any;
+	dateSlider.value = currentSecondsInDay as any;
 	datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
 	datelabel.innerText = new Date().toLocaleString();
 	viewingDistanceLabel = document.getElementById('viewingDistanceLabel') as HTMLLabelElement;
@@ -1191,7 +1233,7 @@ function createProvider()
 		provider = new RasterMapProvider(devLocal);
 		provider.zoomDelta = 2;
 	}
-	else if (debug && !drawNormals) 
+	else if (debug) 
 	{
 		provider = new DebugProvider();
 	}
@@ -1222,6 +1264,10 @@ function onNodeReady(node: MaterialHeightShader)
 }
 function createMap() 
 {	
+	if (!canCreateMap) 
+	{
+		return;
+	}
 	if (map !== undefined) 
 	{
 		scene.remove(map);
@@ -1294,7 +1340,7 @@ controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
 controls.saveState();
-let keyboardMoveSpeed = 0.05;
+let keyboardMoveSpeed = 5;
 let keyboardRotateSpeed = 0.05;
 
 export function setKeyboardRotateSpeed(value) 
@@ -1373,11 +1419,42 @@ let sky: Sky;
 // Add an ambient light
 const ambientLight = new AmbientLight(0xffffff, 1);
 scene.add(ambientLight);
-ambientLight.intensity = computeNormals || dayNightCycle ? 0.1875 : 1;
+function setHSV( color, h, s, v ) 
+{
+
+	// https://gist.github.com/xpansive/1337890#file-index-js
+
+	h = MathUtils.euclideanModulo( h, 1 );
+	s = MathUtils.clamp( s, 0, 1 );
+	v = MathUtils.clamp( v, 0, 1 );
+
+	return color.setHSL( h, s * v / ( ( h = ( 2 - s ) * v ) < 1 ? h : 2 - h ), h * 0.5 );
+
+}
+// const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 0.6 ); 
+// hemiLight.position.set( 0, 1500, 0 );
+// scene.add(hemiLight);
+// ambientLight.intensity = dayNightCycle ? 0.1875 : 1;
 
 // const axesHelper = new AxesHelper(50);
 // scene.add( axesHelper );
 
+function updateAmbientLight() 
+{
+	if (mapMap && dayNightCycle) 
+	{
+		ambientLight.intensity = 0.22350 ;
+
+	}
+	else if (generateColor) 
+	{
+		ambientLight.intensity = dayNightCycle? 2:2.3 ;
+	}
+	else
+	{
+		ambientLight.intensity = 1;
+	}
+}
 function updateSkyPosition() 
 {
 	if (!sky) {return;}
@@ -1440,7 +1517,8 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 	if (sky) 
 	{
 		sunLight.setPosition(coords.lat, coords.lon);
-		sunLight.setDate(new Date());
+		// sunLight.setDate(new Date());
+		updateAmbientLight();
 		updateSkyPosition();
 	}
 	setSelectedItem(null);
@@ -1590,18 +1668,8 @@ export function setExageration(newValue, shouldRender = true)
 {
 	if (exageration === newValue) {return;}
 	exageration = newValue;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.setMaterialValues({exageration: newValue});
-
-			if (node.pointsMesh) 
-			{
-				node.pointsMesh.userData.exageration.value = newValue;
-			}
-		});
-	}
+	sharedMaterial.uniforms.exageration.value = newValue;
+	sharedPointMaterial.uniforms.exageration.value = newValue;
 	if (shouldRender) 
 	{
 		requestRenderIfNotRequested();
@@ -1647,6 +1715,12 @@ export function setCameraFOVFactor(newValue, shouldRender = true)
 
 export function setDate(secondsInDay, shouldRender = true) 
 {
+	if (currentSecondsInDay === secondsInDay) 
+	{
+		return;
+	}
+
+	currentSecondsInDay = secondsInDay;
 	let date = new Date();
 	const hours = Math.floor(secondsInDay / 3600);
 	const minutes = Math.floor((secondsInDay - hours * 3600) / 60);
@@ -1657,10 +1731,12 @@ export function setDate(secondsInDay, shouldRender = true)
 	if (sunLight) 
 	{
 		sunLight.setDate(date);
+		updateAmbientLight();
 	}
 	if (datelabel) 
 	{
 		datelabel.innerText = date.toLocaleString();
+		dateSlider.value = secondsInDay as any;
 	}
 
 	updateSkyPosition();
@@ -1800,7 +1876,7 @@ function actualComputeFeatures()
 		sky.visible = false;
 		sunLight.visible = false;
 	}
-	const depthTexture = composer.depthTexture;
+	sharedPointMaterial.uniforms.depthTexture.value = composer.depthTexture;
 	applyOnNodes((node) => 
 	{
 		const visible = node.isVisible();
@@ -1810,10 +1886,10 @@ function actualComputeFeatures()
 			node.hide();
 		}
 		node.objectsHolder.visible = visible || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
-		if (node.pointsMesh) 
-		{
-			node.pointsMesh.userData.depthTexture.value = depthTexture;
-		}
+		// if (node.pointsMesh) 
+		// {
+		// 	node.pointsMesh.userData.depthTexture.value = depthTexture;
+		// }
 	});
 	if (debugFeaturePoints) 
 	{
@@ -1825,6 +1901,7 @@ function actualComputeFeatures()
 	renderer.setRenderTarget(null);
 	readShownFeatures();
 
+	sharedPointMaterial.uniforms.depthTexture.value = null;
 	applyOnNodes((node) => 
 	{
 		if (node.wasVisible) 
@@ -1833,10 +1910,10 @@ function actualComputeFeatures()
 			node.show();
 		}
 		node.objectsHolder.visible = node.isVisible() && debugFeaturePoints || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
-		if (node.pointsMesh) 
-		{
-			node.pointsMesh.userData.depthTexture.value = null;
-		}
+		// if (node.pointsMesh) 
+		// {
+		// 	node.pointsMesh.userData.depthTexture.value = null;
+		// }
 
 	});
 	if (sky) 
@@ -1891,7 +1968,7 @@ document.body.onresize = function()
 	// 	renderTargetHelper = RenderTargetHelper( renderer, pointBufferTarget );
 	// 	document.body.append( renderTargetHelper );
 	// }
-	if (!map) 
+	if (!map && currentPosition) 
 	{
 		createMap();
 	}
@@ -2316,11 +2393,6 @@ function readShownFeatures()
 		if (colorIndex === -1) 
 		{
 			const feature = featuresByColor[lastColor];
-
-			// if (lastColor === testColor) 
-			// {
-			// 	console.log('found test color!', feature);
-			// }
 			if (feature) 
 			{
 				readColors.push(lastColor);
@@ -2408,7 +2480,6 @@ export function requestRenderIfNotRequested(forceComputeFeatures = false)
 	{
 		renderForceComputeFeatures = forceComputeFeatures;
 	}
-	// render();
 	if (!renderRequested) 
 	{
 		renderRequested = true;
@@ -2418,7 +2489,7 @@ export function requestRenderIfNotRequested(forceComputeFeatures = false)
 export function render() 
 {
 	renderRequested = false;
-	if (!renderer || !composer) 
+	if (!renderer || !composer || !map) 
 	{
 		return;
 	}
@@ -2464,12 +2535,13 @@ export function render()
 	}
 }
 
-
 if (datelabel) 
 {
 	exports.init = function() 
 	{
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 71001, 'setDebugMode': true, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		const now =new Date();
+		const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
 	};
 }
 
@@ -2543,26 +2615,18 @@ export function setViewingDistance(meters: number, shouldRender = true)
 	camera.updateProjectionMatrix();
 	updateCurrentViewingDistance();
 
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			if (node.pointsMesh) 
-			{
-				node.pointsMesh.userData.cameraFar.value = camera.far;
-			}
-		});
-	}
+	sharedPointMaterial.uniforms.cameraNear.value = camera.near;
+	sharedPointMaterial.uniforms.cameraFar.value = camera.far;
 	if (shouldRender) 
 	{
 		requestRenderIfNotRequested(true);
 	}
 }
-
 export function callMethods(json) 
 {
 	try 
 	{
+		canCreateMap = false;
 		Object.keys(json).sort().forEach((key) => 
 		{
 			const func = window['webapp'][key];
@@ -2580,6 +2644,11 @@ export function callMethods(json)
 				}
 			}
 		});
+		canCreateMap = true;
+		if (!map) 
+		{
+			createMap();
+		}
 		updateControls();
 		requestRenderIfNotRequested(true);
 	}

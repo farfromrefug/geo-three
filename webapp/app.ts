@@ -2541,7 +2541,7 @@ if (datelabel)
 	{
 		const now =new Date();
 		const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': false, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
 	};
 }
 

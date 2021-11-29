@@ -1,12 +1,15 @@
 /* eslint-disable camelcase */
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
+import {exageration} from 'app';
 import {DirectionalLight, Object3D, Quaternion, Vector2, Vector3} from 'three';
 export class SunLight extends Object3D
 {
 	// Latitude and longtitude of the current location on the world
 	// Measured as decimal degrees. North and east is positive
 	coordinates;
+
+	delta: Vector2;
 
 	// The unit vector that is pointing the north in the scene
 	north;
@@ -39,7 +42,7 @@ export class SunLight extends Object3D
 	// The directional light in js is managed by a directional vector.
 	// To make life easier, I'm adding the light as a child to this hinge object
 	// and rotating this object in order to set the light's direction
-	hingeObject;
+	hingeObject: Object3D;
 
 	constructor(coordinates_, north_, east_, nadir_, sun_distance_ = 1.0) 
 	{
@@ -47,6 +50,7 @@ export class SunLight extends Object3D
 		this.type = 'SunLight';
 
 
+		this.delta = new Vector2();
 		this.coordinates = new Vector2();
 		this.coordinates.copy( coordinates_ );
 
@@ -70,18 +74,19 @@ export class SunLight extends Object3D
 		this.hingeObject = new Object3D();
 		this.add( this.hingeObject );
 
-		this.directionalLight = new DirectionalLight(0xffffff); 
-		this.directionalLight.castShadow = true;
-		this.hingeObject.add( this.directionalLight );
-
+		const light = this.directionalLight = new DirectionalLight(0xffffff); 
+		light.castShadow = true;
+		this.hingeObject.add( light );
+		// light.target.position.set(0, 0, 0);
 		// Add the target of the directional light as a child to this object, so
 		// that it's world matrix gets updated automatically when this object's
 		// position is changed.
-		this.add( this.directionalLight.target );
+		// this.add( light.target );
 	}
 
 	setPosition(lat, long) 
 	{
+
 		this.coordinates.set( lat, long );
 		this.updateOrientation(false);
 		this.updateDirectionalLight();
@@ -134,7 +139,7 @@ export class SunLight extends Object3D
 		}
 		else 
 		{
-			this.directionalLight.intensity = 0.7;
+			this.directionalLight.intensity = 5.0;
 		}
 		// Reset the hingeObject's quaternion
 		this.hingeObject.quaternion.copy( new Quaternion() );

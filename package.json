@@ -65,12 +65,13 @@
 		"typescript": "^4.5.2"
 	},
 	"dependencies": {
+		"@akylas/load-queue": "^1.1.1",
 		"@here/quantized-mesh-decoder": "^1.2.8",
 		"additween": "^3.0.0",
 		"delatin": "^0.2.0",
 		"hold-event": "^0.1.0",
-		"@akylas/load-queue": "^1.1.1",
 		"rollup-plugin-terser": "^7.0.2",
+		"three-csm": "^1.1.1",
 		"three-rt-helper": "^0.0.6"
 	}
 }

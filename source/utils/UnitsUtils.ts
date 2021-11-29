@@ -45,7 +45,7 @@ export class UnitsUtils
 	 * @param latitude - Latitude value in degrees.
 	 * @param longitude - Longitude value in degrees.
 	 */
-	public static datumsToSpherical(latitude: number, longitude: number, output?: Vector2): Vector2
+	public static datumsToSpherical(latitude: number, longitude: number, output?: Vector2, scale = 1): Vector2
 	{
 		const x = longitude * UnitsUtils.EARTH_ORIGIN / 180.0;
 		let y = Math.log(Math.tan((90 + latitude) * Math.PI / 360.0)) / (Math.PI / 180.0);
@@ -54,9 +54,9 @@ export class UnitsUtils
 
 		if (output) 
 		{
-			return output.set(x, y);
+			return output.set(x * scale, y * scale);
 		}
-		return new Vector2(x, y);
+		return new Vector2(x * scale, y * scale);
 	}
 
 	/**

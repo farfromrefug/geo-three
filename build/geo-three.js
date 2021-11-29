@@ -1221,14 +1221,14 @@
 	            onResult(result.coords, result.timestamp);
 	        }, onError);
 	    }
-	    static datumsToSpherical(latitude, longitude, output) {
+	    static datumsToSpherical(latitude, longitude, output, scale = 1) {
 	        const x = longitude * UnitsUtils.EARTH_ORIGIN / 180.0;
 	        let y = Math.log(Math.tan((90 + latitude) * Math.PI / 360.0)) / (Math.PI / 180.0);
 	        y = y * UnitsUtils.EARTH_ORIGIN / 180.0;
 	        if (output) {
-	            return output.set(x, y);
+	            return output.set(x * scale, y * scale);
 	        }
-	        return new three.Vector2(x, y);
+	        return new three.Vector2(x * scale, y * scale);
 	    }
 	    static sphericalToDatums(x, y) {
 	        const longitude = x / UnitsUtils.EARTH_ORIGIN * 180.0;

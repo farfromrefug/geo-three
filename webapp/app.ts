@@ -8,7 +8,7 @@ import Stats from 'stats.js';
 import {
 	AmbientLight,
 	AxesHelper,
-	Box3, Clock, Color, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
+	Box3, CameraHelper, Clock, Color, DirectionalLightHelper, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PCFShadowMap, PCFSoftShadowMap, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
 	Vector3,
 	Vector4,
 	WebGLRenderer,
@@ -28,8 +28,7 @@ import {SunLight} from './SunLight';
 import {KeyboardKeyHold} from 'hold-event';
 import RenderTargetHelper from 'three-rt-helper';
 import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
-import {log} from 'console';
-
+import CSM from 'three-csm';
 const TO_RAD = Math.PI / 180;
 const PI_DIV4 = Math.PI / 4;
 const PI_X2 = Math.PI * 2;
@@ -476,6 +475,7 @@ const renderer = new WebGLRenderer({
 	powerPreference: 'high-performance',
 	stencil: false
 });
+renderer.physicallyCorrectLights = true;
 renderer.debug.checkShaderErrors = true;
 // const magnify3d = new Magnify3d();
 // const magnify3dTarget = new WebGLRenderTarget(0, 0); 
@@ -839,6 +839,7 @@ function updateSky()
 	if (!sky) {return;}
 	sky.visible = sunLight.visible = shouldRenderSky();
 }
+let directionalLightHelper: DirectionalLightHelper;
 export function setDayNightCycle(value, shouldRender = true) 
 {
 	if (dayNightCycle === value) {return;}
@@ -849,11 +850,27 @@ export function setDayNightCycle(value, shouldRender = true)
 		sunLight = new SunLight(
 			new Vector2(45.05, 5.47),
 			new Vector3(0.0, 0.0, -1.0),
-			new Vector3(-1.0, 0.0, 0.0),
+			new Vector3(1.0, 0.0, 0.0),
 			new Vector3(0.0, -1.0, 0.0),
-			50
+			1.5
 		);
-		const date = new Date();
+		// Adjust the directional light's shadow camera dimensions
+		// sunLight.directionalLight.shadow.bias = -0.003;
+		// sunLight.directionalLight.shadow.mapSize.width = 8192;
+		// sunLight.directionalLight.shadow.mapSize.height = 8192;
+		// sunLight.directionalLight.shadow.camera.left = -20;
+		// sunLight.directionalLight.shadow.camera.right = 20;
+		// sunLight.directionalLight.shadow.camera.top = -20;
+		// sunLight.directionalLight.shadow.camera.bottom = 20;
+		// sunLight.directionalLight.shadow.camera.near = 0;
+		// sunLight.directionalLight.shadow.camera.far = 20;
+		// sunLight.directionalLight.target.position.set(0, 0, 0);
+		scene.add(sky);
+		scene.add(sunLight as any);
+		directionalLightHelper = new DirectionalLightHelper(sunLight.directionalLight, 0.02, 0xff0000);
+		scene.add(directionalLightHelper);
+
+		let date = new Date();
 		const hours = Math.floor(currentSecondsInDay / 3600);
 		const minutes = Math.floor((currentSecondsInDay - hours * 3600) / 60);
 		const seconds = currentSecondsInDay - hours * 3600 - minutes * 60;
@@ -861,9 +878,6 @@ export function setDayNightCycle(value, shouldRender = true)
 		date.setMinutes(minutes);
 		date.setSeconds(seconds);
 		sunLight.setDate(date);
-		// sunLight.directionalLight.color.setRGB(1, 1, 1);
-		scene.add(sky);
-		camera.add(sunLight as any);
 	}
 	// ambientLight.visible = !dayNightCycle;
 	updateSky();
@@ -996,6 +1010,7 @@ export function setWireFrame(value, shouldRender = true)
 {
 	if (wireframe === value) {return;}
 	wireframe = value;
+	sharedMaterial.wireframe = value;
 	applyOnNodes((node) => 
 	{
 		node.material.wireframe = wireframe;
@@ -1211,16 +1226,17 @@ function onControlUpdate(forceLOD = false)
 }
 function setupLOD() 
 {
+	const scale = MaterialHeightShader.scaleRatio;
 	heightProvider.maxOverZoom = FORCE_MOBILE || isMobile?0:2;
 	if (FORCE_MOBILE || isMobile) 
 	{
-		lod.subdivideDistance = 60;
-		lod.simplifyDistance = 160;
+		lod.subdivideDistance = 60 * scale;
+		lod.simplifyDistance = 160 * scale;
 	}
 	else 
 	{
-		lod.subdivideDistance = 70;
-		lod.simplifyDistance = 170;
+		lod.subdivideDistance = 70 * scale;
+		lod.simplifyDistance = 170 * scale;
 	}
 }
 const lod = new LODFrustum();
@@ -1282,9 +1298,8 @@ function createMap()
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
-	// renderer.shadowMap.type = PCFSoftShadowMap;
-	// renderer.shadowMap.enabled = mapMap;
-
+	renderer.shadowMap.type = PCFShadowMap;
+	renderer.shadowMap.enabled = true;
 }
 
 let orientation = (screen.orientation || {}).type ;
@@ -1300,18 +1315,37 @@ function getCameraFOV()
 }
 
 let cameraFOV = getCameraFOV();
-const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, NEAR, FAR);
+const worldScale = MaterialHeightShader.scaleRatio;
+const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, NEAR * worldScale, FAR * worldScale);
 window.addEventListener('orientationchange', function(event: any)
 {
 	orientation = event.target.screen.orientation.type;
 	camera.fov = cameraFOV = getCameraFOV();
-	const hFOV = cameraFOV * viewWidth / viewHeight;
+	// const hFOV = cameraFOV * viewWidth / viewHeight;
 	camera.updateProjectionMatrix();
 	controls.azimuthRotateSpeed = controls.polarRotateSpeed = cameraSpeedFactor() / zoom; // negative value to invert rotation direction
 	updateCompass();
 }, false);
 camera.position.set(0, 0, EPS);
-scene.add(camera);
+// scene.add(camera);
+
+// let csm = new CSM({
+// 	maxFar: camera.far,
+// 	cascades: 4,
+// 	shadowMapSize: 4096,
+// 	lightDirection: new Vector3(0.7, -0.2, -0.6),
+// 	camera: camera,
+// 	parent: scene
+// });
+// for ( var i = 0; i < csm.lights.length; i ++ ) 
+// {
+// 	csm.lights[i].shadow.camera.near = camera.near;
+// 	csm.lights[i].shadow.camera.far = camera.far;
+// 	csm.lights[i].shadow.camera.updateProjectionMatrix();
+
+// }
+// csm.setupMaterial(sharedMaterial); // must be called to pass all CSM-related uniforms to the shader
+
 const controls = new CameraControlsWithOrientation(camera, canvas);
 
 
@@ -1335,7 +1369,7 @@ controls.azimuthRotateSpeed = cameraSpeedFactor(); // negative value to invert r
 controls.polarRotateSpeed = cameraSpeedFactor(); // negative value to invert rotation direction
 controls.minZoom = 1;
 controls.maxZoom = 20;
-controls.truckSpeed = 1 / EPS * 100000;
+controls.truckSpeed = 1 / EPS * 100000 * worldScale;
 controls.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
 controls.touches.two = CameraControls.ACTION.TOUCH_ZOOM_TRUCK;
 controls.verticalDragToForward = true;
@@ -1417,42 +1451,32 @@ if (!(FORCE_MOBILE || isMobile))
 let sunLight: SunLight;
 let sky: Sky;
 // Add an ambient light
-const ambientLight = new AmbientLight(0xffffff, 1);
+const ambientLight = new AmbientLight(0xffffff);
 scene.add(ambientLight);
-function setHSV( color, h, s, v ) 
-{
 
-	// https://gist.github.com/xpansive/1337890#file-index-js
 
-	h = MathUtils.euclideanModulo( h, 1 );
-	s = MathUtils.clamp( s, 0, 1 );
-	v = MathUtils.clamp( v, 0, 1 );
-
-	return color.setHSL( h, s * v / ( ( h = ( 2 - s ) * v ) < 1 ? h : 2 - h ), h * 0.5 );
-
-}
 // const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 0.6 ); 
 // hemiLight.position.set( 0, 1500, 0 );
 // scene.add(hemiLight);
 // ambientLight.intensity = dayNightCycle ? 0.1875 : 1;
 
-// const axesHelper = new AxesHelper(50);
-// scene.add( axesHelper );
+const axesHelper = new AxesHelper(1);
+scene.add( axesHelper );
 
 function updateAmbientLight() 
 {
 	if (mapMap && dayNightCycle) 
 	{
-		ambientLight.intensity = 0.22350 ;
+		ambientLight.intensity = 1 ;
 
 	}
 	else if (generateColor) 
 	{
-		ambientLight.intensity = dayNightCycle? 2:2.3 ;
+		ambientLight.intensity = dayNightCycle? 1:3 ;
 	}
 	else
 	{
-		ambientLight.intensity = 1;
+		ambientLight.intensity = 3;
 	}
 }
 function updateSkyPosition() 
@@ -1511,19 +1535,13 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 	{
 		return;
 	}
-	// axesHelper.position.set(newPosition.x, 1300, -newPosition.y - 1000);
 	controls.getPosition(tempVector);
-	const currentCoords = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
-	if (sky) 
-	{
-		sunLight.setPosition(coords.lat, coords.lon);
-		// sunLight.setDate(new Date());
-		updateAmbientLight();
-		updateSkyPosition();
-	}
+	const scale = MaterialHeightShader.scaleRatio;
+	const currentCoords = UnitsUtils.sphericalToDatums(tempVector.x / scale, -tempVector.z / scale);
+	
 	setSelectedItem(null);
 
-	const newPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon);
+	const newPosition = UnitsUtils.datumsToSpherical(coords.lat, coords.lon, null, scale);
 	if (animated) 
 	{
 		const distance = getDistance(currentCoords, coords);
@@ -1553,12 +1571,12 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 				if (progress <= 0.5) 
 				{
 					const cProgress = 2 * progress;
-					controls.moveTo(newPos.x, (startElevation + cProgress * (topElevation - startElevation)) * exageration, -newPos.y, false);
+					controls.moveTo(newPos.x, (startElevation + cProgress * (topElevation - startElevation)) * exageration * scale, -newPos.y, false);
 				}
 				else 
 				{
 					const cProgress = (progress - 0.5) * 2;
-					controls.moveTo(newPos.x, (topElevation + cProgress * (endElevation - topElevation)) * exageration, -newPos.y, false);
+					controls.moveTo(newPos.x, (topElevation + cProgress * (endElevation - topElevation)) * exageration * scale, -newPos.y, false);
 				}
 				updateControls();
 			},
@@ -1578,11 +1596,22 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 			setElevation(coords.altitude, false);
 		}
 		// currentPosition = coords;
-		controls.moveTo(newPosition.x, currentElevation * exageration, -newPosition.y, false);
+		controls.moveTo(newPosition.x, currentElevation * exageration * scale, -newPosition.y, false);
 		updateCurrentViewingDistance();
 		if (updateCtrls) 
 		{
 			updateControls();
+		}
+		if (sky) 
+		{
+			axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
+			sunLight.setPosition(coords.lat, coords.lon);
+			sunLight.directionalLight.target.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
+			sunLight.directionalLight.target.updateMatrix();
+			sunLight.directionalLight.target.updateMatrixWorld(true);
+			sunLight.position.set(newPosition.x, 0, -newPosition.y);
+			updateAmbientLight();
+			updateSkyPosition();
 		}
 	}
 }
@@ -1653,8 +1682,8 @@ export function setElevation(newValue, updateCtrls = true)
 	if (currentElevation === newValue) {return;}
 	currentElevation = newValue;
 	controls.getPosition(tempVector);
-	// console.log('setElevation', updateCtrls, currentElevation, tempVector);
-	controls.moveTo(tempVector.x, currentElevation * exageration, tempVector.z);
+	const scale = MaterialHeightShader.scaleRatio;
+	controls.moveTo(tempVector.x, currentElevation * exageration * scale, tempVector.z);
 	if (!EXTERNAL_APP) 
 	{
 		elevationSlider.value = currentElevation;
@@ -1668,7 +1697,7 @@ export function setExageration(newValue, shouldRender = true)
 {
 	if (exageration === newValue) {return;}
 	exageration = newValue;
-	sharedMaterial.uniforms.exageration.value = newValue;
+	sharedMaterial.uniforms.displacementScale.value = newValue;
 	sharedPointMaterial.uniforms.exageration.value = newValue;
 	if (shouldRender) 
 	{
@@ -1767,8 +1796,16 @@ setUpdateExternalPositionThrottleTime(100);
 function updateCurrentPosition() 
 {
 	controls.getPosition(tempVector);
-	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+	const scale = MaterialHeightShader.scaleRatio;
+	const point = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 	// console.log('point', tempVector, point);
+	if (sunLight) 
+	{
+		sunLight.directionalLight.target.position.set(tempVector.x, 2000*worldScale, -tempVector.z);
+		sunLight.position.set(tempVector.x, 0, tempVector.z);
+		sunLight.directionalLight.target.updateMatrix();
+			sunLight.directionalLight.target.updateMatrixWorld(true);
+	}
 
 	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon) 
 	{
@@ -1790,7 +1827,8 @@ controls.addEventListener('controlend', () =>
 {
 	updateLODThrottle();
 	controls.getPosition(tempVector);
-	const point = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+	const scale = MaterialHeightShader.scaleRatio;
+	const point = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon || currentPosition.altitude !== currentElevation ) 
 	{
 		currentPosition = {...point, altitude: currentElevation};
@@ -2015,7 +2053,10 @@ function applyOnNode(node, cb)
 }
 function applyOnNodes(cb) 
 {
-	applyOnNode(map.children[0], cb);
+	if (map) 
+	{
+		applyOnNode(map.children[0], cb);
+	}
 }
 
 function wrapText(context, text, x, y, maxWidth, lineHeight, measureOnly = false) 
@@ -2090,7 +2131,8 @@ function sendSelectedToNS()
 		if (selectedItem) 
 		{
 			controls.getPosition(tempVector);
-			const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+			const scale = MaterialHeightShader.scaleRatio;
+			const point1 = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 			const point2 = {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
 			distance = getDistance(point1, point2);
 		}
@@ -2135,7 +2177,8 @@ export function focusSelectedItem()
 	if (selectedItem) 
 	{
 		controls.getPosition(tempVector);
-		const point1 = UnitsUtils.sphericalToDatums(tempVector.x, -tempVector.z);
+		const scale = MaterialHeightShader.scaleRatio;
+		const point1 = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 		const point2 = {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0]};
 		const angle = 360 - getRhumbLineBearing(point1, point2);
 		setAzimuth(angle);
@@ -2170,16 +2213,17 @@ function drawFeatures()
 	let maxEleX;
 	// console.log(featuresToShow.length, featuresToShow.findIndex((f) => {return f.properties.name.endsWith('Monte Bianco');}));
 	const featuresToDraw = [];
+	const scale = MaterialHeightShader.scaleRatio;
 	featuresToShow.forEach((f) => 
 	{
-		const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+		const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0], null, scale);
 		const ele = f.properties.ele || 0;
-		tempVector.set(coords.x, ele * exageration, -coords.y);
+		tempVector.set(coords.x, ele * exageration * scale, -coords.y);
 		const vector = toScreenXY(tempVector);
 		const x = Math.floor(vector.x);
 		const y = vector.y;
 		const z = vector.z;
-		if (y < TEXT_HEIGHT- 20 || z > FAR + 1000 || z / ele > FAR / 3000) 
+		if (y < TEXT_HEIGHT- 20 || z > FAR * scale + 1000 || z / ele > FAR * scale / 3000) 
 		{
 			// if (f.properties.name.endsWith('Monte Bianco')) 
 			// {
@@ -2493,6 +2537,11 @@ export function render()
 	{
 		return;
 	}
+	// csm.update(camera.matrix);
+
+	directionalLightHelper.position.setFromMatrixPosition(sunLight.directionalLight.matrixWorld);
+	directionalLightHelper.updateMatrix();
+	directionalLightHelper.update();
 	// if (showMagnify) 
 	// {
 	// 	const toComposer = withoutComposer();
@@ -2541,7 +2590,7 @@ if (datelabel)
 	{
 		const now =new Date();
 		const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': -27.93156443585889, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': true, 'setDayNightCycle': false, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': true, 'setShowStats': false, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': false, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': false, 'setDayNightCycle': true, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': false, 'setShowStats': true, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
 	};
 }
 
@@ -2605,13 +2654,14 @@ export function setNear(value)
 {
 	if (NEAR === value) {return;}
 	NEAR = value;
-	camera.near = NEAR;
+	camera.near = NEAR * worldScale;
 }
 export function setViewingDistance(meters: number, shouldRender = true) 
 {
 	if (FAR === meters) {return;}
 	FAR = meters;
-	camera.far = FAR;
+	const scale = MaterialHeightShader.scaleRatio;
+	camera.far = FAR * scale;
 	camera.updateProjectionMatrix();
 	updateCurrentViewingDistance();
 
@@ -2676,6 +2726,7 @@ function getViewingDistance()
 	}
 	var farPoint = new Vector3(0, 0, -camera.far);
 	farPoint.applyMatrix4(camera.matrixWorld);
-	const point2 = UnitsUtils.sphericalToDatums(farPoint.x, -farPoint.z);
+	const scale = MaterialHeightShader.scaleRatio;
+	const point2 = UnitsUtils.sphericalToDatums(farPoint.x/scale, -farPoint.z/scale);
 	return getDistance(currentPosition, point2);
 }

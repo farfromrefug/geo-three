@@ -8,9 +8,11 @@ import Stats from 'stats.js';
 import {
 	AmbientLight,
 	AxesHelper,
-	Box3, CameraHelper, Clock, Color, DirectionalLightHelper, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PCFShadowMap, PCFSoftShadowMap, PerspectiveCamera, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
+	BasicShadowMap,
+	Box3, CameraHelper, Clock, Color, DirectionalLight, DirectionalLightHelper, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PCFShadowMap, PCFSoftShadowMap, PerspectiveCamera, PointLightHelper, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
 	Vector3,
 	Vector4,
+	VSMShadowMap,
 	WebGLRenderer,
 	WebGLRenderTarget
 } from 'three';
@@ -462,7 +464,6 @@ let stats;
 
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-// const canvas3 = document.getElementById('canvas3') as HTMLCanvasElement;
 const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
 const video = document.getElementById('video') as HTMLVideoElement;
 const ctx2d = canvas4.getContext('2d');
@@ -473,7 +474,7 @@ const renderer = new WebGLRenderer({
 	antialias: false,
 	alpha: true,
 	powerPreference: 'high-performance',
-	stencil: false
+	// stencil: false
 });
 renderer.physicallyCorrectLights = true;
 renderer.debug.checkShaderErrors = true;
@@ -856,19 +857,24 @@ export function setDayNightCycle(value, shouldRender = true)
 		);
 		// Adjust the directional light's shadow camera dimensions
 		// sunLight.directionalLight.shadow.bias = -0.003;
-		// sunLight.directionalLight.shadow.mapSize.width = 8192;
-		// sunLight.directionalLight.shadow.mapSize.height = 8192;
-		// sunLight.directionalLight.shadow.camera.left = -20;
-		// sunLight.directionalLight.shadow.camera.right = 20;
-		// sunLight.directionalLight.shadow.camera.top = -20;
-		// sunLight.directionalLight.shadow.camera.bottom = 20;
-		// sunLight.directionalLight.shadow.camera.near = 0;
-		// sunLight.directionalLight.shadow.camera.far = 20;
+		sunLight.directionalLight.shadow.mapSize.width = 8192;
+		sunLight.directionalLight.shadow.mapSize.height = 8192;
+		sunLight.directionalLight.shadow.camera.left = 0.2;
+		sunLight.directionalLight.shadow.camera.right = -0.2;
+		sunLight.directionalLight.shadow.camera.top = 0.2;
+		sunLight.directionalLight.shadow.camera.bottom = -0.2;
+		sunLight.directionalLight.shadow.camera.near = 0;
+		sunLight.directionalLight.shadow.camera.far = 20;
+		// sunLight.directionalLight.target = camera;
 		// sunLight.directionalLight.target.position.set(0, 0, 0);
 		scene.add(sky);
 		scene.add(sunLight as any);
 		directionalLightHelper = new DirectionalLightHelper(sunLight.directionalLight, 0.02, 0xff0000);
 		scene.add(directionalLightHelper);
+		// scene.add(sunLight.directionalLight.target);
+
+		const helper = new CameraHelper( sunLight.directionalLight.shadow.camera );
+		scene.add( helper );
 
 		let date = new Date();
 		const hours = Math.floor(currentSecondsInDay / 3600);
@@ -1298,7 +1304,7 @@ function createMap()
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
-	renderer.shadowMap.type = PCFShadowMap;
+	renderer.shadowMap.type = VSMShadowMap;
 	renderer.shadowMap.enabled = true;
 }
 
@@ -1403,22 +1409,22 @@ if (!(FORCE_MOBILE || isMobile))
 	const dKey = new KeyboardKeyHold(KEYCODE.D, 16.666);
 	aKey.addEventListener('holding', function(event) 
 	{
-		controls.truck(- keyboardMoveSpeed * event.deltaTime, 0, false);
+		controls.truck(- keyboardMoveSpeed * worldScale * event.deltaTime, 0, false);
 		controls.update(event.deltaTime);
 	});
 	dKey.addEventListener('holding', function(event) 
 	{
-		controls.truck(keyboardMoveSpeed * event.deltaTime, 0, false);
+		controls.truck(keyboardMoveSpeed * worldScale * event.deltaTime, 0, false);
 		controls.update(event.deltaTime);
 	});
 	wKey.addEventListener('holding', function(event) 
 	{
-		controls.forward(keyboardMoveSpeed * event.deltaTime, false);
+		controls.forward(keyboardMoveSpeed * worldScale * event.deltaTime, false);
 		controls.update(event.deltaTime);
 	});
 	sKey.addEventListener('holding', function(event) 
 	{
-		controls.forward(- keyboardMoveSpeed * event.deltaTime, false);
+		controls.forward(- keyboardMoveSpeed * worldScale * event.deltaTime, false);
 		controls.update(event.deltaTime);
 	});
 
@@ -1455,10 +1461,19 @@ const ambientLight = new AmbientLight(0xffffff);
 scene.add(ambientLight);
 
 
-// const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 0.6 ); 
-// hemiLight.position.set( 0, 1500, 0 );
+// const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 3 ); 
+// hemiLight.position.set( 0, 500* worldScale, 0 );
 // scene.add(hemiLight);
 // ambientLight.intensity = dayNightCycle ? 0.1875 : 1;
+
+// const directionalLight = new DirectionalLight( 0xffffff, 2);
+// directionalLight.position.set( -1, 1, 1 );
+// directionalLight.position.multiplyScalar( 50);
+// scene.add( directionalLight );
+// scene.add( directionalLight.target );
+
+// directionalLightHelper = new DirectionalLightHelper(directionalLight, 0.02, 0xff0000);
+// scene.add(directionalLightHelper);
 
 const axesHelper = new AxesHelper(1);
 scene.add( axesHelper );
@@ -1602,14 +1617,22 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 		{
 			updateControls();
 		}
+		axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
+		// directionalLight.position.set(newPosition.x, 20000 * worldScale, -newPosition.y);
+		// if (directionalLight) {
+
+		// 	directionalLight.target.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
+		// 	directionalLight.target.updateMatrix();
+		// 	directionalLight.target.updateMatrixWorld(true);
+		// }
 		if (sky) 
 		{
-			axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
 			sunLight.setPosition(coords.lat, coords.lon);
-			sunLight.directionalLight.target.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
-			sunLight.directionalLight.target.updateMatrix();
-			sunLight.directionalLight.target.updateMatrixWorld(true);
-			sunLight.position.set(newPosition.x, 0, -newPosition.y);
+			controls.getPosition(tempVector);
+			sunLight.setWorldPosition(tempVector);
+			
+			// sunLight.updateMatrix();
+			// sunLight.updateMatrixWorld(true);
 			updateAmbientLight();
 			updateSkyPosition();
 		}
@@ -1760,6 +1783,8 @@ export function setDate(secondsInDay, shouldRender = true)
 	if (sunLight) 
 	{
 		sunLight.setDate(date);
+		controls.getPosition(tempVector);
+		sunLight.setWorldPosition(tempVector);
 		updateAmbientLight();
 	}
 	if (datelabel) 
@@ -1801,10 +1826,7 @@ function updateCurrentPosition()
 	// console.log('point', tempVector, point);
 	if (sunLight) 
 	{
-		sunLight.directionalLight.target.position.set(tempVector.x, 2000*worldScale, -tempVector.z);
-		sunLight.position.set(tempVector.x, 0, tempVector.z);
-		sunLight.directionalLight.target.updateMatrix();
-			sunLight.directionalLight.target.updateMatrixWorld(true);
+		sunLight.setWorldPosition(tempVector);
 	}
 
 	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon) 
@@ -2538,10 +2560,13 @@ export function render()
 		return;
 	}
 	// csm.update(camera.matrix);
+	if (directionalLightHelper) 
+	{
 
-	directionalLightHelper.position.setFromMatrixPosition(sunLight.directionalLight.matrixWorld);
-	directionalLightHelper.updateMatrix();
-	directionalLightHelper.update();
+		directionalLightHelper.position.setFromMatrixPosition(directionalLightHelper.light.matrixWorld);
+		directionalLightHelper.updateMatrix();
+		directionalLightHelper.update();
+	}
 	// if (showMagnify) 
 	// {
 	// 	const toComposer = withoutComposer();
@@ -2590,7 +2615,7 @@ if (datelabel)
 	{
 		const now =new Date();
 		const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': false, 'setDayNightCycle': true, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': false, 'setReadFeatures': false, 'setShowStats': true, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': true, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': false, 'setDayNightCycle': true, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': true, 'setReadFeatures': false, 'setShowStats': true, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': false, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
 	};
 }
 

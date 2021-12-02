@@ -29,7 +29,7 @@
 	"author": "Tentone",
 	"license": "MIT",
 	"peerDependencies": {
-		"three": ">0.80.0"
+		"three": ">0.135.0"
 	},
 	"devDependencies": {
 		"@loaders.gl/mvt": "^2.3.13",
@@ -58,7 +58,7 @@
 		"rollup-plugin-livereload": "2.0.5",
 		"rollup-plugin-serve": "2.0.0-beta.0",
 		"stats.js": "^0.17.0",
-		"three": "~0.134.0",
+		"three": "~0.135.0",
 		"three-screen-quad": "^0.2.1",
 		"tslib": "2.3.1",
 		"typedoc": "^0.22.9",

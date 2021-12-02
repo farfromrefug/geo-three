@@ -77,11 +77,24 @@ export class SunLight extends Object3D
 		const light = this.directionalLight = new DirectionalLight(0xffffff); 
 		light.castShadow = true;
 		this.hingeObject.add( light );
-		// light.target.position.set(0, 0, 0);
+
 		// Add the target of the directional light as a child to this object, so
 		// that it's world matrix gets updated automatically when this object's
 		// position is changed.
-		// this.add( light.target );
+		this.add( light.target );
+	}
+
+	setWorldPosition(vector) 
+	{
+		this.position.set(vector.x, 0, vector.z);
+		this.directionalLight.lookAt(this.position);
+		// this.worldToLocal(
+		// vector
+		// );
+		// this.directionalLight.target.position.set(vector.x, 0, vector.z);
+		// sunLight.directionalLight.shadow.camera.position.set(tempVector.x, 0, -tempVector.z);
+		// this.directionalLight.target.updateMatrix();
+		// this.directionalLight.target.updateMatrixWorld(true);
 	}
 
 	setPosition(lat, long) 
@@ -139,7 +152,7 @@ export class SunLight extends Object3D
 		}
 		else 
 		{
-			this.directionalLight.intensity = 5.0;
+		this.directionalLight.intensity = 1.0;
 		}
 		// Reset the hingeObject's quaternion
 		this.hingeObject.quaternion.copy( new Quaternion() );

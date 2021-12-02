@@ -1,5 +1,5 @@
 import {pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
-import {BufferGeometry, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, Points, Raycaster, RepeatWrapping, ShaderLib, ShaderMaterial, Texture, TextureLoader, Vector2, Vector3} from 'three';
+import {BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Intersection, LinearFilter, LOD, Mesh, Points, Raycaster, RepeatWrapping, ShaderLib, ShaderMaterial, Texture, TextureLoader, Vector2, Vector3} from 'three';
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
 import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
@@ -53,6 +53,7 @@ function mergeUniforms( uniforms ): any
 export let featuresByColor = {};
 export let testColor;
 let readPixelCanvas: HTMLCanvasElement;
+let normalMapCanvas: HTMLCanvasElement;
 export function getImageData( image ): ImageData
 {
 	if (!readPixelCanvas) 
@@ -83,6 +84,114 @@ export function getPixel( imageData: ImageData, heightMapLocation: [number, numb
 }
 const maxLevelForGemSize = 12;
 const worldScaleRatio = 1/100000;
+// const worldScaleRatio = 1;
+
+
+function generateNormalMap(image, tileX, tileY, level): void
+{
+	if (!normalMapCanvas) 
+	{
+		normalMapCanvas = document.getElementById('canvas3') as HTMLCanvasElement;
+	}
+
+	var width = normalMapCanvas.width = image.width;
+	var height = normalMapCanvas.height = image.height;
+	var context = normalMapCanvas.getContext( '2d' );
+	context.drawImage( image, 0, 0 );
+
+
+	var src = context.getImageData( 0, 0, width, height );
+
+	function unpackHeight(index): any
+	{
+ 
+		let height = src.data[index]/255 * elevationDecoder[0];
+		height +=src.data[index+1]/255 * elevationDecoder[1];
+		height += src.data[index+2] /255* elevationDecoder[2];
+		height += src.data[index+3] /255* elevationDecoder[3];
+		// console.log('unpackHeight', index, elevationDecoder, [src.data[index], src.data[index+1], src.data[index+2], src.data[index+3]], height);
+		return height;
+	}
+	function getInterpolatedHeight( x, y): any
+	{
+		let x0 = x, x1 = x;
+		let y0 = y, y1 = y;
+		if (x < 0) 
+		{
+			x0 = 0;
+			x1 = 1;
+		}
+		if (x >= width) 
+		{
+			x0 = width - 1;
+			x1 = width - 2;
+		}
+		if (y < 0) 
+		{
+			y0 = 0;
+			y1 = 1;
+		}
+		if (y >= height) 
+		{
+			y0 = height - 1;
+			y1 = height - 2;
+		}
+		// console.log('getInterpolatedHeight', width, height, x, y, x0, y0, x1, y1);
+
+		if (x0 === x1 && y0 === y1) 
+		{
+			return unpackHeight(y0 * width*4 + x0*4);
+		}
+		return 2 * unpackHeight(y0 * width*4 + x0*4) - unpackHeight(y1 * width*4 + x1*4);
+	}
+
+	var dst = context.createImageData( width, height );
+	if (width >= 2 && height >= 2) 
+	{
+		// console.log('generateNormalMap', tileX, tileY, level)
+		let heights = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+		for (let y = 0; y < height; y++) 
+		{
+			let y1 = Math.PI * ((tileY + (height - y - 0.5) / height) / (1 << level) - 0.5);
+			let rz = Math.tanh(y1);
+			let ss = Math.sqrt(Math.max(0.0, 1.0 - rz * rz));
+
+			// [
+			// 	[0/0,1/0,2/0],
+			// 	[0/1,1/1,2/1],
+			// 	[0/2,1/2,2/2]
+			// ]
+
+			for (let dy = 0; dy < 3; dy++) 
+			{
+				heights[dy][1] = getInterpolatedHeight(-1, y + dy - 1);
+				heights[dy][2] = getInterpolatedHeight( 0, y + dy - 1);
+			}
+			for (let x = 0; x < width; x++) 
+			{
+				for (let dy = 0; dy < 3; dy++) 
+				{
+					heights[dy][0] = heights[dy][1];
+					heights[dy][1] = heights[dy][2];
+					heights[dy][2] = getInterpolatedHeight(x + 1, y + dy - 1);
+				}
+
+				let dx = heights[0][2] + 2 * heights[1][2] + heights[2][2] - (heights[0][0] + 2 * heights[1][0] + heights[2][0]);
+				let dy = heights[2][0] + 2 * heights[2][1] + heights[2][2] - (heights[0][0] + 2 * heights[0][1] + heights[0][2]);
+				let dz = 8.0 * ss;
+				const length = Math.sqrt(dx*dx + dy*dy + dz*dz);
+				dst.data[y * width*4 + x*4] = Math.round((dx/length + 1.0 ) * 127.5);
+				dst.data[y * width*4 + x *4+ 1] = Math.round((dy/length + 1.0 ) * 127.5);
+				dst.data[y * width*4 + x *4+ 2] = Math.round((dz/length + 1.0 ) * 127.5);
+				dst.data[y * width*4 + x *4+ 3] = 255;
+				// console.log(x, y, dst.data[y * width*4 + x*4], dst.data[y * width*4 + x*4 + 1], dst.data[y * width*4 + x*4 + 2]);
+			}
+		}
+	}
+
+
+	context.putImageData( dst, 0, 0 );
+}
 
 function hashString( str, seed = 0 ): number 
 {
@@ -406,14 +515,14 @@ void main() {
 		gl_FragColor = vec4( 0.0,0.0,0.0, 1.0 );
 		return;
 	} else if(drawNormals) {
-	#ifndef FLAT_SHADED
-		gl_FragColor = vec4( ( 0.5 * vNormal + 0.5 ), 1.0 );
-	#else 
-		gl_FragColor = vec4( ( 0.5 * normal + 0.5 ), 1.0 );
-	#endif
-	return;
+#ifndef FLAT_SHADED
+		gl_FragColor = vec4(packNormalToRGB(vNormal), opacity);
+#else 
+		gl_FragColor = vec4(packNormalToRGB(normal), opacity);
+#endif
+		return;
 	} else if (!drawTexture) {
-		gl_FragColor = vec4( 0.0,0.0,0.0, 0.0 );
+		gl_FragColor = vec4( 0.0,0.0,0.0, 0.0);
 		return;
 	}
 	#include <clipping_planes_fragment>
@@ -455,6 +564,7 @@ uniform sampler2D heightMap;
 uniform vec4 elevationDecoder;
 uniform vec4 heightMapLocation;
 varying vec4 vPosition;
+uniform float tileY;
 
 float getPixelElevation(vec4 e) {
 	// Convert encoded elevation value to meters
@@ -464,6 +574,7 @@ float getElevation(vec2 coord, float width, float height) {
 	vec4 e = texture2D(heightMap, coord * heightMapLocation.zw + heightMapLocation.xy);
 	return getPixelElevation(e);
 }
+
 float getElevationMean(vec2 coord, float width, float height) {
 	float x0 = coord.x;
 	float x1= coord.x;
@@ -508,23 +619,8 @@ void main() {
 	float mean = getElevationMean(vUv, width,height);
 	#ifndef FLAT_SHADED
 		if (computeNormals) {
-			float offset = 1.0 / width;
-			float a = getElevation(vUv + vec2(-offset, -offset), width,height) ;
-			float b = getElevation(vUv + vec2(0, -offset), width,height) ;
-			float c = getElevation(vUv + vec2(offset, -offset), width,height) ;
-			float d = getElevation(vUv + vec2(-offset, 0), width,height) ;
-			float e = getElevation(vUv, width,height);
-			float f = getElevation(vUv + vec2(offset, 0), width,height) ;
-			float g = getElevation(vUv + vec2(-offset, offset), width,height) ;
-			float h = getElevation(vUv + vec2(0, offset), width,height) ;
-			float i = getElevation(vUv + vec2(offset,offset), width,height) ;
-
-			float normalLength =20.0;
-			// float normalLength = 2.0 * (1.0 + pow(1.6,(14.0 -zoomlevel)));
-			// float normalLength = 50.0 / (1.0 + pow(1.3,15.0 -zoomlevel) / 3.0);
-			// float normalLength = 2.0+.0005 * pow(3.0,20.0 -zoomlevel) ;
-			// float normalLength = 2.0 * (1.0 + (14.0 -zoomlevel) / 10.0);
-
+			float normalLength = 2.0;
+			float sizeFactor = 1.0/ (8.0 * zoomlevel);
 			float zoomFactor = 0.0;
 			float level = zoomlevel ;
 			if (heightMapLocation.z != 1.0) {
@@ -533,19 +629,41 @@ void main() {
 			if (level < 12.0) {
 				zoomFactor = 1.0 - 0.5/(12.0 -level);
 			}
-			// vec3 v0 = vec3(0.0, 0.0, mean);
-			// vec3 v1 = v0 - vec3(0.0, normalLength, mix(b, mean, zoomFactor));
-			// vec3 v2 = v0 - vec3(normalLength, 0.0, mix(f, mean , zoomFactor));
-			// vNormal = (normalize(cross(v2, v1)));
+			// queried pixels:
+			// +-----------+
+			// |   |   |   |
+			// | a | b | c |
+			// |   |   |   |
+			// +-----------+
+			// |   |   |   |
+			// | d | e | f |
+			// |   |   |   |
+			// +-----------+
+			// |   |   |   |
+			// | g | h | i |
+			// |   |   |   |
+			// +-----------+
+			float offset = 1.0 / width;
+			float a = getElevation(vUv + vec2(-offset, offset), width,height);
+			float b = getElevation(vUv + vec2(0, offset), width,height);
+			float c = getElevation(vUv + vec2(offset, offset), width,height);
+			float d = getElevation(vUv + vec2(-offset, 0), width,height);
+			float e = getElevation(vUv, width,height);
+			float f = getElevation(vUv + vec2(offset, 0), width,height);
+			float g = getElevation(vUv + vec2(-offset, -offset), width,height);
+			float h = getElevation(vUv + vec2(0, -offset), width,height) ;
+			float i = getElevation(vUv + vec2(offset,-offset), width,height) ;
 
 
-			vec3 v0 = vec3(0.0, 0.0, 0.0);
-			vec3 v1 = vec3(0.0, normalLength, 0.0);
-			vec3 v2 = vec3(normalLength, 0.0, 0.0);
-			v0.z = mix((e + d + g + h) / 4.0 , mean, zoomFactor);
-			v1.z = mix((e + b + a + d) / 4.0 , mean, zoomFactor);
-			v2.z = mix((e + h + i + f) / 4.0 , mean, zoomFactor);
-			vNormal = normalize(cross(v0 -v2, v0 - v1));
+			float y1 = 3.14159265359 * ((tileY + 1.0 - vUv.y - 0.5 / height) / float(1 << int(zoomlevel)) - 0.5);
+			float rz = tanh(y1);
+            float ss = sqrt(max(0.0, 1.0 - rz * rz));
+			float dx = (a + 2.0 * b + c) - (g + 2.0 * h + i);
+			float dy = (i + 2.0 * f + c) - (g + 2.0 * d + a);
+			float dz = 8.0f *ss;
+
+			vNormal = normalize(vec3( dx, -dy, dz)).gbr;
+
 		}
 	#endif
 
@@ -564,9 +682,23 @@ void main() {
 }
 `,
 		wireframe: false,
-		// side: DoubleSide,
+		side: DoubleSide,
 		defines: {USE_MAP: '', USE_DISPLACEMENTMAP: ''},
-		uniforms: mergeUniforms([phongShader.uniforms, {
+		// uniforms: mergeUniforms([phongShader.uniforms, {
+		// 	drawNormals: {value: false},
+		// 	computeNormals: {value: false},
+		// 	drawTexture: {value: false},
+		// 	elevationDecoder: {value: null},
+		// 	generateColor: {value: false},
+		// 	drawBlack: {value: 0},
+		// 	displacementScale: {value: 1},
+		// 	// shininess: {value: 1},
+		// 	// specular: {value: 1},
+		// 	displacementBias: {value: 0},
+		// 	worldScale: {value: worldScaleRatio}
+		// }])
+		uniforms: Object.assign(pick(phongShader.uniforms, 'diffuse', 'spotLights', 'spotLightShadows', 'rectAreaLights', 'ltc_1', 'ltc_2', 'ambientLightColor', 'directionalLightShadows', 'directionalLights', 'directionalShadowMatrix', 'directionalShadowMap', 'lightMap', 'lightMapIntensity', 'lightProbe', 'pointLights', 'pointLightShadows', 'pointShadowMap', 'pointShadowMatrix', 'hemisphereLights', 'spotShadowMap', 'spotShadowMatrix', 'map'
+			, 'opacity', 'displacementMap'), {
 			drawNormals: {value: false},
 			computeNormals: {value: false},
 			drawTexture: {value: false},
@@ -574,15 +706,12 @@ void main() {
 			generateColor: {value: false},
 			drawBlack: {value: 0},
 			displacementScale: {value: 1},
-			// shininess: {value: 1},
-			// specular: {value: 1},
+			emissive: {value: new Color(0x000000)},
+			specular: {value: new Color(0x000000)},
+			shininess: {value: 50},
 			displacementBias: {value: 0},
 			worldScale: {value: worldScaleRatio}
-		}])
-		// Object.assign(pick(phongShader.uniforms, 'diffuse', 'spotLights', 'spotLightShadows', 'rectAreaLights', 'ltc_1', 'ltc_2', 'ambientLightColor', 'directionalLightShadows', 'directionalLights', 'directionalShadowMatrix', 'directionalShadowMap', 'lightMap', 'lightMapIntensity', 'lightProbe', 'pointLights', 'pointLightShadows', 'pointShadowMap', 'pointShadowMatrix', 'hemisphereLights', 'spotShadowMap', 'spotShadowMatrix', 'map'
-		// 	, 'opacity', 'displacementMap'), {
-			
-		// })
+		})
 	});
 	// sharedMaterial['displacementScale'] = 10;
 	// sharedMaterial['displacementBias'] = 1000;
@@ -590,6 +719,7 @@ void main() {
 	sharedMaterial['map'] = EMPTY_TEXTURE;
 	return sharedMaterial;
 }
+
 export const sharedMaterial = createSharedMaterial();
 
 export let currentColor = 0x000000;
@@ -697,6 +827,7 @@ export class MaterialHeightShader extends MapHeightNode
 			displacementMap: {value: null},
 			map: {value: this.material['map']},
 			zoomlevel: {value: level},
+			tileY: {value: y},
 			heightMapLocation: {value: this.heightMapLocation},
 			mapMapLocation: {value: this.mapMapLocation}
 		};
@@ -946,6 +1077,10 @@ export class MaterialHeightShader extends MapHeightNode
 			}
 			else 
 			{
+				// if (this.x === 2112 && this.y === 1471 && this.level === 12) 
+				// {
+				// 	generateNormalMap(image, this.x, this.y, this.level);
+				// }
 				texture = new Texture(image);
 				texture.generateMipmaps = false;
 				// texture.format = RGBFormat;

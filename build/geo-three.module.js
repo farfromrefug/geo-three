@@ -784,9 +784,6 @@ class RasterMapProvider extends MapProvider {
     }
     async fetchTileImage(zoom, x, y) {
         const key = `${zoom}_${x}_${y}`;
-        if (zoom === 4 && x === 7 && y === 7) {
-            console.log('test', new Error().stack);
-        }
         let promise;
         if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) {
             promise = this.fetchingTilesPromises[key] = this.fetchImage(zoom, x, y);
@@ -855,7 +852,8 @@ class RasterMapProvider extends MapProvider {
         const url = this.buildURL(zoom, x, y);
         return new CancelablePromise(async (resolve, reject) => {
             try {
-                resolve(await this.getImageBitmapLoader().load(url));
+                const result = await this.getImageBitmapLoader().load(url);
+                resolve(result);
             }
             catch (err) {
                 console.log('catched error', err);

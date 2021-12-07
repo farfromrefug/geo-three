@@ -1,15 +1,14 @@
 /* eslint-disable camelcase */
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
-import {exageration} from 'app';
-import {DirectionalLight, Object3D, Quaternion, Vector2, Vector3} from 'three';
-export class SunLight extends Object3D
+import {DirectionalLight, Quaternion, Vector2, Vector3} from 'three';
+export class SunLight extends DirectionalLight
 {
 	// Latitude and longtitude of the current location on the world
 	// Measured as decimal degrees. North and east is positive
 	coordinates;
 
-	delta: Vector2;
+	savedPosition: Vector3;
 
 	// The unit vector that is pointing the north in the scene
 	north;
@@ -36,32 +35,20 @@ export class SunLight extends Object3D
 	// Local date and time
 	localDate: Date;
 
-	// The directional light which is used as the sun light
-	directionalLight: DirectionalLight;
-
-	// The directional light in js is managed by a directional vector.
-	// To make life easier, I'm adding the light as a child to this hinge object
-	// and rotating this object in order to set the light's direction
-	hingeObject: Object3D;
-
-	constructor(coordinates_, north_, east_, nadir_, sun_distance_ = 1.0) 
+	constructor(coordinates_: Vector2, north_: Vector3, east_: Vector3, nadir_: Vector3, sun_distance_ = 1.0) 
 	{
-		super( );
-		this.type = 'SunLight';
+		super(0xffffff);
+		// this.type = 'SunLight';
 
-
-		this.delta = new Vector2();
+		this.savedPosition = new Vector3(0, 0, 0);
 		this.coordinates = new Vector2();
 		this.coordinates.copy( coordinates_ );
 
-		this.north = new Vector3();
-		this.north.copy( north_ );
+		this.north = north_;
 
-		this.east = new Vector3();
-		this.east.copy( east_ );
+		this.east = east_;
 
-		this.nadir = new Vector3();
-		this.nadir.copy( nadir_ );
+		this.nadir = nadir_;
 
 		this.sun_distance = sun_distance_;
 
@@ -69,32 +56,14 @@ export class SunLight extends Object3D
 		this.elevation = 0.0;
 
 		this.localDate = new Date();
+		this.castShadow = true;
 
-
-		this.hingeObject = new Object3D();
-		this.add( this.hingeObject );
-
-		const light = this.directionalLight = new DirectionalLight(0xffffff); 
-		light.castShadow = true;
-		this.hingeObject.add( light );
-
-		// Add the target of the directional light as a child to this object, so
-		// that it's world matrix gets updated automatically when this object's
-		// position is changed.
-		this.add( light.target );
 	}
 
-	setWorldPosition(vector) 
+	setWorldPosition(vector: Vector3) 
 	{
-		this.position.set(vector.x, 0, vector.z);
-		this.directionalLight.lookAt(this.position);
-		// this.worldToLocal(
-		// vector
-		// );
-		// this.directionalLight.target.position.set(vector.x, 0, vector.z);
-		// sunLight.directionalLight.shadow.camera.position.set(tempVector.x, 0, -tempVector.z);
-		// this.directionalLight.target.updateMatrix();
-		// this.directionalLight.target.updateMatrixWorld(true);
+		this.savedPosition.set(vector.x, vector.y, vector.z);
+		this.updateDirectionalLight();
 	}
 
 	setPosition(lat, long) 
@@ -139,31 +108,32 @@ export class SunLight extends Object3D
 	{
 		// If the elevation is less than zero, there is no sun light.
 		// Starting from 2 degrees, start fading the light
-		const FADE_OUT_THRESHOLD = 2.0;
+		const FADE_OUT_THRESHOLD = -2.0;
 		const elevationDegrees = 180.0 * this.elevation / Math.PI;
-		if ( elevationDegrees <= 0.0 ) 
+		if ( elevationDegrees < FADE_OUT_THRESHOLD ) 
 		{
-			this.directionalLight.intensity = 0.0;
+			this.intensity = 0.0;
 			return;
 		}
-		else if ( elevationDegrees <= FADE_OUT_THRESHOLD) 
+		else if ( elevationDegrees < 0 && elevationDegrees >= FADE_OUT_THRESHOLD) 
 		{
-			this.directionalLight.intensity = elevationDegrees / FADE_OUT_THRESHOLD;
+			this.intensity = elevationDegrees / FADE_OUT_THRESHOLD;
 		}
 		else 
 		{
-		this.directionalLight.intensity = 1.0;
+			this.intensity = 2.0;
 		}
-		// Reset the hingeObject's quaternion
-		this.hingeObject.quaternion.copy( new Quaternion() );
-
-		this.directionalLight.position.copy( this.north );
-		this.directionalLight.position.multiplyScalar( this.sun_distance );
+		this.position.copy( this.north );
+		this.position.multiplyScalar( this.sun_distance );
 		const rotator = new Quaternion();
+		const result = new Quaternion();
 		rotator.setFromAxisAngle( this.east, this.elevation );
-		this.hingeObject.quaternion.premultiply( rotator );
+		result.premultiply( rotator );
 		rotator.setFromAxisAngle( this.nadir, this.azimuth );
-		this.hingeObject.quaternion.premultiply( rotator );
+		result.premultiply( rotator );
+		this.position.applyQuaternion(result);
+		this.position.add(this.savedPosition);
+		this.target.position.copy(this.savedPosition);
 	}
 
 	_degreesToRadians(degrees_) 

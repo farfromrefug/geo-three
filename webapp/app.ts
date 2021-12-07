@@ -1,3 +1,4 @@
+/* eslint-disable no-prototype-builtins */
 /* eslint-disable @typescript-eslint/explicit-member-accessibility */
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 import {AdditiveTweening} from 'additween';
@@ -9,7 +10,7 @@ import {
 	AmbientLight,
 	AxesHelper,
 	BasicShadowMap,
-	Box3, CameraHelper, Clock, Color, DirectionalLight, DirectionalLightHelper, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, PCFShadowMap, PCFSoftShadowMap, PerspectiveCamera, PointLightHelper, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
+	Box3, CameraHelper, Clock, Color, DirectionalLight, DirectionalLightHelper, Euler, HemisphereLight, MathUtils, Matrix4, Mesh, MOUSE, NearestFilter, Object3D, PCFShadowMap, PCFSoftShadowMap, PerspectiveCamera, PointLightHelper, Quaternion, Raycaster, Scene, Sphere, Spherical, Texture, Uniform, Vector2,
 	Vector3,
 	Vector4,
 	VSMShadowMap,
@@ -24,13 +25,390 @@ import {DebugProvider} from '../source/providers/DebugProvider';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
 import {EmptyProvider} from './EmptyProvider';
 import {LocalHeightProvider} from './LocalHeightProvider';
-import {featuresByColor, getImageData, getPixel, MaterialHeightShader, sharedMaterial, sharedPointMaterial, testColor} from './MaterialHeightShader';
+import {customDepthMaterial, featuresByColor, getImageData, getPixel, MaterialHeightShader, sharedMaterial, sharedPointMaterial, testColor} from './MaterialHeightShader';
 import RasterMapProvider from './TestMapProvider';
 import {SunLight} from './SunLight';
 import {KeyboardKeyHold} from 'hold-event';
 import RenderTargetHelper from 'three-rt-helper';
 import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
 import CSM from 'three-csm';
+export const isMobile = FORCE_MOBILE || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+console.log('isMobile ' + isMobile);
+const now = new Date();
+export const settings = {
+	local: false,
+	shadows: true,
+	dayNightCycle: false,
+	generateColor: false,
+	debug: false,
+	geometrySize: FORCE_MOBILE || isMobile ? 320 : 512,
+	debugGPUPicking: false,
+	readFeatures: true,
+	drawLines: true,
+	drawElevations: false,
+	dark: false,
+	fovFactor: 28.605121612548828,
+	outline: true,
+	wireframe: false,
+	drawNormals: false,
+	debugFeaturePoints: false,
+	computeNormals: false,
+	drawTexture: true,
+	mapMap: false,
+	stats: false,
+	exageration: 1.622511863708496,
+	depthBiais: 0.44,
+	depthMultiplier: 110.65267944335938,
+	depthPostMultiplier: 0.9277091026306152,
+	secondsInDay: now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds(), 
+	elevation: -1,
+	terrarium: false,
+	elevationDecoder: [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000],
+	far: FORCE_MOBILE || isMobile? 163000: 173000,
+	near: 10
+};
+
+const queryParams = new URLSearchParams(window.location.search);
+queryParams.forEach((value, k) => 
+{
+	try 
+	{
+		settings[k]=JSON.parse(value);
+	}
+	catch (err)
+	{
+		settings[k]=value;
+	}
+});
+
+function updateShadowMapEnabled() 
+{
+	renderer.shadowMap.enabled = settings.shadows && settings.dayNightCycle;
+}
+export function toggleSetting(key): void 
+{
+	setSettings(key, !settings[key]);
+}
+export function setSettings(key, value, shouldRender = true, param2 = true): void 
+{
+	try 
+	{
+		// console.log('setSettings', key, value, settings.hasOwnProperty(key));
+		if (!settings.hasOwnProperty(key)) 
+		{
+			const func = window['webapp'][key];
+			if (typeof func === 'function') 
+			{
+				func(value, shouldRender, param2);
+			}
+		}
+		const oldValue = settings[key];
+		if (key === 'elevation') 
+		{
+			if (typeof value === 'string') 
+			{
+				value = parseFloat(value);
+			}
+			if (currentGroundElevation !== undefined && value < currentGroundElevation) 
+			{
+				value = currentGroundElevation;
+			}
+		}
+		
+		if (canCreateMap && oldValue === value) 
+		{
+			return;
+		}
+		settings[key] = value;
+	
+		let labelValue = value;
+		switch (key) 
+		{
+		case 'terrarium':
+			if (value) 
+			{
+				settings.elevationDecoder = [256 * 255, 1 * 255, 1 / 256 * 255, -32768];
+			}
+			else 
+			{
+				settings.elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
+			}
+			// if (map) 
+			// {
+			sharedMaterial.uniforms.elevationDecoder.value = settings.elevationDecoder;
+			customDepthMaterial.uniforms.elevationDecoder.value = settings.elevationDecoder;
+			break;
+				
+		case 'dayNightCycle':
+		{
+			if (!sky) 
+			{
+				sky = createSky();
+				sunLight = new SunLight(
+					new Vector2(45.05, 5.47),
+					new Vector3(0.0, 0.0, -1.0),
+					new Vector3(1.0, 0.0, 0.0),
+					new Vector3(0.0, -1.0, 0.0),
+					2.0
+				);
+				// Adjust the directional light's shadow camera dimensions
+				sunLight.shadow.bias = -0.0002;
+				sunLight.shadow.mapSize.width = 8192;
+				sunLight.shadow.mapSize.height = 8192;
+				sunLight.shadow.camera.left = -1;
+				sunLight.shadow.camera.right = 1;
+				sunLight.shadow.camera.top = 0.1;
+				sunLight.shadow.camera.bottom = -0.5;
+				sunLight.shadow.camera.near = 0.1;
+				sunLight.shadow.camera.far = 5;
+				scene.add(sky);
+				scene.add(sunLight as any);
+				scene.add(sunLight.target);
+				// directionalLightHelper = new DirectionalLightHelper(sunLight, 0.02, 0xff0000);
+				// scene.add(directionalLightHelper);
+				controls.getPosition(tempVector);
+				sunLight.setWorldPosition(tempVector);
+				// const helper = new CameraHelper( sunLight.shadow.camera );
+				// scene.add( helper );
+	
+				let date = new Date();
+				const hours = Math.floor(settings.secondsInDay / 3600);
+				const minutes = Math.floor((settings.secondsInDay - hours * 3600) / 60);
+				const seconds = settings.secondsInDay - hours * 3600 - minutes * 60;
+				date.setHours(hours);
+				date.setMinutes(minutes);
+				date.setSeconds(seconds);
+				sunLight.setDate(date);
+			}
+			updateSky();
+			updateSkyPosition();
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			updateShadowMapEnabled();
+			break;
+		}
+		case 'shadows' :{
+			updateShadowMapEnabled();
+			break;
+		}
+		case 'drawTexture' :{
+			sharedMaterial.uniforms.drawTexture.value = shouldDrawTextures();
+			break;
+		}
+	
+		case 'elevation':{
+			controls.getPosition(tempVector);
+			const scale = MaterialHeightShader.scaleRatio;
+			controls.moveTo(tempVector.x, value * settings.exageration * scale, tempVector.z);
+			if (shouldRender) 
+			{
+				updateControls();
+				shouldRender = false;
+			}
+			break;
+		}
+		case 'secondsInDay' :{
+			let date = new Date();
+			const hours = Math.floor(value / 3600);
+			const minutes = Math.floor((value - hours * 3600) / 60);
+			const seconds = value - hours * 3600 - minutes * 60;
+			date.setHours(hours);
+			date.setMinutes(minutes);
+			date.setSeconds(seconds);
+			if (sunLight) 
+			{
+				sunLight.setDate(date);
+				// controls.getPosition(tempVector);
+				// sunLight.setWorldPosition(tempVector);
+				// sunLight.target.position.set(tempVector.x, 0, tempVector.z);
+				updateAmbientLight();
+			}
+			labelValue = date.toLocaleString();
+	
+			updateSkyPosition();
+			break;
+		}
+		case 'dark' :{
+			outlineEffect.uniforms.get('outlineColor').value.set(settings.dark ? 0xffffff : 0x000000);
+			document.body.style.backgroundColor = settings.dark ? 'black' : 'white';
+			// cameraButton.style.backgroundColor = compass.style.backgroundColor = !settings.dark ? 'white' : 'black';
+			break;
+		}
+		case 'outline' :{
+			outlinePass.enabled = !withoutOutline();
+			mainPass.renderToScreen = !outlinePass.enabled;
+			break;
+		}
+		case 'near' :{
+			camera.near = settings.near * worldScale;
+			break;
+		}
+		case 'far' :{
+			const scale = MaterialHeightShader.scaleRatio;
+			camera.far = settings.far * scale;
+			camera.updateProjectionMatrix();
+			updateCurrentViewingDistance();
+	
+			sharedPointMaterial.uniforms.cameraNear.value = camera.near;
+			sharedPointMaterial.uniforms.cameraFar.value = camera.far;
+			break;
+		}
+		case 'readFeatures' :{
+			featuresDrawingCanvas.style.visibility = settings.readFeatures ? 'visible' : 'hidden';
+			break;
+		}
+		case 'exageration' :{
+			sharedMaterial.uniforms.displacementScale.value = settings.exageration;
+			customDepthMaterial.uniforms.displacementScale.value = settings.exageration;
+			sharedPointMaterial.uniforms.exageration.value = settings.exageration;
+			break;
+		}
+		case 'depthBiais' :
+		case 'depthMultiplier' :
+		case 'depthPostMultiplier' :{
+			outlineEffect.uniforms.get('multiplierParameters').value.set(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier);
+			break;
+		}
+		case 'wireframe' :{
+			sharedMaterial.wireframe = settings.wireframe;
+			break;
+		}
+		case 'debugFeaturePoints' :{
+			if (map) 
+			{
+				applyOnNodes((node) => 
+				{
+					node.objectsHolder.visible = settings.debugFeaturePoints && (node.isVisible() || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided);
+				});
+			}
+			break;
+		}
+		case 'computeNormals' :{
+			updateSky();
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			break;
+		}
+		case 'stats' :{
+			if (value) 
+			{
+				if (!stats) 
+				{
+					stats = new Stats();
+					stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+					document.body.appendChild(stats.dom);
+				}
+				else 
+				{
+					document.body.appendChild(stats.dom);
+				}
+			}
+			else 
+			{
+				if (stats) 
+				{
+					document.body.removeChild(stats.dom);
+				}
+			}
+			break;
+		}
+		case 'drawNormals' :{
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			sharedMaterial.uniforms.drawNormals.value = settings.drawNormals;
+			sharedMaterial.uniforms.drawTexture.value = shouldDrawTextures();
+			break;
+		}
+		case 'mapMap' :{
+			outlinePass.enabled = !withoutOutline();
+			mainPass.renderToScreen = !outlinePass.enabled;
+			updateSky();
+			updateAmbientLight();
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			sharedMaterial.uniforms.drawTexture.value = shouldDrawTextures();
+			if (map) 
+			{
+				map.provider = createProvider();
+				if (value) 
+				{
+					updateVisibleNodesImage('map');
+				}
+				if (shouldRender) 
+				{
+					onControlUpdate();
+				}
+			}
+			break;
+		}
+		case 'geometrySize' :{
+			if (map && shouldRender) 
+			{
+				createMap();
+				updateLODThrottle();
+				requestRenderIfNotRequested(true);
+				shouldRender = false;
+			}
+			break;
+		}
+		case 'generateColor' :{
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			sharedMaterial.uniforms.generateColor.value = settings.generateColor;
+			sharedMaterial.uniforms.drawTexture.value = (settings.debug || settings.mapMap || settings.generateColor) && settings.drawTexture;
+			updateAmbientLight();
+			break;
+		}
+		case 'fovFactor' :{
+			camera.fov = cameraFOV = getCameraFOV();
+			camera.updateProjectionMatrix();
+			break;
+		}
+		case 'debug' :{
+			outlinePass.enabled = !withoutOutline();
+			mainPass.renderToScreen = !outlinePass.enabled;
+			updateSky();
+	
+			sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
+			sharedMaterial.uniforms.drawTexture.value = (settings.debug || settings.mapMap || settings.generateColor) && settings.drawTexture;
+			if (map) 
+			{
+				map.provider = createProvider();
+				if (value) 
+				{
+					updateVisibleNodesImage('debug');
+				}
+				if (shouldRender) 
+				{
+					onControlUpdate();
+				}
+			}
+			break;
+		}
+		}
+		if (!EXTERNAL_APP) 
+		{
+	
+			if (checkBoxes[key]) 
+			{
+				checkBoxes[key].checked = value;
+			}
+			else if (sliders[key]) 
+			{
+				sliders[key].value = value;
+			}
+			if (labels[key]) 
+			{
+				labels[key].innerText = labelValue;
+			}
+		}
+		if (shouldRender) 
+		{
+			requestRenderIfNotRequested();
+		}
+		// console.log('setSeettings done', key);
+	}
+	catch (err) 
+	{
+		console.error(err.toString() + ' ' + err.stack);
+	}
+	
+}
 const TO_RAD = Math.PI / 180;
 const PI_DIV4 = Math.PI / 4;
 const PI_X2 = Math.PI * 2;
@@ -284,7 +662,6 @@ class CameraControlsWithOrientation extends CameraControls
 		super.dispose();
 	}
 }
-const devLocal = (getURLParameter('local') || 'false') === 'true';
 
 class CustomOutlineEffect extends POSTPROCESSING.Effect 
 {
@@ -321,8 +698,8 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 				attributes: POSTPROCESSING.EffectAttribute.DEPTH,
 				blendFunction: POSTPROCESSING.BlendFunction.AVERAGE,
 				uniforms: new Map([
-					['outlineColor', new Uniform(new Color(darkTheme ? 0xffffff : 0x000000))],
-					['multiplierParameters', new Uniform(new Vector3(depthBiais, depthMultiplier, depthPostMultiplier))]
+					['outlineColor', new Uniform(new Color(settings.dark ? 0xffffff : 0x000000))],
+					['multiplierParameters', new Uniform(new Vector3(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier))]
 				])
 			}
 		);
@@ -382,67 +759,23 @@ function debounce(callback, limit)
 		}, limit);
 	};
 }
-function ArraySortOn(array, key) 
-{
-	return array.sort(function(a, b) 
-	{
-		if (a[key] < b[key]) 
-		{
-			return -1;
-		}
-		else if (a[key] > b[key]) 
-		{
-			return 1;
-		}
-		return 0;
-	});
-}
-export const isMobile = FORCE_MOBILE || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 // console.log('isMobile', isMobile, navigator.userAgent);
 const devicePixelRatio = window.devicePixelRatio;
 // console.log('isMobile ' + isMobile + ' ' + devicePixelRatio + ' ' + navigator.userAgent);
-export let debug = false;
-export let generateColor = false;
-export let showStats = false;
-export let mapMap = false;
-export let drawTexture = true;
-export let computeNormals = false;
-export let debugFeaturePoints = false;
-export let wireframe = false;
-export let mapoutline = true;
-export let dayNightCycle = false;
-export let cameraFOVFactor = 40;
-export let GEOMETRY_SIZE = FORCE_MOBILE || isMobile ? 320 : 512;
-let debugGPUPicking = false;
-let readFeatures = true;
-let drawLines = true;
-let drawElevations = false;
-let darkTheme = false;
-export let drawNormals = false;
 let featuresToShow = [];
 const tempVector = new Vector3(0, 0, 0);
-export let exageration = 2;
-export let depthBiais = 0.44;
-export let depthMultiplier = 1;
-export let depthPostMultiplier = 110;
-export let elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
 export let currentViewingDistance = 0;
-export let FAR = FORCE_MOBILE || isMobile? 163000: 173000;
-export let NEAR = 10;
+
 let currentPositionAltitude = -1;
 let currentPosition: {lat: number, lon: number, altitude?: number};
 let needsCurrentPositionElevation = false;
 let currentGroundElevation;
-let currentElevation = -1;
 const clock = new Clock();
 let selectedItem = null;
 let map: MapView;
 const EPS = 1e-5;
 let pixelsBuffer;
 const TEXT_HEIGHT = FORCE_MOBILE || isMobile? 170 : 120;
-
-const now = new Date();
-let currentSecondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
 let showingCamera = false;
 // let showMagnify = false;
@@ -464,20 +797,22 @@ let stats;
 
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const canvas4 = document.getElementById('canvas4') as HTMLCanvasElement;
+const featuresDrawingCanvas = document.getElementById('canvas4') as HTMLCanvasElement;
 const video = document.getElementById('video') as HTMLVideoElement;
-const ctx2d = canvas4.getContext('2d');
+const ctx2d = featuresDrawingCanvas.getContext('2d');
 canvas.addEventListener('touchstart', () => { return clock.getDelta(); }, {passive: true});
 
 const renderer = new WebGLRenderer({
 	canvas: canvas,
 	antialias: false,
 	alpha: true,
-	powerPreference: 'high-performance',
+	powerPreference: 'high-performance'
 	// stencil: false
 });
 renderer.physicallyCorrectLights = true;
-renderer.debug.checkShaderErrors = true;
+// renderer.debug.checkShaderErrors = true;
+renderer.shadowMap.type = PCFSoftShadowMap;
+renderer.shadowMap.enabled = false;
 // const magnify3d = new Magnify3d();
 // const magnify3dTarget = new WebGLRenderTarget(0, 0); 
 
@@ -505,39 +840,17 @@ const composer = new POSTPROCESSING.EffectComposer(renderer, {});
 
 export function shouldComputeNormals() 
 {
-	return computeNormals || drawNormals || generateColor || (debug || mapMap) && dayNightCycle;
+	return settings.computeNormals || settings.drawNormals || settings.generateColor || (settings.debug || settings.mapMap || settings.shadows) && settings.dayNightCycle;
+}
+export function shouldDrawTextures() 
+{
+	return (settings.debug || settings.mapMap || settings.generateColor) && settings.drawTexture;
 }
 
 export function shouldRenderSky() 
 {
-	return dayNightCycle;
+	return settings.dayNightCycle;
 }
-
-export function needsLights() 
-{
-	return debug || mapMap || dayNightCycle;
-}
-
-export function setTerrarium(value: boolean) 
-{
-	if (value) 
-	{
-		elevationDecoder = [256 * 255, 1 * 255, 1 / 256 * 255, -32768];
-	}
-	else 
-	{
-		elevationDecoder = [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000];
-	}
-	// if (map) 
-	// {
-	sharedMaterial.uniforms.elevationDecoder.value = elevationDecoder;
-	// applyOnNodes((node) => 
-	// {
-	// 	node.setMaterialValues({elevationDecoder: elevationDecoder});
-	// });
-	// }
-}
-
 
 function createSky() 
 {
@@ -628,46 +941,6 @@ export function startCam()
 	}
 }
 
-export function setDebugMode(value, shouldRender = true) 
-{
-	if (debug === value) {return;}
-	debug = value;
-	outlinePass.enabled = !withoutOutline();
-	mainPass.renderToScreen = !outlinePass.enabled;
-	updateSky();
-
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	if (map) 
-	{
-		map.provider = createProvider();
-		if (value) 
-		{
-			updateVisibleNodesImage('debug');
-		}
-		if (shouldRender) 
-		{
-			onControlUpdate();
-		}
-	}
-}
-
-export function toggleDebugMode() 
-{
-	setDebugMode(!debug);
-}
-
-export function setGeometrySize(value, shouldUpdate = true) 
-{
-	GEOMETRY_SIZE = value;
-	if (map && shouldUpdate) 
-	{
-		createMap();
-		updateLODThrottle();
-		requestRenderIfNotRequested(true);
-	}
-}
-
 let lastMode;
 function updateVisibleNodesImage(mode) 
 {
@@ -684,155 +957,7 @@ function updateVisibleNodesImage(mode)
 		}
 	});
 }
-export function setMapMode(value, shouldRender = true) 
-{
-	if (mapMap === value) {return;}
-	mapMap = value;
-	outlinePass.enabled = !withoutOutline();
-	mainPass.renderToScreen = !outlinePass.enabled;
-	updateSky();
-	updateAmbientLight();
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	if (map) 
-	{
-		map.provider = createProvider();
-		if (value) 
-		{
-			updateVisibleNodesImage('map');
-		}
-		if (shouldRender) 
-		{
-			onControlUpdate();
-		}
-	}
-	// createMap();
-	// onControlUpdate();
-}
 
-export function toggleMapMode() 
-{
-	setMapMode(!mapMap);
-}
-export function setPredefinedMapMode(value, shouldRender = true) 
-{
-	if (mapMap === value && mapoutline === value) {return;}
-	mapMap = value;
-	mapoutline = value;
-	updateSky();
-	updateAmbientLight();
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	if (map) 
-	{
-		map.provider = createProvider();
-		if (value) 
-		{
-			updateVisibleNodesImage('map');
-		}
-
-		if (shouldRender) 
-		{
-			onControlUpdate();
-		}
-	}
-}
-export function togglePredefinedMapMode() 
-{
-	try 
-	{
-		setPredefinedMapMode(!mapMap);
-	}
-	catch (error) 
-	{
-		console.error(error);
-
-	}
-}
-export function setDrawTexture(value, shouldRender = true) 
-{
-	if (drawTexture === value) {return;}
-	drawTexture = value;
-	// if (map) 
-	// {
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	// applyOnNodes((node) => 
-	// {
-	// 	node.setMaterialValues({drawTexture: (debug || mapMap || generateColor) && drawTexture});
-	// });
-	// }
-	requestRenderIfNotRequested();
-}
-export function setGenerateColors(value, shouldRender = true) 
-{
-	if (generateColor === value) {return;}
-	console.log();
-	generateColor = value;
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	sharedMaterial.uniforms.generateColor.value = generateColor;
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	updateAmbientLight();
-
-	requestRenderIfNotRequested(shouldRender);
-}
-
-export function toggleDrawTexture() 
-{
-	setDrawTexture(!drawTexture);
-}
-export function toggleNormalsInDebug() 
-{
-	setNormalsInDebug(!drawNormals);
-}
-export function setNormalsInDebug(value, shouldRender = true) 
-{
-	if (drawNormals === value) {return;}
-	drawNormals = value;
-	// if (map) 
-	// {
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	sharedMaterial.uniforms.drawNormals.value = drawNormals;
-	sharedMaterial.uniforms.drawTexture.value = (debug || mapMap || generateColor) && drawTexture;
-	// applyOnNodes((node) => 
-	// {
-
-	// node.setMaterialValues({
-	// 	computeNormals: shouldComputeNormals(),
-	// 	drawNormals: drawNormals,
-	// 	drawTexture: (debug || mapMap || generateColor) && drawTexture
-	// });
-	// });
-	// }
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-
-export function setComputeNormals(value, shouldRender = true) 
-{
-	if (computeNormals === value) {return;}
-	computeNormals = value;
-	updateSky();
-	// if (map) 
-	// {
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	// applyOnNodes((node) => 
-	// {
-	// 	node.setMaterialValues({computeNormals: shouldComputeNormals()});
-
-	// });
-	// }
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-
-export function toggleComputeNormals() 
-{
-	setComputeNormals(!computeNormals);
-}
 
 function updateSky() 
 {
@@ -841,223 +966,6 @@ function updateSky()
 	sky.visible = sunLight.visible = shouldRenderSky();
 }
 let directionalLightHelper: DirectionalLightHelper;
-export function setDayNightCycle(value, shouldRender = true) 
-{
-	if (dayNightCycle === value) {return;}
-	dayNightCycle = value;
-	if (!sky) 
-	{
-		sky = createSky();
-		sunLight = new SunLight(
-			new Vector2(45.05, 5.47),
-			new Vector3(0.0, 0.0, -1.0),
-			new Vector3(1.0, 0.0, 0.0),
-			new Vector3(0.0, -1.0, 0.0),
-			1.5
-		);
-		// Adjust the directional light's shadow camera dimensions
-		// sunLight.directionalLight.shadow.bias = -0.003;
-		sunLight.directionalLight.shadow.mapSize.width = 8192;
-		sunLight.directionalLight.shadow.mapSize.height = 8192;
-		sunLight.directionalLight.shadow.camera.left = 0.2;
-		sunLight.directionalLight.shadow.camera.right = -0.2;
-		sunLight.directionalLight.shadow.camera.top = 0.2;
-		sunLight.directionalLight.shadow.camera.bottom = -0.2;
-		sunLight.directionalLight.shadow.camera.near = 0;
-		sunLight.directionalLight.shadow.camera.far = 20;
-		// sunLight.directionalLight.target = camera;
-		// sunLight.directionalLight.target.position.set(0, 0, 0);
-		scene.add(sky);
-		scene.add(sunLight as any);
-		directionalLightHelper = new DirectionalLightHelper(sunLight.directionalLight, 0.02, 0xff0000);
-		scene.add(directionalLightHelper);
-		// scene.add(sunLight.directionalLight.target);
-
-		const helper = new CameraHelper( sunLight.directionalLight.shadow.camera );
-		scene.add( helper );
-
-		let date = new Date();
-		const hours = Math.floor(currentSecondsInDay / 3600);
-		const minutes = Math.floor((currentSecondsInDay - hours * 3600) / 60);
-		const seconds = currentSecondsInDay - hours * 3600 - minutes * 60;
-		date.setHours(hours);
-		date.setMinutes(minutes);
-		date.setSeconds(seconds);
-		sunLight.setDate(date);
-	}
-	// ambientLight.visible = !dayNightCycle;
-	updateSky();
-	updateSkyPosition();
-	// if (map) 
-	// {
-	sharedMaterial.uniforms.computeNormals.value = shouldComputeNormals();
-	// applyOnNodes((node) => 
-	// {
-	// 	node.setMaterialValues({computeNormals: shouldComputeNormals()});
-	// });
-	// }
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDayNightCycle() 
-{
-	setDayNightCycle(!dayNightCycle);
-}
-export function setDebugGPUPicking(value, shouldRender = true) 
-{
-	debugGPUPicking = value;
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDebugGPUPicking() 
-{
-	setDebugGPUPicking(!debugGPUPicking);
-}
-export function setShowStats(value, shouldRender = true) 
-{
-	if (showStats === value) {return;}
-	showStats = value;
-	if (value) 
-	{
-		if (!stats) 
-		{
-			stats = new Stats();
-			stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-			document.body.appendChild(stats.dom);
-		}
-		else 
-		{
-			document.body.appendChild(stats.dom);
-		}
-	}
-	else 
-	{
-		if (stats) 
-		{
-			document.body.removeChild(stats.dom);
-		}
-	}
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleShowStats() 
-{
-	setShowStats(!showStats);
-}
-export function setReadFeatures(value, shouldRender = true) 
-{
-	readFeatures = value;
-	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleReadFeatures() 
-{
-	setReadFeatures(!readFeatures);
-}
-export function setDrawLines(value, shouldRender = true) 
-{
-	drawLines = value;
-	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDrawLines() 
-{
-	setDrawLines(!drawLines);
-}
-export function setDebugFeaturePoints(value, shouldRender = true) 
-{
-	if (debugFeaturePoints === value) {return;}
-	debugFeaturePoints = value;
-	if (map) 
-	{
-		applyOnNodes((node) => 
-		{
-			node.objectsHolder.visible = debugFeaturePoints && (node.isVisible() || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided);
-		});
-	}
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDebugFeaturePoints() 
-{
-	setDebugFeaturePoints(!debugFeaturePoints);
-}
-export function setDarkMode(value, shouldRender = true) 
-{
-	if (darkTheme === value) {return;}
-	darkTheme = value;
-	outlineEffect.uniforms.get('outlineColor').value.set(darkTheme ? 0xffffff : 0x000000);
-	document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
-	cameraButton.style.backgroundColor = compass.style.backgroundColor = darkTheme ? 'white' : 'black';
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDarkMode() 
-{
-	setDarkMode(!darkTheme);
-}
-export function setWireFrame(value, shouldRender = true) 
-{
-	if (wireframe === value) {return;}
-	wireframe = value;
-	sharedMaterial.wireframe = value;
-	applyOnNodes((node) => 
-	{
-		node.material.wireframe = wireframe;
-	});
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleWireFrame() 
-{
-	setWireFrame(!wireframe);
-}
-export function setMapOultine(value, shouldRender = true) 
-{
-	if (mapoutline === value) {return;}
-	mapoutline = value;
-	outlinePass.enabled = !withoutOutline();
-	mainPass.renderToScreen = !outlinePass.enabled;
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleMapOultine() 
-{
-	setMapOultine(!mapoutline);
-}
-
-export function setDrawElevations(value, shouldRender = true) 
-{
-	drawElevations = value;
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function toggleDrawElevations() 
-{
-	setDrawElevations(!drawElevations);
-}
 
 export function toggleCamera() 
 {
@@ -1085,99 +993,53 @@ export function toggleCamera()
 // 	render(true);
 // }
 
-let datelabel, viewingDistanceLabel, selectedPeakLabel, selectedPeakDiv, elevationSlider, debugMapCheckBox, mapMapCheckBox, dayNightCycleCheckBox, debugGPUPickingCheckbox, readFeaturesCheckbox, debugFeaturePointsCheckbox, darkmodeCheckbox, wireframeCheckbox, mapoutlineCheckbox, depthMultiplierSlider, exagerationSlider, depthPostMultiplierSlider, depthBiaisSlider, dateSlider, viewingDistanceSlider, cameraCheckbox, normalsInDebugCheckbox, drawElevationsCheckbox, elevationLabel, generateColorsCheckBox;
+let checkBoxes = {};
+let labels = {};
+let sliders = {};
+let datelabel, viewingDistanceLabel, selectedPeakLabel, selectedPeakDiv, dateSlider, cameraCheckbox;
 
 const compass = document.getElementById('compass') as HTMLDivElement;
 const compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
 const compassLabel = document.getElementById('compass_label') as HTMLLabelElement;
-document.body.style.backgroundColor = darkTheme ? 'black' : 'white';
+document.body.style.backgroundColor = settings.dark ? 'black' : 'white';
 const cameraButton = document.getElementById('camera_button');
 cameraButton.style.visibility = FORCE_MOBILE || isMobile?'visible':'hidden';
 
 if (!EXTERNAL_APP) 
 {
-	debugMapCheckBox = document.getElementById('debugMap') as HTMLInputElement;
-	debugMapCheckBox.onchange = (event: any) => { return setDebugMode(event.target.checked); };
-	debugMapCheckBox.value = debug as any;
+	Object.keys(settings).forEach((key) => 
+	{
+		const element = document.getElementById(key);
+		if (!element) 
+		{
+			return;
+		}
+		if ( element['type'] === 'checkbox') 
+		{
+			checkBoxes[key] = element as HTMLInputElement;
+			checkBoxes[key].onchange = (event: any) => { return setSettings(key, event.target.checked); };
+			checkBoxes[key].checked = settings[key] as any;
+		}
+		else if ( element['type'] === 'range') 
+		{
+			sliders[key] = element as HTMLInputElement;
+			sliders[key].oninput = (event: any) => { return setSettings(key, event.target.value); };
+			sliders[key].value = settings[key] as any;
 
-	mapMapCheckBox = document.getElementById('mapMap') as HTMLInputElement;
-	mapMapCheckBox.onchange = (event: any) => { return setMapMode(event.target.checked); };
-	mapMapCheckBox.checked = mapMap as any;
-
-	generateColorsCheckBox = document.getElementById('generateColors') as HTMLInputElement;
-	generateColorsCheckBox.onchange = (event: any) => { return setGenerateColors(event.target.checked); };
-	generateColorsCheckBox.checked = generateColor as any;
-
-	dayNightCycleCheckBox = document.getElementById('dayNightCycle') as HTMLInputElement;
-	dayNightCycleCheckBox.onchange = (event: any) => { return setDayNightCycle(event.target.checked); };
-	dayNightCycleCheckBox.checked = dayNightCycle as any;
-
-	debugGPUPickingCheckbox = document.getElementById('debugGPUPicking') as HTMLInputElement;
-	debugGPUPickingCheckbox.onchange = (event: any) => { return setDebugGPUPicking(event.target.checked); };
-	debugGPUPickingCheckbox.checked = debugGPUPicking as any;
-
-	readFeaturesCheckbox = document.getElementById('readFeatures') as HTMLInputElement;
-	readFeaturesCheckbox.onchange = (event: any) => { return setReadFeatures(event.target.checked); };
-	readFeaturesCheckbox.checked = readFeatures as any;
-	canvas4.style.visibility = readFeatures && drawLines ? 'visible' : 'hidden';
-
-	debugFeaturePointsCheckbox = document.getElementById('debugFeaturePoints') as HTMLInputElement;
-	debugFeaturePointsCheckbox.onchange = (event: any) => { return setDebugFeaturePoints(event.target.checked); };
-	debugFeaturePointsCheckbox.checked = debugFeaturePoints as any;
-
-	darkmodeCheckbox = document.getElementById('darkmode') as HTMLInputElement;
-	darkmodeCheckbox.onchange = (event: any) => { return setDarkMode(event.target.checked); };
-	darkmodeCheckbox.checked = darkTheme as any;
-	wireframeCheckbox = document.getElementById('wireframe') as HTMLInputElement;
-	wireframeCheckbox.onchange = (event: any) => { return setWireFrame(event.target.checked); };
-	wireframeCheckbox.checked = wireframe as any;
-
-	mapoutlineCheckbox = document.getElementById('mapoutline') as HTMLInputElement;
-	mapoutlineCheckbox.onchange = (event: any) => { return setMapOultine(event.target.checked); };
-	mapoutlineCheckbox.checked = mapoutline as any;
-
-	elevationSlider = document.getElementById('elevationSlider') as HTMLInputElement;
-	elevationSlider.oninput = (event: any) => { return setElevation(event.target.value); };
-	elevationSlider.value = currentElevation as any;
-
-	exagerationSlider = document.getElementById('exagerationSlider') as HTMLInputElement;
-	exagerationSlider.oninput = (event: any) => { return setExageration(event.target.value); };
-	exagerationSlider.value = exageration as any;
-	depthMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
-	depthMultiplierSlider.oninput = (event: any) => { return setDepthMultiplier(event.target.value); };
-	depthMultiplierSlider.value = depthMultiplier as any;
-	depthPostMultiplierSlider = document.getElementById('depthMultiplierSlider') as HTMLInputElement;
-	depthPostMultiplierSlider.oninput = (event: any) => { return setDepthPostMultiplier(event.target.value); };
-	depthPostMultiplierSlider.value = depthPostMultiplier as any;
-	depthBiaisSlider = document.getElementById('depthBiaisSlider') as HTMLInputElement;
-	depthBiaisSlider.oninput = (event: any) => { return setDepthBiais(event.target.value); };
-	depthBiaisSlider.value = depthBiais as any;
-
-	dateSlider = document.getElementById('dateSlider') as HTMLInputElement;
-
+			let labelElement = document.getElementById(key+'Label');
+			if (labelElement) 
+			{
+				labels[key] = labelElement as HTMLLabelElement;
+			}
+		}
+	});
 	
-	dateSlider.oninput = (event: any) => { return setDate(event.target.value); };
-	dateSlider.value = currentSecondsInDay as any;
-	datelabel = document.getElementById('dateLabel') as HTMLLabelElement;
-	datelabel.innerText = new Date().toLocaleString();
-	viewingDistanceLabel = document.getElementById('viewingDistanceLabel') as HTMLLabelElement;
 
-	viewingDistanceSlider = document.getElementById('viewingDistanceSlider') as HTMLInputElement;
-	viewingDistanceSlider.oninput = (event: any) => { return setViewingDistance(event.target.value); };
-
-	cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
-	cameraCheckbox.onchange = (event: any) => { return toggleCamera(); };
-	cameraCheckbox.value = showingCamera as any;
-
-	drawElevationsCheckbox = document.getElementById('drawElevations') as HTMLInputElement;
-	drawElevationsCheckbox.onchange = (event: any) => { return toggleDrawElevations(); };
-	drawElevationsCheckbox.value = drawElevations as any;
-	normalsInDebugCheckbox = document.getElementById('normalsInDebug') as HTMLInputElement;
-	normalsInDebugCheckbox.onchange = (event: any) => { return toggleNormalsInDebug(); };
-	normalsInDebugCheckbox.value = drawNormals as any;
+	// cameraCheckbox = document.getElementById('camera') as HTMLInputElement;
+	// cameraCheckbox.onchange = (event: any) => { return toggleCamera(); };
+	// cameraCheckbox.value = showingCamera as any;
 
 	selectedPeakLabel = document.getElementById('selectedPeakLabel') as HTMLLabelElement;
-	elevationLabel = document.getElementById('elevationLabel') as HTMLLabelElement;
 	selectedPeakDiv = document.getElementById('selectedPeak') as HTMLDivElement;
 }
 
@@ -1187,9 +1049,9 @@ hammertime.on('tap', function(event)
 	mousePosition = new Vector2(event.center.x, event.center.y);
 	requestRenderIfNotRequested(true);
 });
-const heightProvider = new LocalHeightProvider(devLocal);
+const heightProvider = new LocalHeightProvider(settings.local);
 // const heightProvider = new LocalHeightTerrainProvider(devLocal);
-setTerrarium(heightProvider.terrarium);
+setSettings('terrarium', heightProvider.terrarium, false, false);
 
 const updateLODThrottle = debounce(function(force = false)
 {
@@ -1250,12 +1112,12 @@ setupLOD();
 function createProvider() 
 {
 	let provider;
-	if (mapMap) 
+	if (settings.mapMap) 
 	{
-		provider = new RasterMapProvider(devLocal);
+		provider = new RasterMapProvider(settings.local);
 		provider.zoomDelta = 2;
 	}
-	else if (debug) 
+	else if (settings.debug) 
 	{
 		provider = new DebugProvider();
 	}
@@ -1304,8 +1166,6 @@ function createMap()
 	map.lod = lod;
 	map.updateMatrixWorld(true);
 	scene.add(map);
-	renderer.shadowMap.type = VSMShadowMap;
-	renderer.shadowMap.enabled = true;
 }
 
 let orientation = (screen.orientation || {}).type ;
@@ -1315,14 +1175,14 @@ function getCameraFOV()
 	if (FORCE_MOBILE || isMobile) 
 	{
 		const scale = viewWidth > viewHeight ? viewHeight / viewWidth : viewWidth / viewHeight;
-		return (/landscape/.test(orientation) ? scale : 1) * cameraFOVFactor;
+		return (/landscape/.test(orientation) ? scale : 1) * settings.fovFactor;
 	}
-	return cameraFOVFactor;
+	return settings.fovFactor;
 }
 
 let cameraFOV = getCameraFOV();
 const worldScale = MaterialHeightShader.scaleRatio;
-const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, NEAR * worldScale, FAR * worldScale);
+const camera = new PerspectiveCamera(cameraFOV, viewWidth / viewHeight, settings.near * worldScale, settings.far * worldScale);
 window.addEventListener('orientationchange', function(event: any)
 {
 	orientation = event.target.screen.orientation.type;
@@ -1333,24 +1193,6 @@ window.addEventListener('orientationchange', function(event: any)
 	updateCompass();
 }, false);
 camera.position.set(0, 0, EPS);
-// scene.add(camera);
-
-// let csm = new CSM({
-// 	maxFar: camera.far,
-// 	cascades: 4,
-// 	shadowMapSize: 4096,
-// 	lightDirection: new Vector3(0.7, -0.2, -0.6),
-// 	camera: camera,
-// 	parent: scene
-// });
-// for ( var i = 0; i < csm.lights.length; i ++ ) 
-// {
-// 	csm.lights[i].shadow.camera.near = camera.near;
-// 	csm.lights[i].shadow.camera.far = camera.far;
-// 	csm.lights[i].shadow.camera.updateProjectionMatrix();
-
-// }
-// csm.setupMaterial(sharedMaterial); // must be called to pass all CSM-related uniforms to the shader
 
 const controls = new CameraControlsWithOrientation(camera, canvas);
 
@@ -1461,33 +1303,23 @@ const ambientLight = new AmbientLight(0xffffff);
 scene.add(ambientLight);
 
 
-// const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 3 ); 
-// hemiLight.position.set( 0, 500* worldScale, 0 );
+// const hemiLight = new HemisphereLight( '#1f467f', '#7f643f', 1 ); 
+// hemiLight.position.set( 0, 200* worldScale, 0 );
 // scene.add(hemiLight);
-// ambientLight.intensity = dayNightCycle ? 0.1875 : 1;
-
-// const directionalLight = new DirectionalLight( 0xffffff, 2);
-// directionalLight.position.set( -1, 1, 1 );
-// directionalLight.position.multiplyScalar( 50);
-// scene.add( directionalLight );
-// scene.add( directionalLight.target );
-
-// directionalLightHelper = new DirectionalLightHelper(directionalLight, 0.02, 0xff0000);
-// scene.add(directionalLightHelper);
 
 const axesHelper = new AxesHelper(1);
 scene.add( axesHelper );
 
 function updateAmbientLight() 
 {
-	if (mapMap && dayNightCycle) 
+	if (settings.mapMap && settings.dayNightCycle) 
 	{
 		ambientLight.intensity = 1 ;
 
 	}
-	else if (generateColor) 
+	else if (settings.generateColor) 
 	{
-		ambientLight.intensity = dayNightCycle? 1:3 ;
+		ambientLight.intensity = settings.dayNightCycle? 2:3 ;
 	}
 	else
 	{
@@ -1560,7 +1392,7 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 	if (animated) 
 	{
 		const distance = getDistance(currentCoords, coords);
-		const startElevation = currentElevation;
+		const startElevation = settings.elevation;
 		let endElevation = startElevation;
 		if (coords.altitude) 
 		{
@@ -1568,7 +1400,7 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 			endElevation = currentPositionAltitude;
 		}
 		// always move to be "over" the peak
-		const topElevation = distance > 100000 ? 11000 * exageration : endElevation;
+		const topElevation = distance > 100000 ? 11000 * settings.exageration : endElevation;
 		startAnimation({
 			from: {...{x: tempVector.x, y: -tempVector.z}, progress: 0},
 			to: {...newPosition, progress: 1},
@@ -1586,19 +1418,19 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 				if (progress <= 0.5) 
 				{
 					const cProgress = 2 * progress;
-					controls.moveTo(newPos.x, (startElevation + cProgress * (topElevation - startElevation)) * exageration * scale, -newPos.y, false);
+					controls.moveTo(newPos.x, (startElevation + cProgress * (topElevation - startElevation)) * settings.exageration * scale, -newPos.y, false);
 				}
 				else 
 				{
 					const cProgress = (progress - 0.5) * 2;
-					controls.moveTo(newPos.x, (topElevation + cProgress * (endElevation - topElevation)) * exageration * scale, -newPos.y, false);
+					controls.moveTo(newPos.x, (topElevation + cProgress * (endElevation - topElevation)) * settings.exageration * scale, -newPos.y, false);
 				}
 				updateControls();
 			},
 			onEnd: () => 
 			{
 				currentPosition = coords;
-				setElevation(endElevation, false);
+				setSettings('elevation', endElevation, false);
 				updateCurrentViewingDistance();
 				updateExternalPosition();
 			}
@@ -1608,31 +1440,20 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 	{
 		if (coords.altitude) 
 		{
-			setElevation(coords.altitude, false);
+			setSettings('elevation', coords.altitude, false);
 		}
-		// currentPosition = coords;
-		controls.moveTo(newPosition.x, currentElevation * exageration * scale, -newPosition.y, false);
+		controls.moveTo(newPosition.x, settings.elevation * settings.exageration * scale, -newPosition.y, false);
 		updateCurrentViewingDistance();
 		if (updateCtrls) 
 		{
 			updateControls();
 		}
 		axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
-		// directionalLight.position.set(newPosition.x, 20000 * worldScale, -newPosition.y);
-		// if (directionalLight) {
-
-		// 	directionalLight.target.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
-		// 	directionalLight.target.updateMatrix();
-		// 	directionalLight.target.updateMatrixWorld(true);
-		// }
 		if (sky) 
 		{
 			sunLight.setPosition(coords.lat, coords.lon);
 			controls.getPosition(tempVector);
 			sunLight.setWorldPosition(tempVector);
-			
-			// sunLight.updateMatrix();
-			// sunLight.updateMatrixWorld(true);
 			updateAmbientLight();
 			updateSkyPosition();
 		}
@@ -1652,11 +1473,12 @@ function updateCurrentMinElevation(pos = currentPosition, node?, diff = 60)
 		else 
 		{
 			const oldGroundElevation = currentGroundElevation ||groundElevation;
-			const currentDiff = currentElevation - oldGroundElevation;
+			const currentDiff = settings.elevation - oldGroundElevation;
 			currentGroundElevation = groundElevation;
 			if (currentDiff > 0 && currentDiff < 500) 
 			{
-				setElevation(currentGroundElevation + Math.max(currentDiff, diff), true);
+
+				setSettings('elevation', currentGroundElevation + Math.max(currentDiff, diff));
 			}
 		}
 	}
@@ -1677,11 +1499,12 @@ export function getElevation(coord: {lat, lon}, node?: MaterialHeightShader): nu
 		node = getNode(fractionTile[2], Math.floor(fractionTile[0]), Math.floor(fractionTile[1])) as MaterialHeightShader;
 		zoom -= 1;
 	}
-	if (node && node.heightLoaded && node.userData.heightMap.value) 
+	if (node && node.heightLoaded && node.userData.displacementMap.value) 
 	{
-		const texture = node.userData.heightMap.value as Texture;
-		const heightMapLocation =node.userData.heightMapLocation.value;
-		const pixel = getPixel(getImageData(texture.image as ImageBitmap), heightMapLocation, coord, node.level);
+		const texture = node.userData.displacementMap.value as Texture;
+		const displacementMapLocation =node.userData.displacementMapLocation.value;
+		const pixel = getPixel(getImageData(texture.image as ImageBitmap), displacementMapLocation, coord, node.level);
+		const elevationDecoder = settings.elevationDecoder;
 		const elevation = pixel[0]/255* elevationDecoder[0] + pixel[1]/255* elevationDecoder[1] + pixel[2]/255* elevationDecoder[2]+ elevationDecoder[3];
 
 		return elevation;
@@ -1692,113 +1515,6 @@ export function getElevation(coord: {lat, lon}, node?: MaterialHeightShader): nu
 	}
 }
 
-export function setElevation(newValue, updateCtrls = true) 
-{
-	if (typeof newValue === 'string') 
-	{
-		newValue = parseFloat(newValue);
-	}
-	if (currentGroundElevation !== undefined && newValue < currentGroundElevation) 
-	{
-		newValue = currentGroundElevation;
-	}
-	if (currentElevation === newValue) {return;}
-	currentElevation = newValue;
-	controls.getPosition(tempVector);
-	const scale = MaterialHeightShader.scaleRatio;
-	controls.moveTo(tempVector.x, currentElevation * exageration * scale, tempVector.z);
-	if (!EXTERNAL_APP) 
-	{
-		elevationSlider.value = currentElevation;
-	}
-	if (updateCtrls) 
-	{
-		updateControls();
-	}
-}
-export function setExageration(newValue, shouldRender = true) 
-{
-	if (exageration === newValue) {return;}
-	exageration = newValue;
-	sharedMaterial.uniforms.displacementScale.value = newValue;
-	sharedPointMaterial.uniforms.exageration.value = newValue;
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function setDepthBiais(newValue, shouldRender = true) 
-{
-	depthBiais = newValue;
-	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier, depthPostMultiplier);
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function setDepthMultiplier(newValue, shouldRender = true) 
-{
-	depthMultiplier = newValue;
-	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier, depthPostMultiplier);
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function setDepthPostMultiplier(newValue, shouldRender = true) 
-{
-	depthPostMultiplier = newValue;
-	outlineEffect.uniforms.get('multiplierParameters').value.set(depthBiais, depthMultiplier, depthPostMultiplier);
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-export function setCameraFOVFactor(newValue, shouldRender = true) 
-{
-	cameraFOVFactor = newValue;
-	camera.fov = cameraFOV = getCameraFOV();
-	camera.updateProjectionMatrix();
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
-
-export function setDate(secondsInDay, shouldRender = true) 
-{
-	if (currentSecondsInDay === secondsInDay) 
-	{
-		return;
-	}
-
-	currentSecondsInDay = secondsInDay;
-	let date = new Date();
-	const hours = Math.floor(secondsInDay / 3600);
-	const minutes = Math.floor((secondsInDay - hours * 3600) / 60);
-	const seconds = secondsInDay - hours * 3600 - minutes * 60;
-	date.setHours(hours);
-	date.setMinutes(minutes);
-	date.setSeconds(seconds);
-	if (sunLight) 
-	{
-		sunLight.setDate(date);
-		controls.getPosition(tempVector);
-		sunLight.setWorldPosition(tempVector);
-		updateAmbientLight();
-	}
-	if (datelabel) 
-	{
-		datelabel.innerText = date.toLocaleString();
-		dateSlider.value = secondsInDay as any;
-	}
-
-	updateSkyPosition();
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested();
-	}
-}
 let updateExternalPosition;
 export function setUpdateExternalPositionThrottleTime(value) 
 {
@@ -1808,11 +1524,11 @@ export function setUpdateExternalPositionThrottleTime(value)
 		if (window['electron']) 
 		{
 			const ipcRenderer = window['electron'].ipcRenderer;
-			ipcRenderer.send('message', {...currentPosition, altitude: currentElevation});
+			ipcRenderer.send('message', {...currentPosition, altitude: settings.elevation});
 		}
 		if (window['nsWebViewBridge']) 
 		{
-			window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: currentElevation});
+			window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: settings.elevation});
 		}
 	}, value);
 }
@@ -1824,13 +1540,14 @@ function updateCurrentPosition()
 	const scale = MaterialHeightShader.scaleRatio;
 	const point = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 	// console.log('point', tempVector, point);
-	if (sunLight) 
-	{
-		sunLight.setWorldPosition(tempVector);
-	}
+	
 
 	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon) 
 	{
+		if (sunLight) 
+		{
+			sunLight.setWorldPosition(tempVector);
+		}
 		currentPosition = point;
 		updateCurrentMinElevation();
 		updateExternalPosition();
@@ -1851,9 +1568,9 @@ controls.addEventListener('controlend', () =>
 	controls.getPosition(tempVector);
 	const scale = MaterialHeightShader.scaleRatio;
 	const point = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
-	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon || currentPosition.altitude !== currentElevation ) 
+	if (!currentPosition || currentPosition.lat !== point.lat || currentPosition.lon !== point.lon || currentPosition.altitude !== settings.elevation ) 
 	{
-		currentPosition = {...point, altitude: currentElevation};
+		currentPosition = {...point, altitude: settings.elevation};
 		updateCurrentViewingDistance();
 	}
 	// force a render at the end of the movement to make sure we show the correct peaks
@@ -1951,7 +1668,7 @@ function actualComputeFeatures()
 		// 	node.pointsMesh.userData.depthTexture.value = depthTexture;
 		// }
 	});
-	if (debugFeaturePoints) 
+	if (settings.debugFeaturePoints) 
 	{
 		renderer.render(scene, camera);
 	}
@@ -1969,7 +1686,7 @@ function actualComputeFeatures()
 			delete node.wasVisible;
 			node.show();
 		}
-		node.objectsHolder.visible = node.isVisible() && debugFeaturePoints || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
+		node.objectsHolder.visible = node.isVisible() && settings.debugFeaturePoints || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
 		// if (node.pointsMesh) 
 		// {
 		// 	node.pointsMesh.userData.depthTexture.value = null;
@@ -2003,8 +1720,8 @@ document.body.onresize = function()
 
 	minYPx = TEXT_HEIGHT / viewHeight * offHeight;
 
-	canvas4.width = Math.floor(viewWidth * devicePixelRatio);
-	canvas4.height = Math.floor(viewHeight * devicePixelRatio);
+	featuresDrawingCanvas.width = Math.floor(viewWidth * devicePixelRatio);
+	featuresDrawingCanvas.height = Math.floor(viewHeight * devicePixelRatio);
 	rendererScaleRatio = 1 + (devicePixelRatio - 1) / 2;
 
 	renderer.setSize(viewWidth, viewHeight);
@@ -2209,7 +1926,7 @@ export function focusSelectedItem()
 
 function isSelectedFeature(f) 
 {
-	if (devLocal) 
+	if (settings.local) 
 	{
 		return selectedItem && f.properties.osmid === selectedItem.properties.osmid;
 	}
@@ -2224,7 +1941,7 @@ const minDistance = isMobile ? 26 : 44;
 const windowSize = minDistance;
 function drawFeatures() 
 {
-	if (!readFeatures || animating) 
+	if (!settings.readFeatures || animating) 
 	{
 		return;
 	}
@@ -2240,12 +1957,12 @@ function drawFeatures()
 	{
 		const coords = UnitsUtils.datumsToSpherical(f.geometry.coordinates[1], f.geometry.coordinates[0], null, scale);
 		const ele = f.properties.ele || 0;
-		tempVector.set(coords.x, ele * exageration * scale, -coords.y);
+		tempVector.set(coords.x, ele * settings.exageration * scale, -coords.y);
 		const vector = toScreenXY(tempVector);
 		const x = Math.floor(vector.x);
 		const y = vector.y;
 		const z = vector.z;
-		if (y < TEXT_HEIGHT- 20 || z > FAR * scale + 1000 || z / ele > FAR * scale / 3000) 
+		if (y < TEXT_HEIGHT- 20 || z > settings.far * scale + 1000 || z / ele > settings.far * scale / 3000) 
 		{
 			// if (f.properties.name.endsWith('Monte Bianco')) 
 			// {
@@ -2346,18 +2063,18 @@ function drawFeaturesLabels(featuresToDraw: any[])
 	const screenRatio = devicePixelRatio;
 	const toShow = featuresToDraw.length;
 	ctx2d.save();
-	ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
+	ctx2d.clearRect(0, 0, featuresDrawingCanvas.width, featuresDrawingCanvas.height);
 	ctx2d.scale(screenRatio, screenRatio);
 
-	const textColor = darkTheme ? 'white' : 'black';
-	const color = darkTheme ? '#000000' : '#ffffff';
+	const textColor = settings.dark ? 'white' : 'black';
+	const color = settings.dark ? '#000000' : '#ffffff';
 	let f, y, isSelected, text, realTextWidth, textWidth, textWidth2, transform, point, test;
 	for (let index = 0; index < toShow; index++) 
 	{
 		f = featuresToDraw[index];
 		y = f.y;
 		isSelected = selectedItem && isSelectedFeature(f);
-		if (drawLines && y>TEXT_HEIGHT) 
+		if (settings.drawLines && y>TEXT_HEIGHT) 
 		{
 			ctx2d.beginPath();
 			ctx2d.strokeStyle = textColor;
@@ -2382,14 +2099,14 @@ function drawFeaturesLabels(featuresToDraw: any[])
 		text = canWrap? f.properties.name: truncate(f.properties.name, 30);
 		realTextWidth = ctx2d.measureText(text).width;
 		textWidth = Math.min(realTextWidth, textMaxWidth);
-		let wrapValues = {y: canWrap && drawElevations?labelFontSize:0, x: canWrap? 0 :textWidth};
+		let wrapValues = {y: canWrap && settings.drawElevations?labelFontSize:0, x: canWrap? 0 :textWidth};
 		if (canWrap && realTextWidth !== textWidth) 
 		{
 			wrapValues = wrapText(ctx2d, text, 5, 0, textWidth, labelFontSize, true);
 		}
 		let totalWidth = textWidth + 10;
 		let text2;
-		if (drawElevations) 
+		if (settings.drawElevations) 
 		{
 			text2 = f.properties.ele + 'm';
 			textWidth2 = ctx2d.measureText(text2).width;
@@ -2428,7 +2145,7 @@ function drawFeaturesLabels(featuresToDraw: any[])
 		{
 			ctx2d.fillText(text, 5, 0);
 		}
-		if (drawElevations) 
+		if (settings.drawElevations) 
 		{
 			ctx2d.font = 'normal 11px Courier';
 			ctx2d.fillText(text2, wrapValues.x + 10, wrapValues.y);
@@ -2518,12 +2235,12 @@ function readShownFeatures()
 
 function withoutOutline() 
 {
-	return (debug || mapMap || generateColor) && !mapoutline;
+	return (settings.debug || settings.mapMap || settings.generateColor) && !settings.outline;
 }
 function actualRender(forceComputeFeatures) 
 {
 	composer.render(clock.getDelta());
-	if (!animating && readFeatures && pixelsBuffer) 
+	if (!animating && settings.readFeatures && pixelsBuffer) 
 	{
 		if (forceComputeFeatures) 
 		{
@@ -2609,13 +2326,12 @@ export function render()
 	}
 }
 
-if (datelabel) 
+if (!EXTERNAL_APP) 
 {
 	exports.init = function() 
 	{
-		const now =new Date();
-		const secondsInDay = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-		callMethods({'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, 'setDarkMode': false, 'setMapMode': false, 'setMapOultine': false, 'setDayNightCycle': true, 'setDrawElevations': true, 'setViewingDistance': 173000, 'setCameraFOVFactor': 28.605121612548828, 'setDate': 48025, 'setDebugMode': true, 'setReadFeatures': false, 'setShowStats': true, 'setWireFrame': false, 'setDebugGPUPicking': false, 'setDebugFeaturePoints': false, 'setComputeNormals': false, 'setNormalsInDebug': false, 'setGenerateColors': false, 'setExageration': 1.622511863708496, 'setDepthBiais': 0.44782665371894836, 'setDepthMultiplier': 110.65267944335938, 'setDepthPostMultiplier': 0.9277091026306152});
+		const params = Object.assign({}, settings, {'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0});
+		callMethods(params);
 	};
 }
 
@@ -2624,7 +2340,7 @@ function startAnimation({from, to, duration, onUpdate, onEnd, preventComputeFeat
 	animating = preventComputeFeatures;
 	if (animating) 
 	{
-		ctx2d.clearRect(0, 0, canvas4.width, canvas4.height);
+		ctx2d.clearRect(0, 0, featuresDrawingCanvas.width, featuresDrawingCanvas.height);
 	}
 
 	const anim = new AdditiveTweening({
@@ -2675,28 +2391,6 @@ export function setAzimuth(value: number, animated = true, updateCtrls = true)
 	
 }
 
-export function setNear(value) 
-{
-	if (NEAR === value) {return;}
-	NEAR = value;
-	camera.near = NEAR * worldScale;
-}
-export function setViewingDistance(meters: number, shouldRender = true) 
-{
-	if (FAR === meters) {return;}
-	FAR = meters;
-	const scale = MaterialHeightShader.scaleRatio;
-	camera.far = FAR * scale;
-	camera.updateProjectionMatrix();
-	updateCurrentViewingDistance();
-
-	sharedPointMaterial.uniforms.cameraNear.value = camera.near;
-	sharedPointMaterial.uniforms.cameraFar.value = camera.far;
-	if (shouldRender) 
-	{
-		requestRenderIfNotRequested(true);
-	}
-}
 export function callMethods(json) 
 {
 	try 
@@ -2704,20 +2398,8 @@ export function callMethods(json)
 		canCreateMap = false;
 		Object.keys(json).sort().forEach((key) => 
 		{
-			const func = window['webapp'][key];
 			const newValue = json[key];
-			if (typeof func === 'function') 
-			{
-				func(newValue, false, false);
-			}
-			if (!EXTERNAL_APP) 
-			{
-				const actualKey = key[3].toLowerCase() + key.slice(4);
-				if (typeof newValue === 'boolean') 
-				{
-
-				}
-			}
+			window['webapp'].setSettings(key, newValue, false, false);
 		});
 		canCreateMap = true;
 		if (!map) 

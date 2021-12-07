@@ -4,7 +4,7 @@ import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapNode} from '../source/nodes/MapNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {debugFeaturePoints, exageration, FAR, requestRenderIfNotRequested} from './app';
+import {settings, requestRenderIfNotRequested} from './app';
 
 export let currentColor = 0xffffff;
 
@@ -250,9 +250,9 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 			map: MapQuantizedMeshHeightNode.EMPTY_TEXTURE,
 			color: 0xffffff,
 			side: DoubleSide
-		}), level, exageration));
+		}), level, settings.exageration));
 
-		this.exageration = exageration;
+		this.exageration = settings.exageration;
 		this.frustumCulled = false;
 	}
 	
@@ -437,11 +437,11 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 							userData: 
 								{
 									heightMap: this.material.userData.heightMap,
-									exageration: {value: exageration},
+									exageration: {value: settings.exageration},
 									elevationDecoder: this.material.userData.elevationDecoder,
 									heightMapLocation: this.material.userData.heightMapLocation,
-									forViewing: {value: debugFeaturePoints}, 
-									far: {value: FAR}, 
+									forViewing: {value: settings.debugFeaturePoints}, 
+									far: {value: settings.far}, 
 									pointTexture: {value: new TextureLoader().load( 'disc.png' )}
 								},
 							vertexShader: `

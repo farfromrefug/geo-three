@@ -62,10 +62,6 @@ export default abstract class RasterMapProvider extends MapProvider
 	protected async fetchTileImage(zoom: number, x: number, y: number): Promise<any>
 	{
 		const key =`${zoom}_${x}_${y}`;
-		if (zoom === 4 && x === 7 && y ===7) 
-		{
-			console.log('test', new Error().stack);
-		}
 		let promise;
 		if (this.zoomDelta <= 0 || this.minLevelForZoomDelta > zoom) 
 		{
@@ -160,7 +156,8 @@ export default abstract class RasterMapProvider extends MapProvider
 		{	
 			try 
 			{
-				resolve(await this.getImageBitmapLoader().load(url));
+				const result = await this.getImageBitmapLoader().load(url);
+				resolve(result);
 			}
 			catch (err) 
 			{

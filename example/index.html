@@ -193,7 +193,7 @@
             position: absolute;
         }
 
-        #elevationSlider {
+        #elevation {
             z-index: 1000;
             position: absolute;
             top: 40%;
@@ -285,44 +285,44 @@
                     <form>
                         <input type="checkbox" id="mapMap" name="mapMap" />
                         <label for="mapMap"> map Map</label><br />
-                        <input type="checkbox" id="generateColors" name="generateColors" />
-                        <label for="generateColors"> Generate Colors</label><br />
-                        <input type="checkbox" id="debugMap" name="debugMap" />
-                        <label for="debugMap"> Debug Map</label><br />
-                        <input type="checkbox" id="computeNormals" name="computeNormals" onchange="webapp.toggleComputeNormals()" />
+                        <input type="checkbox" id="generateColor" name="generateColor" />
+                        <label for="generateColor"> Generate Colors</label><br />
+                        <input type="checkbox" id="debug" name="debug" />
+                        <label for="debug"> Debug Map</label><br />
+                        <input type="checkbox" id="computeNormals" name="computeNormals"/>
                         <label for="computeNormals"> compute normals</label><br />
-                        <input type="checkbox" id="normalsInDebug" name="normalsInDebug" />
-                        <label for="normalsInDebug"> draw normals</label><br />
-                        <input type="checkbox" id="dayNightCycle" name="mapMap" />
+                        <input type="checkbox" id="drawNormals" name="drawNormals" />
+                        <label for="drawNormals"> draw normals</label><br />
+                        <input type="checkbox" id="dayNightCycle" name="dayNightCycle" />
                         <label for="dayNightCycle"> dayNight Cycle</label><br />
+                        <input type="checkbox" id="shadows" name="shadows" />
+                        <label for="shadows">Shadows</label><br />
                         <input type="checkbox" id="debugGPUPicking" name="debugGPUPicking" />
                         <label for="debugGPUPicking"> Debug GPU Picking</label><br />
-                        <input type="checkbox" id="readFeatures" name="readFeatures" checked />
+                        <input type="checkbox" id="readFeatures" name="readFeatures" />
                         <label for="drawFeatures"> Enable read features</label><br />
                         <input type="checkbox" id="debugFeaturePoints" name="debugFeaturePoints" />
                         <label for="debugFeaturePoints"> Debug Draw Features</label><br />
-                        <input type="checkbox" id="camera" name="camera" />
-                        <label for="camera"> Enable camera</label><br />
-                        <input type="checkbox" id="darkmode" name="darkmode" />
-                        <label for="darkmode"> Dark Mode</label><br />
+                        <input type="checkbox" id="dark" name="dark" />
+                        <label for="dark"> Dark Mode</label><br />
                         <input type="checkbox" id="drawElevations" name="drawElevations" />
                         <label for="drawElevations"> peaks elevation</label><br />
                         <input type="checkbox" id="wireframe" />
                         <label for="wireframe"> wireframe</label><br />
-                        <input type="checkbox" id="mapoutline" />
-                        <label for="mapoutline"> map outline</label><br />
-                        <input type="checkbox" id="stats" onchange="webapp.toggleShowStats()" />
+                        <input type="checkbox" id="outline" />
+                        <label for="outline"> map outline</label><br />
+                        <input type="checkbox" id="stats" />
                         <label for="stats"> show stats</label><br />
-                        <input id="exagerationSlider" type="range" min="0" max="4" step="0.01" />
-                        <label for="exagerationSlider" id="exagerationSliderLabel"> exageration</label><br />
-                        <input id="depthMultiplierSlider" type="range" min="0" max="10" step="0.001" />
-                        <label for="depthMultiplierSlider" id="depthMultiplierSliderLabel"> depthMultiplier</label><br />
-                        <input id="depthBiaisSlider" type="range" min="0" max="10" step="0.01" />
-                        <label for="depthBiaisSlider" id="depthBiaisSliderLabel"> depthBiais</label><br />
-                        <input id="dateSlider" type="range" min="0" max="86400" step="0.01" />
-                        <label for="dateSlider" id="dateLabel"></label><br />
-                        <input id="viewingDistanceSlider" type="range" min="0" max="400000" step="1" />
-                        <label for="viewingDistanceSlider" id="viewingDistanceLabel"></label><br />
+                        <input id="exageration" type="range" min="0" max="4" step="0.01" />
+                        <label for="exageration" id="exagerationLabel"> exageration</label><br />
+                        <input id="depthMultiplier" type="range" min="0" max="10" step="0.001" />
+                        <label for="depthMultiplier" id="depthMultiplierLabel"> depthMultiplier</label><br />
+                        <input id="depthBiais" type="range" min="0" max="10" step="0.01" />
+                        <label for="depthBiais" id="depthBiaisLabel"> depthBiais</label><br />
+                        <input id="secondsInDay" type="range" min="0" max="86400" step="0.01" />
+                        <label for="secondsInDay" id="secondsInDayLabel"></label><br />
+                        <input id="far" type="range" min="0" max="400000" step="1" />
+                        <label for="far" id="farLabel"></label><br />
                     </form>
                 </div>
             </div>
@@ -343,7 +343,7 @@
             </svg>
         </button>
 
-        <button id="map_button" onclick="webapp.togglePredefinedMapMode()">
+        <button id="map_button" onclick="webapp.toggleSetting('mapMap')">
             <svg style="width: 24px; height: 24px" viewBox="0 0 24 24">
                 <path
                     d="M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,20.97L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"
@@ -364,7 +364,7 @@
             </div>
         </div>
         <label id="elevationLabel"></label>
-        <input id="elevationSlider" type="range" min="0" max="9000" />
+        <input id="elevation" type="range" min="0" max="9000" />
 
         <script>
             /*!

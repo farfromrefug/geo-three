@@ -1307,8 +1307,8 @@ scene.add(ambientLight);
 // hemiLight.position.set( 0, 200* worldScale, 0 );
 // scene.add(hemiLight);
 
-const axesHelper = new AxesHelper(1);
-scene.add( axesHelper );
+// const axesHelper = new AxesHelper(1);
+// scene.add( axesHelper );
 
 function updateAmbientLight() 
 {
@@ -1448,7 +1448,7 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 		{
 			updateControls();
 		}
-		axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
+		// axesHelper.position.set(newPosition.x, 2000 * worldScale, -newPosition.y);
 		if (sky) 
 		{
 			sunLight.setPosition(coords.lat, coords.lon);

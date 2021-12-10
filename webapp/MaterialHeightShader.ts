@@ -471,6 +471,7 @@ void main() {
 #include <map_pars_fragment>
 #include <bumpmap_pars_fragment>
 #include <lightmap_pars_fragment>
+// #include <emissivemap_pars_fragment>
 #include <bsdfs>
 #include <lights_pars_begin>
 #include <normal_pars_fragment>
@@ -561,7 +562,7 @@ vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 	if (matPos.y > SNOW_HEIGHT && normal.y > .22)
 	{
 		float snow = clamp(((matPos.y - SNOW_HEIGHT)*(normal.y-0.22)*3.5) * 0.0015, 0.0, 1.0);
-		mat = mix(mat, texture2D(textureSnow, vUv).rgb /2.0, snow);
+		mat = mix(mat, texture2D(textureSnow, vUv).rgb, snow);
 		lights.x += snow;
 		// ambient+=snow *.3;
 	}
@@ -599,11 +600,11 @@ void main() {
 	}
 	if (generateColor) {
 		vec2 lights = vec2(0,0);
-		diffuseColor *= vec4(TerrainColour(vPosition, vComputedNormal, lights), 1.0);
-		specularStrength = lights.x;
+		diffuseColor *= mapTexelToLinear(vec4(TerrainColour(vPosition, vComputedNormal, lights), 1.0));
+		// specularStrength = lights.x;
 	} else {
 		vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
-		texelColor = mapTexelToLinear( texelColor );
+		// texelColor = mapTexelToLinear( texelColor );
 		diffuseColor *= texelColor;
 	}
 
@@ -618,13 +619,14 @@ void main() {
 		return;
 	}
 
+	// #include <emissivemap_fragment>
+	specularStrength =1.0;
 	// accumulation
-	// specularStrength = 1.0;
 	#include <lights_phong_fragment>
 	#include <lights_fragment_begin>
 	#include <lights_fragment_end>
 	
-	vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + reflectedLight.directSpecular + reflectedLight.indirectSpecular + totalEmissiveRadiance;
+	vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + reflectedLight.directSpecular + reflectedLight.indirectSpecular;
 	gl_FragColor = vec4( outgoingLight, diffuseColor.a );
 }
 `

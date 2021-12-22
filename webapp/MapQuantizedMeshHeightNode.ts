@@ -1,10 +1,11 @@
 import decode, {DECODING_STEPS} from '@here/quantized-mesh-decoder';
+import {settings} from './settings';
 import {Box3, BufferAttribute, BufferGeometry, DoubleSide, Float32BufferAttribute, MeshPhongMaterial, Points, ShaderMaterial, Texture, TextureLoader, Vector2, Vector3} from 'three';
 import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapNode} from '../source/nodes/MapNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {settings, requestRenderIfNotRequested} from './app';
+import {requestRenderIfNotRequested} from './app';
 
 export let currentColor = 0xffffff;
 
@@ -241,7 +242,7 @@ export class MapQuantizedMeshHeightNode extends MapHeightNode
 	public exageration = 1.0;
 
 
-	public material: MeshPhongMaterial;
+	declare public material: MeshPhongMaterial;
 
 	public constructor(parentNode: MapHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0)
 	{

@@ -1,4 +1,4 @@
-import {locahostServer} from 'LocalHeightProvider';
+import {locahostServer} from './LocalHeightProvider';
 import {OpenStreetMapsProvider} from '../source/providers/OpenStreetMapsProvider';
 
 export default class TestMapProvider extends OpenStreetMapsProvider 

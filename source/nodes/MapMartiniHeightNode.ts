@@ -43,7 +43,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 	 * 
 	 * Indicates how the pixels should be unpacked and transformed into height data.
 	 */
-	public elevationDecoder: any = [256* 255, 255, 1 / 256* 255, -32768]
+	public elevationDecoder: any = [256* 255, 255, 1 / 256* 255, -32768];
 
 	/**
 	 * Original tile size of the images retrieved from the height provider.
@@ -59,7 +59,7 @@ export class MapMartiniHeightNode extends MapHeightNode
 
 	public meshMaxError: number | Function = 10;
 
-	public material: MeshPhongMaterial
+	declare public material: MeshPhongMaterial;
 
 	public constructor(parentNode: MapMartiniHeightNode = null, mapView: MapView = null, location: number = MapNode.root, level: number = 0, x: number = 0, y: number = 0, {elevationDecoder = [256* 255, 255, 1 / 256* 255, -32768], meshMaxError = 50, exageration = 1}: {elevationDecoder?: number[], meshMaxError?: number | Function, exageration?: number} = {})
 	{

@@ -56,7 +56,7 @@ export default class ScreenQuad extends Mesh
 
 	public screenSize: any;
 
-	public material: THREE.ShaderMaterial;
+	declare public material: THREE.ShaderMaterial;
 
 	public constructor({
 	

@@ -1,5 +1,5 @@
 import {CancelablePromise} from '../source/utils/CancelablePromise';
-import {MVTLoader} from '@loaders.gl/mvt/dist/es6';
+import {MVTLoader} from '@loaders.gl/mvt';
 import {getSharedFetchLoader, getSharedImageBitmapLoader, ImageBitmapLoader} from '../source/utils/FetchLoader';
 import RasterMapProvider from '../source/providers/RasterMapProvider';
 
@@ -9,7 +9,8 @@ const imageBitmapLoader = getSharedImageBitmapLoader({
 	fetchOptions: {credentials: 'same-origin'}
 });
 
-export const locahostServer = '127.0.0.1';
+// export const locahostServer = '127.0.0.1';
+export const locahostServer = '192.168.1.159';
 export class LocalHeightProvider extends RasterMapProvider 
 {
 	public local: boolean;

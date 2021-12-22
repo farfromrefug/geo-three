@@ -164,9 +164,9 @@ export class MapHeightNode extends MapNode
 		node.updateMatrixWorld(true);
 	}
 
-	public parentNode: MapHeightNode;
+	declare public parentNode: MapHeightNode;
 
-	public parent: MapHeightNode;
+	declare public parent: MapHeightNode;
 
 	public heightListeners = [];
 

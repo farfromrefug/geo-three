@@ -4,7 +4,7 @@
 import {AdditiveTweening} from 'additween';
 import CameraControls from 'camera-controls';
 import Hammer from 'hammerjs';
-import * as POSTPROCESSING from 'postprocessing/build/postprocessing.esm';
+import {Effect, EffectAttribute, BlendFunction, EffectComposer, RenderPass, EffectPass} from 'postprocessing';
 import Stats from 'stats.js';
 import {
 	AmbientLight,
@@ -32,41 +32,13 @@ import {KeyboardKeyHold} from 'hold-event';
 import RenderTargetHelper from 'three-rt-helper';
 import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
 import CSM from 'three-csm';
-export const isMobile = FORCE_MOBILE || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-console.log('isMobile ' + isMobile);
-const now = new Date();
-export const settings = {
-	local: false,
-	shadows: true,
-	dayNightCycle: false,
-	generateColor: false,
-	debug: false,
-	geometrySize: FORCE_MOBILE || isMobile ? 320 : 512,
-	debugGPUPicking: false,
-	readFeatures: true,
-	drawLines: true,
-	drawElevations: false,
-	dark: false,
-	fovFactor: 28.605121612548828,
-	outline: true,
-	wireframe: false,
-	drawNormals: false,
-	debugFeaturePoints: false,
-	computeNormals: false,
-	drawTexture: true,
-	mapMap: false,
-	stats: false,
-	exageration: 1.622511863708496,
-	depthBiais: 0.44,
-	depthMultiplier: 110.65267944335938,
-	depthPostMultiplier: 0.9277091026306152,
-	secondsInDay: now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds(), 
-	elevation: -1,
-	terrarium: false,
-	elevationDecoder: [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000],
-	far: FORCE_MOBILE || isMobile? 163000: 173000,
-	near: 10
-};
+import {isMobile, settings} from './settings';
+
+const TO_RAD = Math.PI / 180;
+const PI_DIV4 = Math.PI / 4;
+const PI_X2 = Math.PI * 2;
+const TO_DEG = 180 / Math.PI;
+
 
 const queryParams = new URLSearchParams(window.location.search);
 queryParams.forEach((value, k) => 
@@ -93,10 +65,10 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 {
 	try 
 	{
-		// console.log('setSettings', key, value, settings.hasOwnProperty(key));
+		// console.log('setSettings', key, value, settings.hasOwnProperty(key), window, this);
 		if (!settings.hasOwnProperty(key)) 
 		{
-			const func = window['webapp'][key];
+			const func = EXTERNAL_APP ? window['webapp'][key] : window[key];
 			if (typeof func === 'function') 
 			{
 				func(value, shouldRender, param2);
@@ -263,9 +235,10 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			break;
 		}
 		case 'depthBiais' :
+		case 'outlineStroke' :
 		case 'depthMultiplier' :
 		case 'depthPostMultiplier' :{
-			outlineEffect.uniforms.get('multiplierParameters').value.set(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier);
+			outlineEffect.uniforms.get('multiplierParameters').value.set(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier, settings.outlineStroke);
 			break;
 		}
 		case 'wireframe' :{
@@ -409,10 +382,6 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 	}
 	
 }
-const TO_RAD = Math.PI / 180;
-const PI_DIV4 = Math.PI / 4;
-const PI_X2 = Math.PI * 2;
-const TO_DEG = 180 / Math.PI;
 
 
 export function stopEventPropagation(event) 
@@ -663,9 +632,9 @@ class CameraControlsWithOrientation extends CameraControls
 	}
 }
 
-class CustomOutlineEffect extends POSTPROCESSING.Effect 
+class CustomOutlineEffect extends Effect 
 {
-	public uniforms: Map<String, any>;
+	declare public uniforms: Map<String, any>;
 
 	constructor() 
 	{
@@ -674,56 +643,55 @@ class CustomOutlineEffect extends POSTPROCESSING.Effect
 			`
 uniform vec3 weights;
 uniform vec3 outlineColor;
-uniform vec3 multiplierParameters;
+uniform vec4 multiplierParameters;
 
 float readZDepth(vec2 uv) {
 	return viewZToOrthographicDepth( getViewZ(readDepth(uv)), cameraNear, cameraFar );
 }
 void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
-	float depthDiff = 0.0;
 	float zdepth = viewZToOrthographicDepth( getViewZ(depth), cameraNear, cameraFar );
-	depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(1, 0)));
-	depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(-1, 0)));
-	depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(0, 1)));
-	depthDiff += abs(zdepth - readZDepth(uv + texelSize * vec2(0, -1)));
-	// depthDiff = depthDiff /depth;
+	vec3 offset = vec3( texelSize * multiplierParameters.w, 0.0 );
+	float depthDiff = abs(zdepth - readZDepth(uv + offset.xz))
+					+ abs(zdepth - readZDepth(uv - offset.xz))
+					+ abs(zdepth - readZDepth(uv + offset.zy))
+					+ abs(zdepth - readZDepth(uv - offset.zy));
 	depthDiff = depthDiff * multiplierParameters.y;
 	depthDiff = pow(depthDiff, multiplierParameters.x);
-	depthDiff = depthDiff * multiplierParameters.z;
-	vec4 outlineColor = vec4(outlineColor, 1.0);
+	// depthDiff = depthDiff * multiplierParameters.z;
+	vec4 outlineColor = vec4(outlineColor, depthDiff);
 	outputColor = vec4(mix(inputColor, outlineColor, depthDiff));
 }
 `,
 			{
-				attributes: POSTPROCESSING.EffectAttribute.DEPTH,
-				blendFunction: POSTPROCESSING.BlendFunction.AVERAGE,
+				attributes: EffectAttribute.DEPTH,
+				blendFunction: BlendFunction.AVERAGE,
 				uniforms: new Map([
 					['outlineColor', new Uniform(new Color(settings.dark ? 0xffffff : 0x000000))],
-					['multiplierParameters', new Uniform(new Vector3(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier))]
+					['multiplierParameters', new Uniform(new Vector4(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier, settings.outlineStroke))]
 				])
 			}
 		);
 	}
 }
 
-const subsetOfTHREE = {
-	MOUSE: MOUSE,
-	Vector2: Vector2,
-	Vector3: Vector3,
-	Vector4: Vector4,
-	Quaternion: Quaternion,
-	Matrix4: Matrix4,
-	Spherical: Spherical,
-	Box3: Box3,
-	Sphere: Sphere,
-	Raycaster: Raycaster,
-	MathUtils: {
-		DEG2RAD: MathUtils.DEG2RAD,
-		clamp: MathUtils.clamp
+CameraControls.install({
+	THREE: {
+		MOUSE: MOUSE,
+		Vector2: Vector2,
+		Vector3: Vector3,
+		Vector4: Vector4,
+		Quaternion: Quaternion,
+		Matrix4: Matrix4,
+		Spherical: Spherical,
+		Box3: Box3,
+		Sphere: Sphere,
+		Raycaster: Raycaster,
+		MathUtils: {
+			DEG2RAD: MathUtils.DEG2RAD,
+			clamp: MathUtils.clamp
+		}
 	}
-};
-
-CameraControls.install({THREE: subsetOfTHREE});
+});
 
 function throttle(callback, limit) 
 {
@@ -806,8 +774,9 @@ const renderer = new WebGLRenderer({
 	canvas: canvas,
 	antialias: false,
 	alpha: true,
-	powerPreference: 'high-performance'
-	// stencil: false
+	powerPreference: 'high-performance',
+	depth: false,
+	stencil: false
 });
 renderer.physicallyCorrectLights = true;
 // renderer.debug.checkShaderErrors = true;
@@ -836,7 +805,7 @@ const pointBufferTarget = new WebGLRenderTarget(100, 100, {
 	magFilter: NearestFilter
 });
 let renderTargetHelper;
-const composer = new POSTPROCESSING.EffectComposer(renderer, {});
+const composer = new EffectComposer(renderer, {});
 
 export function shouldComputeNormals() 
 {
@@ -1051,7 +1020,6 @@ hammertime.on('tap', function(event)
 });
 const heightProvider = new LocalHeightProvider(settings.local);
 // const heightProvider = new LocalHeightTerrainProvider(devLocal);
-setSettings('terrarium', heightProvider.terrarium, false, false);
 
 const updateLODThrottle = debounce(function(force = false)
 {
@@ -1459,6 +1427,7 @@ export function setPosition(coords: {lat, lon, altitude?}, animated = false, upd
 		}
 	}
 }
+window['setPosition'] = setPosition;
 
 function updateCurrentMinElevation(pos = currentPosition, node?, diff = 60) 
 {
@@ -1607,7 +1576,7 @@ controls.addEventListener('control', (event) =>
 	requestRenderIfNotRequested();
 });
 
-class OutlinePass extends POSTPROCESSING.EffectPass 
+class OutlinePass extends EffectPass 
 {
 	enabled;
 
@@ -1625,9 +1594,8 @@ class OutlinePass extends POSTPROCESSING.EffectPass
 		map.visible = true;
 	}
 }
-const mainPass = new POSTPROCESSING.RenderPass(scene, camera);
+const mainPass = new RenderPass(scene, camera);
 composer.addPass(mainPass);
-mainPass.renderToScreen = true;
 const outlineEffect = new CustomOutlineEffect();
 const outlinePass = new OutlinePass(camera, outlineEffect);
 outlinePass.renderToScreen = true;
@@ -2328,11 +2296,11 @@ export function render()
 
 if (!EXTERNAL_APP) 
 {
-	exports.init = function() 
+	document.addEventListener('DOMContentLoaded', function() 
 	{
-		const params = Object.assign({}, settings, {'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0});
+		const params = Object.assign({}, settings, {'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, terrarium: heightProvider.terrarium});
 		callMethods(params);
-	};
+	});
 }
 
 function startAnimation({from, to, duration, onUpdate, onEnd, preventComputeFeatures}: { from, to, duration, onUpdate?, onEnd?, preventComputeFeatures?}) 
@@ -2390,6 +2358,7 @@ export function setAzimuth(value: number, animated = true, updateCtrls = true)
 	}
 	
 }
+window['setAzimuth'] = setAzimuth;
 
 export function callMethods(json) 
 {
@@ -2399,7 +2368,16 @@ export function callMethods(json)
 		Object.keys(json).sort().forEach((key) => 
 		{
 			const newValue = json[key];
-			window['webapp'].setSettings(key, newValue, false, false);
+			// if (window['webapp']) 
+			// {
+			// 	window['webapp'].setSettings(key, newValue, false, false);
+
+			// }
+			// else 
+			// {
+			setSettings(key, newValue, false, false);
+
+			// }
 		});
 		canCreateMap = true;
 		if (!map) 

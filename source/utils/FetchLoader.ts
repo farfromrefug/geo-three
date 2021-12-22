@@ -162,7 +162,7 @@ export class FetchLoader
 
 export class ImageBitmapLoader extends FetchLoader
 {
-	public cache: LruCache<ImageBitmap>;
+	declare public cache: LruCache<ImageBitmap>;
 
 	public constructor(options ={}) 
 	{

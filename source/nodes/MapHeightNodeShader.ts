@@ -24,7 +24,7 @@ export class MapHeightNodeShader extends MapHeightNode
 	/**
 	 * Variable used to get correct height map location while using maxOverZoom
 	 */
-	protected heightMapLocation = [0, 0, 1, 1]
+	protected heightMapLocation = [0, 0, 1, 1];
 
 	/**
 	 * Variable used to get correct height map location while using maxOverZoom
@@ -60,7 +60,7 @@ export class MapHeightNodeShader extends MapHeightNode
 
 	public static baseScale: Vector3 = new Vector3(UnitsUtils.EARTH_PERIMETER, 1, UnitsUtils.EARTH_PERIMETER);
 
-	public material: Material;
+	declare public material: Material;
 
 	/**
 	 * Prepare the three.js material to be used in the map tile.

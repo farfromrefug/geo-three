@@ -6,7 +6,7 @@ import {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
-import {settings, isMobile} from './app';
+import {settings, isMobile} from './settings';
 
 export let featuresByColor = {};
 export let testColor;
@@ -41,6 +41,7 @@ export function getPixel( imageData: ImageData, displacementMapLocation: [number
 	return result;
 }
 const maxLevelForGemSize = 12;
+// const worldScaleRatio = 1;
 const worldScaleRatio = 1/100000;
 
 // function generateNormalMap(image, tileX, tileY, level): void
@@ -458,7 +459,9 @@ void main() {
 		vComputedNormal = normalize(vec3(mix(d - f , 0.0, zoomFactor), 30.0 / displacementScale, mix(b - h , 0.0, zoomFactor)));
 	}
 	#include <worldpos_vertex>
-	#include <shadowmap_vertex>
+	if (computeNormals) {
+		#include <shadowmap_vertex>
+	}
 	vPosition = modelMatrix * vec4(transformed, 1.0);
 	vPosition.y = e;
 }
@@ -469,7 +472,7 @@ void main() {
 #include <packing>
 #include <uv_pars_fragment>
 #include <map_pars_fragment>
-#include <bumpmap_pars_fragment>
+// #include <bumpmap_pars_fragment>
 #include <lightmap_pars_fragment>
 // #include <emissivemap_pars_fragment>
 #include <bsdfs>
@@ -713,7 +716,7 @@ export class MaterialHeightShader extends MapHeightNode
 	*/
 	public static geometrySize = 4;
 
-	public frustumCulled: boolean;
+	declare public frustumCulled: boolean;
 
 	public displacementMapLocation = [0, 0, 1, 1];
 
@@ -798,9 +801,9 @@ export class MaterialHeightShader extends MapHeightNode
 		this.frustumCulled = false;
 	}
 
-	public material: ShaderMaterial;
+	declare public material: ShaderMaterial;
 
-	public geometry: BufferGeometry;
+	declare public geometry: BufferGeometry;
 
 	public initialize(): Promise<any>
 	{

@@ -19,7 +19,7 @@ export class SunLight extends DirectionalLight
 	// The unit vector that is pointing the ground in the scene, same as gravity
 	nadir;
 
-	type;
+	declare type;
 
 	// The distance of the directional light from this object and it's target.
 	// the given north vector is multiplied with this value and the resulting

@@ -7,5 +7,6 @@ module.exports = defineConfig({
 		FORCE_MOBILE: false,
 		EXTERNAL_APP: false
 	},
+	server: {host: '0.0.0.0'},
 	build: {outDir: path.resolve(__dirname, '../example')}
 });

@@ -55,7 +55,7 @@ queryParams.forEach((value, k) =>
 
 function updateShadowMapEnabled() 
 {
-	renderer.shadowMap.enabled = settings.shadows && settings.dayNightCycle;
+	renderer.shadowMap.enabled = sharedMaterial.uniforms.drawShadows.value = settings.shadows && settings.dayNightCycle;
 }
 export function toggleSetting(key): void 
 {
@@ -200,8 +200,8 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			break;
 		}
 		case 'dark' :{
-			outlineEffect.uniforms.get('outlineColor').value.set(settings.dark ? 0xffffff : 0x000000);
 			document.body.style.backgroundColor = settings.dark ? 'black' : 'white';
+			outlineEffect.uniforms.get('outlineColor').value.set(settings.dark ? 0xffffff : 0x000000);
 			// cameraButton.style.backgroundColor = compass.style.backgroundColor = !settings.dark ? 'white' : 'black';
 			break;
 		}
@@ -230,6 +230,7 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 		}
 		case 'exageration' :{
 			sharedMaterial.uniforms.displacementScale.value = settings.exageration;
+			sharedMaterial.uniforms.normalLength.value = 30.0 / settings.exageration;
 			customDepthMaterial.uniforms.displacementScale.value = settings.exageration;
 			sharedPointMaterial.uniforms.exageration.value = settings.exageration;
 			break;
@@ -775,7 +776,7 @@ const renderer = new WebGLRenderer({
 	antialias: false,
 	alpha: true,
 	powerPreference: 'high-performance',
-	depth: false,
+	// depth: false,
 	stencil: false
 });
 renderer.physicallyCorrectLights = true;
@@ -864,9 +865,9 @@ const scene = new Scene();
 
 export function toggleDeviceSensors() 
 {
-	if (window['nsWebViewBridge']) 
+	if (EXTERNAL_APP)
 	{
-		window['nsWebViewBridge'].emit('sensors', !controls.deviceOrientationEnabled);
+		emitNSEvent('sensors', !controls.deviceOrientationEnabled);
 	}
 	if (controls.deviceOrientationEnabled) 
 	{
@@ -932,7 +933,8 @@ function updateSky()
 {
 	updateAmbientLight();
 	if (!sky) {return;}
-	sky.visible = sunLight.visible = shouldRenderSky();
+	sunLight.visible = shouldRenderSky();
+	sky.visible= shouldRenderSky();
 }
 let directionalLightHelper: DirectionalLightHelper;
 
@@ -970,7 +972,6 @@ let datelabel, viewingDistanceLabel, selectedPeakLabel, selectedPeakDiv, dateSli
 const compass = document.getElementById('compass') as HTMLDivElement;
 const compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
 const compassLabel = document.getElementById('compass_label') as HTMLLabelElement;
-document.body.style.backgroundColor = settings.dark ? 'black' : 'white';
 const cameraButton = document.getElementById('camera_button');
 cameraButton.style.visibility = FORCE_MOBILE || isMobile?'visible':'hidden';
 
@@ -1280,7 +1281,7 @@ scene.add(ambientLight);
 
 function updateAmbientLight() 
 {
-	if (settings.mapMap && settings.dayNightCycle) 
+	if ((settings.mapMap || settings.debug) && settings.dayNightCycle) 
 	{
 		ambientLight.intensity = 1 ;
 
@@ -1308,9 +1309,9 @@ function updateSkyPosition()
 function updateCurrentViewingDistance() 
 {
 	currentViewingDistance = getViewingDistance();
-	if (window['nsWebViewBridge']) 
+	if (EXTERNAL_APP)
 	{
-		window['nsWebViewBridge'].emit('viewingDistance', currentViewingDistance);
+		emitNSEvent('viewingDistance', currentViewingDistance);
 	}
 	if (viewingDistanceLabel) 
 	{
@@ -1489,16 +1490,18 @@ export function setUpdateExternalPositionThrottleTime(value)
 {
 	updateExternalPosition = throttle(function() 
 	{
+		if (EXTERNAL_APP) 
+		{
+			if (window['electron']) 
+			{
+				const ipcRenderer = window['electron'].ipcRenderer;
+				ipcRenderer.send('message', {...currentPosition, altitude: settings.elevation});
+			}
+	
+			emitNSEvent('position', {...currentPosition, altitude: settings.elevation});
+		}
 
-		if (window['electron']) 
-		{
-			const ipcRenderer = window['electron'].ipcRenderer;
-			ipcRenderer.send('message', {...currentPosition, altitude: settings.elevation});
-		}
-		if (window['nsWebViewBridge']) 
-		{
-			window['nsWebViewBridge'].emit('position', {...currentPosition, altitude: settings.elevation});
-		}
+		
 	}, value);
 }
 setUpdateExternalPositionThrottleTime(100);
@@ -1566,15 +1569,19 @@ controls.addEventListener('control', (event) =>
 	{
 		sendSelectedToNS();
 	}
-	if (zooming) 
+	if (EXTERNAL_APP && zooming) 
 	{
-		if (window['nsWebViewBridge']) 
-		{
-			window['nsWebViewBridge'].emit('zoom', camera.zoom);
-		}
+		emitNSEvent('zoom', camera.zoom);
 	}
-	requestRenderIfNotRequested();
 });
+
+function emitNSEvent(name, value) 
+{
+	if (window['nsWebViewBridge']) 
+	{
+		window['nsWebViewBridge'].emit(name, typeof value === 'function' ? value() : value);
+	}
+}
 
 class OutlinePass extends EffectPass 
 {
@@ -1598,9 +1605,6 @@ const mainPass = new RenderPass(scene, camera);
 composer.addPass(mainPass);
 const outlineEffect = new CustomOutlineEffect();
 const outlinePass = new OutlinePass(camera, outlineEffect);
-outlinePass.renderToScreen = true;
-outlinePass.enabled = !withoutOutline();
-mainPass.renderToScreen = !outlinePass.enabled;
 composer.addPass(outlinePass);
 // function crop(x, y, w, h) {
 // renderer.setViewport(x, y, w, h);
@@ -1832,7 +1836,7 @@ function updateSelectedPeakLabel()
 
 function sendSelectedToNS() 
 {
-	if (window['nsWebViewBridge']) 
+	emitNSEvent('selected', () => 
 	{
 		let distance = 0;
 		if (selectedItem) 
@@ -1842,10 +1846,9 @@ function sendSelectedToNS()
 			const point1 = UnitsUtils.sphericalToDatums(tempVector.x/scale, -tempVector.z/scale);
 			const point2 = {lat: selectedItem.geometry.coordinates[1], lon: selectedItem.geometry.coordinates[0], altitude: selectedItem.properties.ele};
 			distance = getDistance(point1, point2);
+			return {...selectedItem, distance: distance};
 		}
-
-		window['nsWebViewBridge'].emit('selected', selectedItem ? {...selectedItem, distance: distance} : null);
-	}
+	});
 }
 function setSelectedItem(f) 
 {
@@ -1855,7 +1858,10 @@ function setSelectedItem(f)
 		return;
 	}
 	selectedItem = f;
-	sendSelectedToNS();
+	if (EXTERNAL_APP) 
+	{
+		sendSelectedToNS();
+	}
 	if (selectedPeakLabel) 
 	{
 		if (selectedItem) 
@@ -2220,6 +2226,7 @@ function actualRender(forceComputeFeatures)
 		}
 	}
 	drawFeatures();
+
 }
 export function requestRenderIfNotRequested(forceComputeFeatures = false) 
 {

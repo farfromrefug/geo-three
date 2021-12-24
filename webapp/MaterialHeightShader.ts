@@ -37,7 +37,6 @@ export function getPixel( imageData: ImageData, displacementMapLocation: [number
 	const y= Math.round(imageData.height * fractionY);
 	const position = ( x + imageData.width * y ) * 4;
 	const result = imageData.data.slice(position, position + 4);
-	// console.log('getPixel', coords, level, displacementMapLocation, fractionTile, fractionX, fractionY, x, y, result);
 	return result;
 }
 const maxLevelForGemSize = 12;
@@ -176,15 +175,15 @@ function hashString( str, seed = 0 ): number
 
 class CustomMaterial extends ShaderMaterial 
 {
-	public customProgramCacheKey(): string
-	{
-		const prototype = this.constructor.prototype;
-		if (!prototype.cachedKey) 
-		{
-			prototype.cachedKey = hashString(super.customProgramCacheKey());
-		}
-		return prototype.cachedKey;
-	}
+	// public customProgramCacheKey(): string
+	// {
+	// 	const prototype = this.constructor.prototype;
+	// 	if (!prototype.cachedKey) 
+	// 	{
+	// 		prototype.cachedKey = hashString(super.customProgramCacheKey());
+	// 	}
+	// 	return prototype.cachedKey;
+	// }
 
 	public onBeforeCompile(shader: { uniforms: { [x: string]: any; }; vertexShader: string; fragmentShader: string; }): void
 	{
@@ -212,14 +211,14 @@ class PointMaterial extends ShaderMaterial
 {
 	private static cachedKey;
 
-	public customProgramCacheKey(): string
-	{
-		if (!PointMaterial.cachedKey) 
-		{
-			PointMaterial.cachedKey = hashString(super.customProgramCacheKey());
-		}
-		return PointMaterial.cachedKey;
-	}
+	// public customProgramCacheKey(): string
+	// {
+	// 	if (!PointMaterial.cachedKey) 
+	// 	{
+	// 		PointMaterial.cachedKey = hashString(super.customProgramCacheKey());
+	// 	}
+	// 	return PointMaterial.cachedKey;
+	// }
 
 	public onBeforeRender(renderer, scene, camera, geometry, object, group): void 
 	{	
@@ -268,9 +267,6 @@ return perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
 float readZDepth(vec2 uv) {
 return viewZToOrthographicDepth( getViewZ(readDepth(uv)), cameraNear, cameraFar );
 }
-// float getDigit(float num, float n) {
-//    return mod((num / pow(10.0, n)), 10.0);
-// }
 void main() {
 float elevation  = position.y;
 vec4 mvPosition = modelViewMatrix * vec4( position.x,  elevation * exageration, position.z, 1.0 );
@@ -283,11 +279,11 @@ vec3 coord = gl_Position.xyz / gl_Position.w;
 vUv =(coord.xy + 1.0) * 0.5 ;
 float depthAtPoint = readZDepth(vUv);
 if (depthAtPoint > cameraFar || depthFromPosition > depthAtPoint) {
-depth = -1.0;
-vColor = vec4( 0.0, 0.0, 0.0, 0.0);
+	depth = -1.0;
+	vColor = vec4( 0.0, 0.0, 0.0, 0.0);
 } else {
-depth = depthAtPoint;
-vColor = color;
+	depth = depthAtPoint;
+	vColor = color;
 }
 }
 	`,
@@ -325,7 +321,7 @@ function createSharedMaterial(): CustomMaterial
 	// const textureRock = loader.load( 'tersrc14/data/slope.dds', null, null);
 	// const textureSnow = loader.load( 'tersrc14/data/rock.dds', null, null);
 	textureGrass.wrapS = textureAltitude.wrapS = textureRock.wrapS = RepeatWrapping;
-	textureGrass.wrapT = textureAltitude.wrapT = textureRock.wrapT= RepeatWrapping;
+	textureGrass.wrapT = textureAltitude.wrapT = textureRock.wrapT = RepeatWrapping;
 
 	const sharedMaterial = new CustomMaterial( {
 		// shadowSide: FrontSide,
@@ -345,11 +341,13 @@ function createSharedMaterial(): CustomMaterial
 			textureSnow: {value: textureSnow},
 			drawNormals: {value: false},
 			computeNormals: {value: false},
+			drawShadows: {value: false},
 			drawTexture: {value: false},
 			elevationDecoder: {value: null},
 			generateColor: {value: false},
 			drawBlack: {value: 0},
 			displacementScale: {value: 1},
+			normalLength: {value: 1},
 			emissive: {value: new Color(0x000000)},
 			specular: {value: new Color(0x333333)},
 			shininess: {value: 10},
@@ -364,15 +362,20 @@ function createSharedMaterial(): CustomMaterial
 #include <normal_pars_vertex>
 #include <shadowmap_pars_vertex>
 uniform bool computeNormals;
+uniform bool drawShadows;
 uniform float zoomlevel;
 uniform float worldScale;
+uniform float normalLength;
+uniform float zoomFactor;
 uniform vec4 elevationDecoder;
 uniform vec4 displacementMapLocation;
+uniform vec2 displacementRes;
 varying vec4 vPosition;
 uniform float tileY;
 varying vec3 vViewPosition;
 varying vec3 vComputedNormal;
 varying float trueHeight;
+uniform bool generateColor;
 
 float getPixelElevation(vec4 e) {
 	// Convert encoded elevation value to meters
@@ -383,22 +386,22 @@ float getElevation(vec2 coord) {
 	return getPixelElevation(e);
 }
 
-float getElevationMean(vec2 coord, float width, float height) {
+float getElevationMean(vec2 coord) {
 	float x0 = coord.x;
 	float x1= coord.x;
 	float y0 = coord.y;
 	float y1= coord.y;
 	if (x0 <= 0.0) {
-		x1 = 1.0 / width;
+		x1 = 1.0 * displacementRes.x;
 	}
 	if (x0 >= 1.0) {
-		x1 = 1.0 - 1.0 / width;
+		x1 = 1.0 - 1.0  * displacementRes.x;
 	}
 	if (y0 <= 0.0) {
-		y1 = 1.0 / height;
+		y1 = 1.0 * displacementRes.y;
 	}
 	if (y0 >= 1.0) {
-		y1 = 1.0 - 1.0 / height;
+		y1 = 1.0 - 1.0 * displacementRes.y;
 	}
 	if (x0 == x1 && y0 == y1) {
 		return getElevation(coord);
@@ -410,60 +413,34 @@ void main() {
 
 	vUv = vec2(position.x +  0.5, 0.5 - position.z );
 
-	ivec2 size = textureSize(displacementMap, 0);
-	float width = float(size.x) * displacementMapLocation.z;
-	float height = float(size.y) * displacementMapLocation.w;
-	float e = getElevationMean(vUv, width, height);
-	vec3 objectNormal = vec3(0,1,0);
-	
-	#include <defaultnormal_vertex>
-	#include <normal_vertex>
-
-
-	#include <begin_vertex>
-	transformed += vec3(0,e * displacementScale + displacementBias,0);
+	float e = getElevationMean(vUv);
+	vec3 transformedNormal = normalMatrix * vec3(0,1,0);
+	vNormal = normalize( transformedNormal );
+	vec3 transformed = vec3( position ) + vec3(0,e * displacementScale + displacementBias,0);
 	#include <project_vertex>
-
 	vViewPosition = - mvPosition.xyz;
 
 	if (computeNormals) {
-		float normalLength = 25.0;
-		float sizeFactor = 1.0/ (8.0 * zoomlevel);
-		float zoomFactor = 0.0;
-		float level = zoomlevel ;
-		if (displacementMapLocation.z != 1.0) {
-			level -= log(1.0/displacementMapLocation.z)/log(2.0);
-		}
-		if (level < 12.0) {
-			zoomFactor = 1.0 - 0.5/(12.0 -level);
-		}
-		// queried pixels:
-		// +-----------+
-		// |   |   |   |
-		// | a | b | c |
-		// |   |   |   |
-		// +-----------+
-		// |   |   |   |
-		// | d | e | f |
-		// |   |   |   |
-		// +-----------+
-		// |   |   |   |
-		// | g | h | i |
-		// |   |   |   |
-		// +-----------+
-		float offset = 1.0 / width;
-		float b = getElevationMean(vUv + vec2(0, -offset), width, height);
-		float d = getElevationMean(vUv + vec2(-offset, 0), width, height);
-		float f = getElevationMean(vUv + vec2(offset, 0), width, height);
-		float h = getElevationMean(vUv + vec2(0, offset), width, height);
-		vComputedNormal = normalize(vec3(mix(d - f , 0.0, zoomFactor), 30.0 / displacementScale, mix(b - h , 0.0, zoomFactor)));
+
+		vec3 offset = vec3(displacementRes, 0);
+		float b = getElevation(vUv  - offset.zy);
+		float d = getElevation(vUv - offset.xz);
+		float f = getElevation(vUv + offset.xz);
+		float h = getElevation(vUv + offset.zy);
+		// float b = getElevationMean(vUv  - offset.zy);
+		// float d = getElevationMean(vUv - offset.xz);
+		// float f = getElevationMean(vUv + offset.xz);
+		// float h = getElevationMean(vUv + offset.zy);
+		vComputedNormal = normalize(vec3(mix(d - f , 0.0, zoomFactor), mix(b - h , 0.0, zoomFactor), normalLength));
 	}
 	#include <worldpos_vertex>
-	if (computeNormals) {
+	if (drawShadows) {
 		#include <shadowmap_vertex>
 	}
-	vPosition = modelMatrix * vec4(transformed, 1.0);
-	vPosition.y = e;
+	if (generateColor) {
+		vPosition = modelMatrix * vec4(transformed, 1.0);
+		vPosition.y = e;
+	}
 }
 `,
 		fragmentShader: `
@@ -472,13 +449,28 @@ void main() {
 #include <packing>
 #include <uv_pars_fragment>
 #include <map_pars_fragment>
-// #include <bumpmap_pars_fragment>
 #include <lightmap_pars_fragment>
-// #include <emissivemap_pars_fragment>
 #include <bsdfs>
 #include <lights_pars_begin>
 #include <normal_pars_fragment>
-#include <lights_phong_pars_fragment>
+varying vec3 vViewPosition;
+struct BlinnPhongMaterial {
+	vec3 diffuseColor;
+	vec3 specularColor;
+	float specularShininess;
+	float specularStrength;
+};
+void RE_Direct_BlinnPhong( const in IncidentLight directLight, const in GeometricContext geometry, const in BlinnPhongMaterial material, inout ReflectedLight reflectedLight ) {
+	float dotNL = saturate( dot( geometry.normal, directLight.direction ) );
+	vec3 irradiance = dotNL * directLight.color;
+	reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );
+}
+void RE_IndirectDiffuse_BlinnPhong( const in vec3 irradiance, const in GeometricContext geometry, const in BlinnPhongMaterial material, inout ReflectedLight reflectedLight ) {
+	reflectedLight.indirectDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );
+}
+#define RE_Direct				RE_Direct_BlinnPhong
+#define RE_IndirectDiffuse		RE_IndirectDiffuse_BlinnPhong
+#define Material_LightProbeLOD( material )	(0)
 #include <normalmap_pars_fragment>
 #define SNOW_HEIGHT 1300.0
 #define BEACH_HEIGHT 140.5
@@ -487,7 +479,6 @@ void main() {
 #define TREE_MAX_HEIGHT 1800.0
 #define HASHSCALE1 .1031
 
-// varying vec2 vUv;
 uniform bool drawNormals;
 uniform bool computeNormals;
 uniform bool generateColor;
@@ -530,31 +521,31 @@ float Noise( in vec2 x, float factor )
 }
 vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 {
+	float slope = normal.y;
 	vec3 mat;
-	lights.x = .0;
-	lights.y = .1;
+	// lights.x = .0;
+	// lights.y = .1;
 	// vec3 dir = normalize(pos-cameraPos);
 	
 	// float f = clamp(Noise(matPos.xz*.05, 2.0), 0.0,1.0);//*10.8;
 	vec3 m = texture2D(textureAltitude, vUv*2.0).rgb;
 	mat = m;
 	// Should have used smoothstep to add colours, but left it using 'if' for sanity...
-	if (normal.y < .5)
+	if (slope < .5)
 	{
-		float v = normal.y;
-		float c = (.5-normal.y) * 4.0;
+		float c = (.5-slope) * 4.0;
 		c = clamp(c*c, 0.1, 1.0);
 		mat = mix(mat, texture2D(textureRock, vUv*4.0).rgb, c/1.6);
-		lights.x+=.1;
+		// lights.x+=.1;
 	}
 	// Grass. Use the normal to decide when to plonk grass down...
-	if (matPos.y < GRASS_HEIGHT && normal.y > 0.65)
+	if (matPos.y < GRASS_HEIGHT && slope > 0.65)
 	{
-		m = texture2D(textureGrass, vUv*4.0).rgb*1.6 * (normal.y- 0.65);
-		mat = mix(mat, m, clamp((normal.y-0.65)*1.3 * (GRASS_HEIGHT-matPos.y)*0.003, 0.0, 1.0));
+		m = texture2D(textureGrass, vUv*4.0).rgb*1.6 * (slope- 0.65);
+		mat = mix(mat, m, clamp((slope-0.65)*1.3 * (GRASS_HEIGHT-matPos.y)*0.003, 0.0, 1.0));
 	}
 
-	// if (matPos.y > TREE_MIN_HEIGHT && matPos.y < TREE_MAX_HEIGHT && normal.y > .22)
+	// if (matPos.y > TREE_MIN_HEIGHT && matPos.y < TREE_MAX_HEIGHT && slope > .22)
 	// {
 	// 	mat = vec3(.02+Noise(matPos.xz*5.0, 1.0)*.03, .05, .0);
 	// 	normal = normalize(normal+vec3(Noise(matPos.xz*33.0, 1.0)*1.0-.5, .0, Noise(matPos.xz*33.0, 1.0)*1.0-.5));
@@ -562,21 +553,21 @@ vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 	// }
 	
 	// Snow topped mountains...
-	if (matPos.y > SNOW_HEIGHT && normal.y > .22)
+	if (matPos.y > SNOW_HEIGHT && slope > .22)
 	{
-		float snow = clamp(((matPos.y - SNOW_HEIGHT)*(normal.y-0.22)*3.5) * 0.0015, 0.0, 1.0);
+		float snow = clamp(((matPos.y - SNOW_HEIGHT)*(slope-0.22)*3.5) * 0.0015, 0.0, 1.0);
 		mat = mix(mat, texture2D(textureSnow, vUv).rgb, snow);
-		lights.x += snow;
+		// lights.x += snow;
 		// ambient+=snow *.3;
 	}
 	// Beach effect...
 	// if (matPos.y < BEACH_HEIGHT)
 	// {
-	// 	if (normal.y > .4)
+	// 	if (slope > .4)
 	// 	{
 	// 		f = Noise(matPos.xz * .084, 1.0)*1.5;
 	// 		f = clamp((BEACH_HEIGHT-f-matPos.y) * 1.34, 0.0, .67);
-	// 		float t = (normal.y-.4);
+	// 		float t = (slope-.4);
 	// 		t = (t*t);
 	// 		mat = mix(mat, vec3(.09+t, .07+t, .03+t), f);
 	// 	}
@@ -590,25 +581,10 @@ vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 }
 void main() {
 	
-	vec4 diffuseColor = vec4( diffuse, opacity );
-	ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );
-	vec3 totalEmissiveRadiance = emissive;
 
-	#include <specularmap_fragment>
-	#include <normal_fragment_begin>
+	vec3 normal = normalize( vNormal );
 	if (computeNormals) {
-		vec3 mapN = vComputedNormal.rbg;
-		normal = perturbNormal2Arb( - vViewPosition, normal, mapN, 1.0 );
-		// normal = normalize( cross( dFdx( vViewPosition.xyz ), dFdy( vViewPosition.xyz ) ) );
-	}
-	if (generateColor) {
-		vec2 lights = vec2(0,0);
-		diffuseColor *= mapTexelToLinear(vec4(TerrainColour(vPosition, vComputedNormal, lights), 1.0));
-		// specularStrength = lights.x;
-	} else {
-		vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
-		// texelColor = mapTexelToLinear( texelColor );
-		diffuseColor *= texelColor;
+		normal = perturbNormal2Arb( - vViewPosition, normal, vComputedNormal, 1.0 );
 	}
 
 	if(drawBlack) {
@@ -621,8 +597,22 @@ void main() {
 		gl_FragColor = vec4( 0.0,0.0,0.0, 0.0);
 		return;
 	}
+	float specularStrength = 1.0;
 
-	// #include <emissivemap_fragment>
+	vec4 diffuseColor = vec4( diffuse, opacity );
+	ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );
+	vec3 totalEmissiveRadiance = emissive;
+	if (generateColor) {
+		vec2 lights = vec2(0,0);
+		diffuseColor *= mapTexelToLinear(vec4(TerrainColour(vPosition, vComputedNormal.rbg, lights), 1.0));
+		// specularStrength = lights.x;
+	} else {
+		vec4 texelColor = texture2D(map, vUv * mapMapLocation.zw + mapMapLocation.xy);
+		// texelColor = mapTexelToLinear( texelColor );
+		diffuseColor *= texelColor;
+	}
+
+
 	specularStrength =1.0;
 	// accumulation
 	#include <lights_phong_fragment>
@@ -640,13 +630,13 @@ void main() {
 
 export const customDepthMaterial = new CustomMaterial({
 	defines: {USE_DISPLACEMENTMAP: ''},
-	side: DoubleSide,
+	// side: DoubleSide,
 	name: 'DepthMaterial',
 	uniforms: {
-		drawNormals: {value: false},
-		computeNormals: {value: false},
-		drawTexture: {value: false},
-		generateColor: {value: false},
+		// drawNormals: {value: false},
+		// computeNormals: {value: false},
+		// drawTexture: {value: false},
+		// generateColor: {value: false},
 		elevationDecoder: {value: null},
 		displacementMapLocation: {value: new Vector4()},
 		displacementScale: {value: 1},
@@ -777,6 +767,22 @@ export class MaterialHeightShader extends MapHeightNode
 		return geo;
 	}
 
+
+	private getZoomFactor(): number 
+	{
+		let zoomFactor = 0.0;
+		let level = this.level ;
+		if (this.displacementMapLocation[2] !==1.0) 
+		{
+			level -= Math.log(1.0/this.displacementMapLocation[2])/Math.log(2.0);
+		}
+		if (level < 12.0) 
+		{
+			zoomFactor = 1.0 - 0.5/(12.0 -level);
+		}
+		return zoomFactor;
+	}
+
 	public constructor(parentNode: MapHeightNode, mapView: MapView, location: number, level: number, x: number, y: number) 
 	{
 		super(parentNode, mapView, location, level, x, y, MaterialHeightShader.getDefaultGeometry(), MaterialHeightShader.useSharedShader? sharedMaterial : sharedMaterial.clone());
@@ -787,6 +793,8 @@ export class MaterialHeightShader extends MapHeightNode
 			zoomlevel: {value: level},
 			tileY: {value: y},
 			displacementMapLocation: {value: this.displacementMapLocation},
+			displacementRes: {value: [0, 0]},
+			zoomFactor: {value: this.getZoomFactor()},
 			mapMapLocation: {value: this.mapMapLocation}
 		};
 		if (MaterialHeightShader.useSharedShader) 
@@ -856,7 +864,9 @@ export class MaterialHeightShader extends MapHeightNode
 				const texture = parentUserData.displacementMap.value;
 				this.setMaterialValues({
 					displacementMap: texture,
-					displacementMapLocation: displacementMapLocation
+					displacementMapLocation: displacementMapLocation,
+					displacementRes: [1/(texture.image.width * displacementMapLocation[2]), 1/(texture.image.height * displacementMapLocation[3])],
+					zoomFactor: this.getZoomFactor()
 				});
 				// this.material['displacementMap'] = texture;
 				// this.heightLoaded = true;
@@ -1031,7 +1041,11 @@ export class MaterialHeightShader extends MapHeightNode
 			if (image instanceof Texture) 
 			{
 				texture = image;
-				this.setMaterialValues({displacementMap: image});
+				this.setMaterialValues({
+					displacementMap: image,
+					displacementMapLocation: this.displacementMapLocation,
+					displacementRes: [1/(texture.image.width * this.displacementMapLocation[2]), 1/(texture.image.height * this.displacementMapLocation[3])]
+				});
 			}
 			else 
 			{
@@ -1050,7 +1064,9 @@ export class MaterialHeightShader extends MapHeightNode
 				texture.needsUpdate = true;
 				this.setMaterialValues({
 					displacementMap: texture,
-					displacementMapLocation: this.displacementMapLocation
+					displacementMapLocation: this.displacementMapLocation,
+					displacementRes: [1/(texture.image.width * this.displacementMapLocation[2]), 1/(texture.image.height * this.displacementMapLocation[3])],
+					zoomFactor: this.getZoomFactor()
 				});
 				// this.material['displacementMap'] = texture;
 			}
@@ -1197,7 +1213,6 @@ export class MaterialHeightShader extends MapHeightNode
 		this.displacementMapLocation[1] = parent.displacementMapLocation[1] + Math.floor((tileBox[1] - parentTileBox[1]) / height * 10 ) / 10 / parentOverZoomFactor;
 		this.displacementMapLocation[2] = this.displacementMapLocation[3] = 1 / this.heightOverZoomFactor;
 
-		this.setMaterialValues({displacementMapLocation: this.displacementMapLocation});
 		const userData = MaterialHeightShader.useSharedShader ? parent.userData : parent.material.userData; 
 		await this.onHeightImage(userData.displacementMap.value, false);
 		resolve?.();

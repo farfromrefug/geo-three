@@ -30,6 +30,6 @@ export const settings = {
 	elevation: -1,
 	terrarium: false,
 	elevationDecoder: [6553.6 * 255, 25.6 * 255, 0.1 * 255, -10000],
-	far: FORCE_MOBILE || isMobile? 163000: 173000,
+	far: 173000,
 	near: 10
 };

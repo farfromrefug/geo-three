@@ -246,6 +246,20 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			sharedMaterial.wireframe = settings.wireframe;
 			break;
 		}
+		case 'debugGPUPicking' :{
+			if (value && !renderTargetHelper) 
+			{
+				renderTargetHelper = RenderTargetHelper( renderer, pointBufferTarget );
+				document.body.append( renderTargetHelper );
+			}
+			else if (!value && renderTargetHelper) 
+			{
+
+				document.body.removeChild(renderTargetHelper );
+				renderTargetHelper =null;
+			}
+			break;
+		}
 		case 'debugFeaturePoints' :{
 			if (map) 
 			{
@@ -1269,6 +1283,7 @@ let sunLight: SunLight;
 let sky: Sky;
 // Add an ambient light
 const ambientLight = new AmbientLight(0xffffff);
+ambientLight.castShadow = false;
 scene.add(ambientLight);
 
 
@@ -1579,6 +1594,7 @@ function emitNSEvent(name, value)
 {
 	if (window['nsWebViewBridge']) 
 	{
+		// console.log('emitNSEvent ', name, value);
 		window['nsWebViewBridge'].emit(name, typeof value === 'function' ? value() : value);
 	}
 }
@@ -1712,11 +1728,7 @@ document.body.onresize = function()
 
 	// screenQuad.setScreenSize( viewWidth, viewHeight );
 
-	// if (!renderTargetHelper) 
-	// {
-	// 	renderTargetHelper = RenderTargetHelper( renderer, pointBufferTarget );
-	// 	document.body.append( renderTargetHelper );
-	// }
+	
 	if (!map && currentPosition) 
 	{
 		createMap();
@@ -1848,6 +1860,7 @@ function sendSelectedToNS()
 			distance = getDistance(point1, point2);
 			return {...selectedItem, distance: distance};
 		}
+		return null;
 	});
 }
 function setSelectedItem(f) 
@@ -1911,7 +1924,7 @@ function getDistanceToMouse(f)
 {
 	return Math.sqrt(Math.pow(mousePosition.x - f.x, 2) + Math.pow(mousePosition.y - f.y, 2));
 }
-const minDistance = isMobile ? 26 : 44;
+const minDistance = isMobile ? 26 : 36;
 const windowSize = minDistance;
 function drawFeatures() 
 {
@@ -1924,7 +1937,7 @@ function drawFeatures()
 	let lastX = 0;
 	let maxEle = -10000;
 	let maxEleX;
-	// console.log(featuresToShow.length, featuresToShow.findIndex((f) => {return f.properties.name.endsWith('Monte Bianco');}));
+	console.log(featuresToShow.length, featuresToShow);
 	const featuresToDraw = [];
 	const scale = MaterialHeightShader.scaleRatio;
 	featuresToShow.forEach((f) => 
@@ -1936,7 +1949,8 @@ function drawFeatures()
 		const x = Math.floor(vector.x);
 		const y = vector.y;
 		const z = vector.z;
-		if (y < TEXT_HEIGHT- 20 || z > settings.far * scale + 1000 || z / ele > settings.far * scale / 3000) 
+		// if (y < TEXT_HEIGHT- 20 || z > settings.far * scale + 1000 || z / ele > settings.far * scale / 3000) 
+		if (y < TEXT_HEIGHT- 20) 
 		{
 			// if (f.properties.name.endsWith('Monte Bianco')) 
 			// {
@@ -1961,10 +1975,11 @@ function drawFeatures()
 		array.push({...f, x: x, y: y, z: z});
 	});
 	let windowStartX = maxEleX;
+	// console.log('featuresGroupedX', featuresGroupedX);
 	function handleWindowSize(startX, endX, distance) 
 	{
-		// console.log('test1', windowStartX);
 		const array = featuresGroupedX.slice(startX, endX).filter((s) => {return Boolean(s);}).flat();
+		// console.log('handleWindowSize', windowStartX, array);
 		if (array.length === 0) 
 		{
 			windowStartX += distance;
@@ -1978,9 +1993,10 @@ function drawFeatures()
 		let nextFeature;
 		if (mousePosition && mousePosition.x >=startX && mousePosition.x <= endX) 
 		{
+		// console.log('mouse', windowStartX, array);
 			const mouseObj= array.reduce((p, c) => 
 			{
-				return getDistanceToMouse(p) < getDistanceToMouse(c) ?p : c;
+				return !isSelectedFeature(p) && (getDistanceToMouse(p) < getDistanceToMouse(c) || isSelectedFeature(c)) ?p : c;
 			});
 			if (getDistanceToMouse(mouseObj) < 20) 
 			{

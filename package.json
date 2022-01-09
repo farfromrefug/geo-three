@@ -54,7 +54,7 @@
 		"postprocessing": "^6.23.3",
 		"rollup": "2.61.1",
 		"stats.js": "^0.17.0",
-		"three": "~0.135.0",
+		"three": "0.135.0",
 		"three-screen-quad": "^0.2.1",
 		"tslib": "2.3.1",
 		"typedoc": "^0.22.10",

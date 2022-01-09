@@ -277,8 +277,9 @@ gl_PointSize = 6.0;
 float depthFromPosition = viewZToOrthographicDepth(mvPosition.z, cameraNear, cameraFar);
 vec3 coord = gl_Position.xyz / gl_Position.w;
 vUv =(coord.xy + 1.0) * 0.5 ;
-float depthAtPoint = readZDepth(vUv);
-if (depthAtPoint > cameraFar || depthFromPosition > depthAtPoint) {
+// float depthAtPoint = readZDepth(vUv);
+float depthAtPoint = (readZDepth(vUv) + readZDepth(vUv + vec2(0,0.001)) + readZDepth(vUv + vec2(0,-0.001)) + readZDepth(vUv + vec2(0.001,0)) + readZDepth(vUv + vec2(-0.001,0))) / 5.0;
+if (depthAtPoint > 0.0 && depthFromPosition > depthAtPoint+ cameraFar/1000.0) {
 	depth = -1.0;
 	vColor = vec4( 0.0, 0.0, 0.0, 0.0);
 } else {
@@ -301,7 +302,7 @@ void main() {
 	`,
 	transparent: false
 });
-ShaderChunk['shadowmap_pars_fragment'] = ShaderChunk.shadowmap_pars_fragment.replace( 'return shadow;', 'if (generateColor){return shadow*2.0; } else {return shadow;}' );
+// ShaderChunk['shadowmap_pars_fragment'] = ShaderChunk.shadowmap_pars_fragment.replace( 'return shadow;', 'if (generateColor){return shadow*2.0; } else {return shadow;}' );
 
 function pick<T extends object, U extends keyof T>(object: T, ...props: U[]): Pick<T, U> 
 {
@@ -316,12 +317,14 @@ function createSharedMaterial(): CustomMaterial
 	const textureAltitude = loader.load( 'terrain/mntn_dark_d.webp', null, null);
 	const textureRock = loader.load( 'terrain/mntn_white_d.webp', null, null);
 	const textureSnow = loader.load( 'terrain/snow1_d.webp', null, null);
+	const textureSand = loader.load( 'terrain/island_sand_d.webp', null, null);
+	const textureWater = loader.load( 'terrain/water.webp', null, null);
 	// const textureGrass = loader.load( 'tersrc14/data/grass.dds', null, null);
 	// const textureAltitude = loader.load( 'tersrc14/data/rock.dds', null, null);
 	// const textureRock = loader.load( 'tersrc14/data/slope.dds', null, null);
 	// const textureSnow = loader.load( 'tersrc14/data/rock.dds', null, null);
-	textureGrass.wrapS = textureAltitude.wrapS = textureRock.wrapS = RepeatWrapping;
-	textureGrass.wrapT = textureAltitude.wrapT = textureRock.wrapT = RepeatWrapping;
+	textureGrass.wrapS = textureAltitude.wrapS = textureSand.wrapS = textureWater.wrapS = textureRock.wrapS = RepeatWrapping;
+	textureGrass.wrapT = textureAltitude.wrapT = textureSand.wrapT = textureWater.wrapT = textureRock.wrapT = RepeatWrapping;
 
 	const sharedMaterial = new CustomMaterial( {
 		// shadowSide: FrontSide,
@@ -339,6 +342,8 @@ function createSharedMaterial(): CustomMaterial
 			textureAltitude: {value: textureAltitude},
 			textureRock: {value: textureRock},
 			textureSnow: {value: textureSnow},
+			textureSand: {value: textureSand},
+			textureWater: {value: textureWater},
 			drawNormals: {value: false},
 			computeNormals: {value: false},
 			drawShadows: {value: false},
@@ -473,7 +478,7 @@ void RE_IndirectDiffuse_BlinnPhong( const in vec3 irradiance, const in Geometric
 #define Material_LightProbeLOD( material )	(0)
 #include <normalmap_pars_fragment>
 #define SNOW_HEIGHT 1300.0
-#define BEACH_HEIGHT 140.5
+#define BEACH_HEIGHT 10.5
 #define GRASS_HEIGHT 2053.5
 #define TREE_MIN_HEIGHT 1000.0
 #define TREE_MAX_HEIGHT 1800.0
@@ -497,6 +502,8 @@ uniform sampler2D textureGrass;
 uniform sampler2D textureAltitude;
 uniform sampler2D textureRock;
 uniform sampler2D textureSnow;
+uniform sampler2D textureSand;
+uniform sampler2D textureWater;
 varying vec3 vComputedNormal;
 
 #include <shadowmap_pars_fragment>
@@ -528,20 +535,23 @@ vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 	// vec3 dir = normalize(pos-cameraPos);
 	
 	// float f = clamp(Noise(matPos.xz*.05, 2.0), 0.0,1.0);//*10.8;
-	vec3 m = texture2D(textureAltitude, vUv*2.0).rgb;
+	vec3 m = vec3(76.0/255.0, 51.0/255.0, 30.0/255.0);
+	// vec3 m = texture2D(textureAltitude, vUv*2.0).rgb;
 	mat = m;
 	// Should have used smoothstep to add colours, but left it using 'if' for sanity...
 	if (slope < .5)
 	{
 		float c = (.5-slope) * 4.0;
 		c = clamp(c*c, 0.1, 1.0);
-		mat = mix(mat, texture2D(textureRock, vUv*4.0).rgb, c/1.6);
+		mat = mix(mat, vec3(0.4, 0.4, 0.4), c/1.6);
+		// mat = mix(mat, texture2D(textureRock, vUv*4.0).rgb, c/1.6);
 		// lights.x+=.1;
 	}
 	// Grass. Use the normal to decide when to plonk grass down...
 	if (matPos.y < GRASS_HEIGHT && slope > 0.65)
 	{
-		m = texture2D(textureGrass, vUv*4.0).rgb*1.6 * (slope- 0.65);
+		// m = texture2D(textureGrass, vUv*4.0).rgb*1.6 * (slope- 0.65);
+		m = vec3(0.34902, 0.533333, 0.266667)*1.6 * (slope- 0.65);
 		mat = mix(mat, m, clamp((slope-0.65)*1.3 * (GRASS_HEIGHT-matPos.y)*0.003, 0.0, 1.0));
 	}
 
@@ -556,27 +566,35 @@ vec3 TerrainColour(vec4 matPos, vec3 normal, vec2 lights)
 	if (matPos.y > SNOW_HEIGHT && slope > .22)
 	{
 		float snow = clamp(((matPos.y - SNOW_HEIGHT)*(slope-0.22)*3.5) * 0.0015, 0.0, 1.0);
-		mat = mix(mat, texture2D(textureSnow, vUv).rgb, snow);
+		mat = mix(mat, vec3(0.9,0.9,0.9), snow);
+		// mat = mix(mat, texture2D(textureSnow, vUv).rgb, snow);
 		// lights.x += snow;
 		// ambient+=snow *.3;
 	}
 	// Beach effect...
-	// if (matPos.y < BEACH_HEIGHT)
-	// {
-	// 	if (slope > .4)
-	// 	{
-	// 		f = Noise(matPos.xz * .084, 1.0)*1.5;
-	// 		f = clamp((BEACH_HEIGHT-f-matPos.y) * 1.34, 0.0, .67);
-	// 		float t = (slope-.4);
-	// 		t = (t*t);
-	// 		mat = mix(mat, vec3(.09+t, .07+t, .03+t), f);
-	// 	}
-	// 	// Cheap under water darkening...it's wet after all...
-	// 	if (matPos.y < 0.0)
-	// 	{
-	// 		mat *= .2;
-	// 	}
-	// }
+	if (matPos.y < BEACH_HEIGHT)
+	{
+		if (slope > .4)
+		{
+			float sand = clamp((BEACH_HEIGHT-matPos.y) * 1.34, 0.0, 1.0);
+			// float t = (slope-.4);
+			// t = (t*t);
+			// mat = mix(mat, texture2D(textureSand, vUv).rgb, sand);
+			mat = mix(mat, vec3(0.929412, 0.929412, 0.8), sand);
+		}
+		// Cheap under water darkening...it's wet after all...
+		// if (matPos.y <= 0.0)
+		// {
+		// 	mat *= .2;
+		// }
+	}
+	// Do the water...
+	if (matPos.y <= 1.0)
+	{
+		// mat = mix(mat, texture2D(textureWater, vUv).rgb, 0.8);
+		// mat = texture2D(textureWater, vUv).rgb;
+		mat = vec3(0.46, 0.812,0.941);
+	}
 	return mat;
 }
 void main() {

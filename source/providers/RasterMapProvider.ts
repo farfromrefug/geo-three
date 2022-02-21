@@ -1,4 +1,3 @@
-
 import {CancelablePromise} from '../utils/CancelablePromise';
 import {CanvasUtils} from '../utils/CanvasUtils';
 import {getSharedImageBitmapLoader, ImageBitmapLoader} from '../utils/FetchLoader';

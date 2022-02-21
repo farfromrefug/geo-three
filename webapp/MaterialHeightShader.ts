@@ -238,6 +238,9 @@ const EMPTY_TEXTURE = new Texture();
 export const sharedPointMaterial = new PointMaterial({
 	depthWrite: false,
 	depthTest: false,
+	extensions:{
+		derivatives:false
+	},
 	uniforms: {
 		exageration: {value: 1},
 		depthTexture: {value: EMPTY_TEXTURE}, 
@@ -313,24 +316,29 @@ function createSharedMaterial(): CustomMaterial
 	const phongShader = ShaderLib['phong'];
 	const loader =new TextureLoader();
 	// const loader =new DDSLoader();
-	const textureGrass = loader.load( 'terrain/savanna_green_d.webp', null, null);
-	const textureAltitude = loader.load( 'terrain/mntn_dark_d.webp', null, null);
-	const textureRock = loader.load( 'terrain/mntn_white_d.webp', null, null);
-	const textureSnow = loader.load( 'terrain/snow1_d.webp', null, null);
-	const textureSand = loader.load( 'terrain/island_sand_d.webp', null, null);
-	const textureWater = loader.load( 'terrain/water.webp', null, null);
-	// const textureGrass = loader.load( 'tersrc14/data/grass.dds', null, null);
-	// const textureAltitude = loader.load( 'tersrc14/data/rock.dds', null, null);
-	// const textureRock = loader.load( 'tersrc14/data/slope.dds', null, null);
-	// const textureSnow = loader.load( 'tersrc14/data/rock.dds', null, null);
-	textureGrass.wrapS = textureAltitude.wrapS = textureSand.wrapS = textureWater.wrapS = textureRock.wrapS = RepeatWrapping;
-	textureGrass.wrapT = textureAltitude.wrapT = textureSand.wrapT = textureWater.wrapT = textureRock.wrapT = RepeatWrapping;
+	let textureGrass, textureAltitude, textureRock, textureSnow, textureSand, textureWater;
+	try {
+		
+		// textureGrass = loader.load( 'terrain/savanna_green_d.webp', null, null);
+		// textureAltitude = loader.load( 'terrain/mntn_dark_d.webp', null, null);
+		// textureRock = loader.load( 'terrain/mntn_white_d.webp', null, null);
+		// textureSnow = loader.load( 'terrain/snow1_d.webp', null, null);
+		// textureSand = loader.load( 'terrain/island_sand_d.webp', null, null);
+		// textureWater = loader.load( 'terrain/water.webp', null, null);
+		// textureGrass.wrapS = textureAltitude.wrapS = textureSand.wrapS = textureWater.wrapS = textureRock.wrapS = RepeatWrapping;
+		// textureGrass.wrapT = textureAltitude.wrapT = textureSand.wrapT = textureWater.wrapT = textureRock.wrapT = RepeatWrapping;
+	} catch (error) {
+		
+	}
 
 	const sharedMaterial = new CustomMaterial( {
 		// shadowSide: FrontSide,
 		lights: true,
 		wireframe: false,
 		// side: DoubleSide,
+		extensions:{
+			derivatives:true
+		},
 		defines: {
 			TANGENTSPACE_NORMALMAP: '',
 			USE_DISPLACEMENTMAP: '',
@@ -643,6 +651,7 @@ void main() {
 `
 	});
 	sharedMaterial['map'] = EMPTY_TEXTURE;
+
 	return sharedMaterial;
 }
 
@@ -961,7 +970,7 @@ export class MaterialHeightShader extends MapHeightNode
 	public hide(): void
 	{
 		this.isMesh = false;
-		this.objectsHolder.visible = this.level !== this.mapView.maxZoomForObjectHolders;
+		this.objectsHolder.visible = this.level !== this.mapView.maxZoomForPeaks;
 		if (this.lod) 
 		{
 			this.lod.visible = false;
@@ -1088,7 +1097,7 @@ export class MaterialHeightShader extends MapHeightNode
 				});
 				// this.material['displacementMap'] = texture;
 			}
-			if (this.level > this.mapView.maxZoomForObjectHolders) 
+			if (this.level > this.mapView.maxZoomForPeaks) 
 			{
 				return;
 			}

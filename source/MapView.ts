@@ -91,7 +91,7 @@ export class MapView extends Mesh
 	 * Define if we should free memory as fast as possible
 	 * Used mostly for mobile devices
 	 */
-	public maxZoomForObjectHolders: number = 14;
+	public maxZoomForPeaks: number = 14;
 
 	/**
 	 * Constructor for the map view objects.

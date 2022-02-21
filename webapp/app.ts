@@ -39,7 +39,6 @@ const PI_DIV4 = Math.PI / 4;
 const PI_X2 = Math.PI * 2;
 const TO_DEG = 180 / Math.PI;
 
-
 const queryParams = new URLSearchParams(window.location.search);
 queryParams.forEach((value, k) => 
 {
@@ -61,6 +60,12 @@ export function toggleSetting(key): void
 {
 	setSettings(key, !settings[key]);
 }
+
+let settingsChangedListener
+export function setOnSettingsChangedListener(value){
+	settingsChangedListener = value;
+}
+
 export function setSettings(key, value, shouldRender = true, param2 = true): void 
 {
 	try 
@@ -265,7 +270,7 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			{
 				applyOnNodes((node) => 
 				{
-					node.objectsHolder.visible = settings.debugFeaturePoints && (node.isVisible() || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided);
+					node.objectsHolder.visible = settings.debugFeaturePoints && (node.isVisible() || node.level === map.maxZoomForPeaks && node.parentNode.subdivided);
 				});
 			}
 			break;
@@ -304,6 +309,8 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			sharedMaterial.uniforms.drawTexture.value = shouldDrawTextures();
 			break;
 		}
+		case 'rasterProviderZoomDelta':
+		case 'flipRasterImages':
 		case 'mapMap' :{
 			outlinePass.enabled = !withoutOutline();
 			mainPass.renderToScreen = !outlinePass.enabled;
@@ -326,6 +333,16 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			break;
 		}
 		case 'geometrySize' :{
+			if (map && shouldRender) 
+			{
+				createMap();
+				updateLODThrottle();
+				requestRenderIfNotRequested(true);
+				shouldRender = false;
+			}
+			break;
+		}
+		case 'maxZoomForPeaks' :{
 			if (map && shouldRender) 
 			{
 				createMap();
@@ -371,7 +388,6 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 		}
 		if (!EXTERNAL_APP) 
 		{
-	
 			if (checkBoxes[key]) 
 			{
 				checkBoxes[key].checked = value;
@@ -388,6 +404,9 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 		if (shouldRender) 
 		{
 			requestRenderIfNotRequested();
+		}
+		if (settingsChangedListener) {
+			settingsChangedListener(key, value);
 		}
 		// console.log('setSeettings done', key);
 	}
@@ -987,7 +1006,9 @@ const compass = document.getElementById('compass') as HTMLDivElement;
 const compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
 const compassLabel = document.getElementById('compass_label') as HTMLLabelElement;
 const cameraButton = document.getElementById('camera_button');
-cameraButton.style.visibility = FORCE_MOBILE || isMobile?'visible':'hidden';
+if (cameraButton) {
+	cameraButton.style.visibility = FORCE_MOBILE || isMobile?'visible':'hidden';
+}
 
 if (!EXTERNAL_APP) 
 {
@@ -1033,7 +1054,7 @@ hammertime.on('tap', function(event)
 	mousePosition = new Vector2(event.center.x, event.center.y);
 	requestRenderIfNotRequested(true);
 });
-const heightProvider = new LocalHeightProvider(settings.local);
+export let heightProvider: LocalHeightProvider;
 // const heightProvider = new LocalHeightTerrainProvider(devLocal);
 
 const updateLODThrottle = debounce(function(force = false)
@@ -1061,7 +1082,6 @@ function updateCompass()
 		if (compassLabel) 
 		{
 			compassLabel.innerText = angle.toFixed() + '°';
-
 		}
 		const hFOV = cameraFOV * viewWidth / viewHeight;
 		compassSlice.style.backgroundImage = `conic-gradient(transparent 0deg,transparent ${180 - hFOV / 2}deg, #15BFCC ${180 - hFOV / 2}deg, #15BFCC ${180 + hFOV / 2}deg, transparent ${180 + hFOV / 2}deg)`;
@@ -1091,14 +1111,13 @@ function setupLOD()
 	}
 }
 const lod = new LODFrustum();
-setupLOD();
 function createProvider() 
 {
 	let provider;
 	if (settings.mapMap) 
 	{
 		provider = new RasterMapProvider(settings.local);
-		provider.zoomDelta = 2;
+		provider.zoomDelta = settings.rasterProviderZoomDelta;
 	}
 	else if (settings.debug) 
 	{
@@ -1140,11 +1159,14 @@ function createMap()
 		scene.remove(map);
 		clearCacheRecursive(map.root);
 	}
+	heightProvider = new LocalHeightProvider(settings.local)
+	setSettings('terrarium',heightProvider.terrarium, false)
+	setupLOD();
 	const provider = createProvider();
 	map = new MapView(null, provider, heightProvider, false, onNodeReady);
 	// map.lowMemoryUsage = isMobile;
 	map.lowMemoryUsage = true;
-	map.maxZoomForObjectHolders = 13;
+	map.maxZoomForPeaks = settings.maxZoomForPeaks;
 	map.setRoot(new MaterialHeightShader(null, map, MapNode.root, 0, 0, 0));
 	map.lod = lod;
 	map.updateMatrixWorld(true);
@@ -1223,6 +1245,8 @@ if (!(FORCE_MOBILE || isMobile))
 		A: 65,
 		S: 83,
 		D: 68,
+		Q: 81,
+		E: 69,
 		ARROW_LEFT: 37,
 		ARROW_UP: 38,
 		ARROW_RIGHT: 39,
@@ -1232,6 +1256,8 @@ if (!(FORCE_MOBILE || isMobile))
 	const aKey = new KeyboardKeyHold(KEYCODE.A, 16.666);
 	const sKey = new KeyboardKeyHold(KEYCODE.S, 16.666);
 	const dKey = new KeyboardKeyHold(KEYCODE.D, 16.666);
+	const qKey = new KeyboardKeyHold(KEYCODE.Q, 16.666);
+	const eKey = new KeyboardKeyHold(KEYCODE.E, 16.666);
 	aKey.addEventListener('holding', function(event) 
 	{
 		controls.truck(- keyboardMoveSpeed * worldScale * event.deltaTime, 0, false);
@@ -1252,6 +1278,16 @@ if (!(FORCE_MOBILE || isMobile))
 		controls.forward(- keyboardMoveSpeed * worldScale * event.deltaTime, false);
 		controls.update(event.deltaTime);
 	});
+
+	// qKey.addEventListener('holding', function(event) 
+	// {
+	// 	setSettings('elevation', currentPositionAltitude -  keyboardMoveSpeed * worldScale * event.deltaTime, true)
+
+	// });
+	// eKey.addEventListener('holding', function(event) 
+	// {
+	// 	setSettings('elevation', currentPositionAltitude +  keyboardMoveSpeed * worldScale * event.deltaTime, true)
+	// });
 
 	const leftKey = new KeyboardKeyHold(KEYCODE.ARROW_LEFT, 16.666);
 	const rightKey = new KeyboardKeyHold(KEYCODE.ARROW_RIGHT, 16.666);
@@ -1501,22 +1537,31 @@ export function getElevation(coord: {lat, lon}, node?: MaterialHeightShader): nu
 }
 
 let updateExternalPosition;
+let updatePositionListener;
+export function setUpdateExternalPositionListener(value)  {
+	updatePositionListener = value;
+}
 export function setUpdateExternalPositionThrottleTime(value) 
 {
 	updateExternalPosition = throttle(function() 
 	{
+		const newPos = {...currentPosition, altitude: settings.elevation};
 		if (EXTERNAL_APP) 
 		{
 			if (window['electron']) 
 			{
 				const ipcRenderer = window['electron'].ipcRenderer;
-				ipcRenderer.send('message', {...currentPosition, altitude: settings.elevation});
+				ipcRenderer.send('message', newPos);
 			}
 	
-			emitNSEvent('position', {...currentPosition, altitude: settings.elevation});
+			emitNSEvent('position', newPos);
 		}
-
-		
+		if (updatePositionListener) {
+			updatePositionListener(newPos);
+		}
+		if (settingsChangedListener) {
+			settingsChangedListener('setPosition', newPos);
+		}
 	}, value);
 }
 setUpdateExternalPositionThrottleTime(100);
@@ -1536,7 +1581,9 @@ function updateCurrentPosition()
 			sunLight.setWorldPosition(tempVector);
 		}
 		currentPosition = point;
-		updateCurrentMinElevation();
+		if (settings.stickToGround) {
+			updateCurrentMinElevation();
+		}
 		updateExternalPosition();
 	}
 }
@@ -1559,6 +1606,10 @@ controls.addEventListener('controlend', () =>
 	{
 		currentPosition = {...point, altitude: settings.elevation};
 		updateCurrentViewingDistance();
+	}
+
+	if (settingsChangedListener) {
+		settingsChangedListener('setAzimuth', controls.azimuthAngle * TO_DEG % 360);
 	}
 	// force a render at the end of the movement to make sure we show the correct peaks
 	requestRenderIfNotRequested(true);
@@ -1650,7 +1701,7 @@ function actualComputeFeatures()
 			node.wasVisible = visible;
 			node.hide();
 		}
-		node.objectsHolder.visible = visible || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
+		node.objectsHolder.visible = visible || node.level === map.maxZoomForPeaks && node.parentNode.subdivided;
 		// if (node.pointsMesh) 
 		// {
 		// 	node.pointsMesh.userData.depthTexture.value = depthTexture;
@@ -1674,7 +1725,7 @@ function actualComputeFeatures()
 			delete node.wasVisible;
 			node.show();
 		}
-		node.objectsHolder.visible = node.isVisible() && settings.debugFeaturePoints || node.level === map.maxZoomForObjectHolders && node.parentNode.subdivided;
+		node.objectsHolder.visible = node.isVisible() && settings.debugFeaturePoints || node.level === map.maxZoomForPeaks && node.parentNode.subdivided;
 		// if (node.pointsMesh) 
 		// {
 		// 	node.pointsMesh.userData.depthTexture.value = null;

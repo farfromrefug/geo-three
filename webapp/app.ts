@@ -61,8 +61,9 @@ export function toggleSetting(key): void
 	setSettings(key, !settings[key]);
 }
 
-let settingsChangedListener
-export function setOnSettingsChangedListener(value){
+let settingsChangedListener;
+export function setOnSettingsChangedListener(value)
+{
 	settingsChangedListener = value;
 }
 
@@ -405,7 +406,8 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 		{
 			requestRenderIfNotRequested();
 		}
-		if (settingsChangedListener) {
+		if (settingsChangedListener) 
+		{
 			settingsChangedListener(key, value);
 		}
 		// console.log('setSeettings done', key);
@@ -1006,7 +1008,8 @@ const compass = document.getElementById('compass') as HTMLDivElement;
 const compassSlice = document.getElementById('compass_slice') as HTMLDivElement;
 const compassLabel = document.getElementById('compass_label') as HTMLLabelElement;
 const cameraButton = document.getElementById('camera_button');
-if (cameraButton) {
+if (cameraButton) 
+{
 	cameraButton.style.visibility = FORCE_MOBILE || isMobile?'visible':'hidden';
 }
 
@@ -1159,8 +1162,8 @@ function createMap()
 		scene.remove(map);
 		clearCacheRecursive(map.root);
 	}
-	heightProvider = new LocalHeightProvider(settings.local)
-	setSettings('terrarium',heightProvider.terrarium, false)
+	heightProvider = new LocalHeightProvider(settings.local);
+	setSettings('terrarium', heightProvider.terrarium, false);
 	setupLOD();
 	const provider = createProvider();
 	map = new MapView(null, provider, heightProvider, false, onNodeReady);
@@ -1538,7 +1541,8 @@ export function getElevation(coord: {lat, lon}, node?: MaterialHeightShader): nu
 
 let updateExternalPosition;
 let updatePositionListener;
-export function setUpdateExternalPositionListener(value)  {
+export function setUpdateExternalPositionListener(value) 
+{
 	updatePositionListener = value;
 }
 export function setUpdateExternalPositionThrottleTime(value) 
@@ -1556,10 +1560,12 @@ export function setUpdateExternalPositionThrottleTime(value)
 	
 			emitNSEvent('position', newPos);
 		}
-		if (updatePositionListener) {
+		if (updatePositionListener) 
+		{
 			updatePositionListener(newPos);
 		}
-		if (settingsChangedListener) {
+		if (settingsChangedListener) 
+		{
 			settingsChangedListener('setPosition', newPos);
 		}
 	}, value);
@@ -1581,7 +1587,8 @@ function updateCurrentPosition()
 			sunLight.setWorldPosition(tempVector);
 		}
 		currentPosition = point;
-		if (settings.stickToGround) {
+		if (settings.stickToGround) 
+		{
 			updateCurrentMinElevation();
 		}
 		updateExternalPosition();
@@ -1608,7 +1615,8 @@ controls.addEventListener('controlend', () =>
 		updateCurrentViewingDistance();
 	}
 
-	if (settingsChangedListener) {
+	if (settingsChangedListener) 
+	{
 		settingsChangedListener('setAzimuth', controls.azimuthAngle * TO_DEG % 360);
 	}
 	// force a render at the end of the movement to make sure we show the correct peaks
@@ -1988,7 +1996,6 @@ function drawFeatures()
 	let lastX = 0;
 	let maxEle = -10000;
 	let maxEleX;
-	console.log(featuresToShow.length, featuresToShow);
 	const featuresToDraw = [];
 	const scale = MaterialHeightShader.scaleRatio;
 	featuresToShow.forEach((f) => 
@@ -2372,7 +2379,7 @@ if (!EXTERNAL_APP)
 {
 	document.addEventListener('DOMContentLoaded', function() 
 	{
-		const params = Object.assign({}, settings, {'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0, terrarium: heightProvider.terrarium});
+		const params = Object.assign({}, settings, {'setPosition': {'lat': 45.1811, 'lon': 5.8141, 'altitude': 2144}, 'setAzimuth': 0});
 		callMethods(params);
 	});
 }

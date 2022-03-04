@@ -2,7 +2,7 @@ import {pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
 import {BufferGeometry, ClampToEdgeWrapping, Color, DoubleSide, Float32BufferAttribute, FrontSide, Intersection, LinearFilter, LOD, Matrix3, Mesh, MeshDepthMaterial, MeshPhongMaterial, ObjectSpaceNormalMap, Points, Raycaster, RepeatWrapping, RGBADepthPacking, ShaderChunk, ShaderLib, ShaderMaterial, Texture, TextureLoader, Vector2, Vector3, Vector4} from 'three';
 
 import {MapNodeGeometry} from '../source/geometries/MapNodeGeometry';
-import {MapView} from '../source/MapView';
+import type {MapView} from '../source/MapView';
 import {MapHeightNode} from '../source/nodes/MapHeightNode';
 import {MapPlaneNode} from '../source/nodes/MapPlaneNode';
 import {UnitsUtils} from '../source/utils/UnitsUtils';
@@ -1250,7 +1250,7 @@ export class MaterialHeightShader extends MapHeightNode
 	*
 	* Switches the geometry for a simpler one for faster raycasting.
 	*/
-	public raycast(raycaster: Raycaster, intersects: Intersection[]): boolean
+	public raycast(raycaster: Raycaster, intersects: Intersection[]): any
 	{
 		if (this.isVisible()) 
 		{

@@ -34,6 +34,8 @@ import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
 import CSM from 'three-csm';
 import {isMobile, settings} from './settings';
 
+export {settings};
+
 const TO_RAD = Math.PI / 180;
 const PI_DIV4 = Math.PI / 4;
 const PI_X2 = Math.PI * 2;
@@ -410,7 +412,7 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 		}
 		// console.log('setSeettings done', key);
 	}
-	catch (err) 
+	catch (err: any) 
 	{
 		console.error(err.toString() + ' ' + err.stack);
 	}
@@ -1014,6 +1016,12 @@ if (!EXTERNAL_APP)
 {
 	Object.keys(settings).forEach((key) => 
 	{
+
+		let labelElement = document.getElementById(key+'Label');
+		if (labelElement) 
+		{
+			labels[key] = labelElement as HTMLLabelElement;
+		}
 		const element = document.getElementById(key);
 		if (!element) 
 		{
@@ -1031,11 +1039,7 @@ if (!EXTERNAL_APP)
 			sliders[key].oninput = (event: any) => { return setSettings(key, event.target.value); };
 			sliders[key].value = settings[key] as any;
 
-			let labelElement = document.getElementById(key+'Label');
-			if (labelElement) 
-			{
-				labels[key] = labelElement as HTMLLabelElement;
-			}
+			
 		}
 	});
 	

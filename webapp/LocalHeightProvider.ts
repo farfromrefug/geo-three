@@ -11,27 +11,31 @@ const imageBitmapLoader = getSharedImageBitmapLoader({
 
 export const locahostServer = '127.0.0.1';
 // export const locahostServer = '192.168.1.51';
+// `https://${this.localURL}/data/elevation_25m/${zoom}/${x}/${y}.webp`
 export class LocalHeightProvider extends RasterMapProvider 
 {
 	public local: boolean;
 
+	public localURL: string;
+
 	public terrarium: boolean;
 
-	public constructor(local = false) 
+	public constructor(options: {localURL?: string, local?: boolean, heightMaxZoom?: number, heightMinZoom?: number}) 
 	{
 		super();
 		this.name = 'local';
-		this.local = local;
-		this.terrarium = !local;
-		this.minZoom = 5;
-		this.maxZoom = local ? 12 : 15;
+		this.local = options.local;
+		this.localURL = options.localURL;
+		console.log('LocalHeightProvider', options);
+		this.minZoom = options.heightMinZoom || 5;
+		this.maxZoom = options.heightMaxZoom || 15;
 	}
 
 	public buildURL(zoom, x, y): string 
 	{
-		if (this.local) 
+		if (this.local && this.localURL) 
 		{
-			return `https://${locahostServer}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
+			return `${this.localURL}/data/elevation_25m/${zoom}/${x}/${y}.webp`;
 		}
 		else 
 		{
@@ -41,9 +45,9 @@ export class LocalHeightProvider extends RasterMapProvider
 
 	protected buildPeaksURL(zoom, x, y): string 
 	{
-		if (this.local) 
+		if (this.local && this.localURL) 
 		{
-			return `https://${locahostServer}/data/full/${zoom}/${x}/${y}.pbf`;
+			return `${this.localURL}/data/full/${zoom}/${x}/${y}.pbf`;
 		}
 		else 
 		{

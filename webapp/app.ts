@@ -73,7 +73,7 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 {
 	try 
 	{
-		// console.log('setSettings', key, value, settings.hasOwnProperty(key), window, this);
+		// console.log('setSettings', key, value, settings.hasOwnProperty(key));
 		if (!settings.hasOwnProperty(key)) 
 		{
 			const func = EXTERNAL_APP ? window['webapp'][key] : window[key];
@@ -313,7 +313,6 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			break;
 		}
 		case 'rasterProviderZoomDelta':
-		case 'flipRasterImages':
 		case 'mapMap' :{
 			outlinePass.enabled = !withoutOutline();
 			mainPass.renderToScreen = !outlinePass.enabled;
@@ -335,23 +334,19 @@ export function setSettings(key, value, shouldRender = true, param2 = true): voi
 			}
 			break;
 		}
+		case 'maxZoomForPeaks' :
+		case 'local' :
+		case 'localURL' :
+		case 'flipRasterImages':
+		case 'heightMinZoom' :
+		case 'heightMaxZoom' :
 		case 'geometrySize' :{
-			if (map && shouldRender) 
+			if (map) 
 			{
 				createMap();
-				updateLODThrottle();
-				requestRenderIfNotRequested(true);
-				shouldRender = false;
-			}
-			break;
-		}
-		case 'maxZoomForPeaks' :{
-			if (map && shouldRender) 
-			{
-				createMap();
-				updateLODThrottle();
-				requestRenderIfNotRequested(true);
-				shouldRender = false;
+				// updateLODThrottle();
+				// requestRenderIfNotRequested(true);
+				// shouldRender = false;
 			}
 			break;
 		}
@@ -1123,7 +1118,7 @@ function createProvider()
 	let provider;
 	if (settings.mapMap) 
 	{
-		provider = new RasterMapProvider(settings.local);
+		provider = new RasterMapProvider(settings);
 		provider.zoomDelta = settings.rasterProviderZoomDelta;
 	}
 	else if (settings.debug) 
@@ -1157,17 +1152,17 @@ function onNodeReady(node: MaterialHeightShader)
 }
 function createMap() 
 {	
-	if (!canCreateMap) 
-	{
-		return;
-	}
 	if (map !== undefined) 
 	{
 		scene.remove(map);
 		clearCacheRecursive(map.root);
+		map = undefined;
 	}
-	heightProvider = new LocalHeightProvider(settings.local);
-	setSettings('terrarium', heightProvider.terrarium, false);
+	if (!canCreateMap) 
+	{
+		return;
+	}
+	heightProvider = new LocalHeightProvider(settings);
 	setupLOD();
 	const provider = createProvider();
 	map = new MapView(null, provider, heightProvider, false, onNodeReady);
@@ -2468,9 +2463,10 @@ export function callMethods(json)
 		if (!map) 
 		{
 			createMap();
+			updateLODThrottle();
 		}
-		updateControls();
 		requestRenderIfNotRequested(true);
+		updateControls();
 	}
 	catch (err) 
 	{

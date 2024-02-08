@@ -667,6 +667,7 @@ class CameraControlsWithOrientation extends CameraControls
 
 class CustomOutlineEffect extends Effect 
 {
+	//@ts-ignore
 	declare public uniforms: Map<String, any>;
 
 	constructor() 
@@ -701,7 +702,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
 				uniforms: new Map([
 					['outlineColor', new Uniform(new Color(settings.dark ? 0xffffff : 0x000000))],
 					['multiplierParameters', new Uniform(new Vector4(settings.depthBiais, settings.depthMultiplier, settings.depthPostMultiplier, settings.outlineStroke))]
-				])
+				] as any)
 			}
 		);
 	}
@@ -811,7 +812,7 @@ const renderer = new WebGLRenderer({
 	// depth: false,
 	stencil: false
 });
-renderer.physicallyCorrectLights = true;
+renderer['physicallyCorrectLights'] = true;
 // renderer.debug.checkShaderErrors = true;
 renderer.shadowMap.type = PCFSoftShadowMap;
 renderer.shadowMap.enabled = false;
@@ -1660,7 +1661,7 @@ function emitNSEvent(name, value)
 class OutlinePass extends EffectPass 
 {
 	enabled;
-
+	//@ts-ignore
 	renderToScreen;
 
 	constructor(camera, outlineEffect) 
@@ -1699,7 +1700,7 @@ function actualComputeFeatures()
 		sky.visible = false;
 		sunLight.visible = false;
 	}
-	sharedPointMaterial.uniforms.depthTexture.value = composer.depthTexture;
+	sharedPointMaterial.uniforms.depthTexture.value = composer['depthTexture'];
 	applyOnNodes((node) => 
 	{
 		const visible = node.isVisible();
@@ -2327,7 +2328,6 @@ export function render()
 	// csm.update(camera.matrix);
 	if (directionalLightHelper) 
 	{
-
 		directionalLightHelper.position.setFromMatrixPosition(directionalLightHelper.light.matrixWorld);
 		directionalLightHelper.updateMatrix();
 		directionalLightHelper.update();

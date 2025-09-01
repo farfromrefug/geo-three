@@ -31,7 +31,6 @@ import {SunLight} from './SunLight';
 import {KeyboardKeyHold} from 'hold-event';
 import RenderTargetHelper from 'three-rt-helper';
 import {pointToTile, pointToTileFraction, tileToBBOX} from '@mapbox/tilebelt';
-import CSM from 'three-csm';
 import {isMobile, settings} from './settings';
 
 export {settings};

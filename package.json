@@ -67,7 +67,6 @@
 		"additween": "^3.0.0",
 		"delatin": "^0.2.0",
 		"hold-event": "^0.1.0",
-		"three-csm": "^1.1.1",
 		"three-rt-helper": "^0.0.6"
 	}
 }

@@ -8,5 +8,6 @@ module.exports = defineConfig({
 		EXTERNAL_APP: false
 	},
 	server: {host: '0.0.0.0'},
+	base: "https://farfromrefug.github.io/geo-three/example/",
 	build: {outDir: path.resolve(__dirname, '../example')}
 });

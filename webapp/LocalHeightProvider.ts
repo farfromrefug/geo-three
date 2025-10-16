@@ -51,7 +51,7 @@ export class LocalHeightProvider extends RasterMapProvider
 		}
 		else 
 		{
-			return `https://api.maptiler.com/tiles/v3/${zoom}/${x}/${y}.pbf?key=V7KGiDaKQBCWTYsgsmxh`;
+			return `https://tiles.akylas.fr/data/v3/${zoom}/${x}/${y}.pbf`;
 		}
 	}
 

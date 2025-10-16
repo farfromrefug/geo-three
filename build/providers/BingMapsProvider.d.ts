@@ -1,5 +1,5 @@
-import { MapProvider } from './MapProvider';
-export declare class BingMapsProvider extends MapProvider {
+import RasterMapProvider from './RasterMapProvider';
+export declare class BingMapsProvider extends RasterMapProvider {
     maxZoom: number;
     apiKey: string;
     type: string;
@@ -14,5 +14,5 @@ export declare class BingMapsProvider extends MapProvider {
     static OBLIQUE_LABELS: string;
     getMetaData(): void;
     static quadKey(zoom: number, x: number, y: number): string;
-    fetchTile(zoom: number, x: number, y: number): Promise<any>;
+    buildURL(zoom: any, x: any, y: any): string;
 }

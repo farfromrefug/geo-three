@@ -2175,7 +2175,7 @@
 	        this.root = null;
 	        this.onNodeReady = null;
 	        this.lowMemoryUsage = false;
-	        this.maxZoomForObjectHolders = 14;
+	        this.maxZoomForPeaks = 14;
 	        clearNodeCache();
 	        this.lod = new LODRaycast();
 	        this.provider = provider;

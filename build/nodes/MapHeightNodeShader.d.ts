@@ -2,14 +2,18 @@ import { BufferGeometry, Intersection, Material, Raycaster, Texture, Vector3 } f
 import { MapHeightNode } from './MapHeightNode';
 import { MapView } from '../MapView';
 export declare class MapHeightNodeShader extends MapHeightNode {
+    protected heightMapLocation: number[];
+    protected overZoomFactor: number;
     constructor(parentNode?: MapHeightNode, mapView?: MapView, location?: number, level?: number, x?: number, y?: number);
-    static emptyTexture: Texture;
+    static ELEVATION_DECODER: number[];
+    static EMPTY_TEXTURE: Texture;
     static geometrySize: number;
     static geometry: BufferGeometry;
     static baseGeometry: BufferGeometry;
     static baseScale: Vector3;
+    material: Material;
     static prepareMaterial(material: Material): Material;
-    loadTexture(): void;
-    loadHeightGeometry(): Promise<any>;
+    onHeightImage(image: any): void;
+    protected handleParentOverZoomTile(resolve?: any): Promise<any>;
     raycast(raycaster: Raycaster, intersects: Intersection[]): void;
 }

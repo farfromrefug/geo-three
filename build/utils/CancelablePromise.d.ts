@@ -6,7 +6,9 @@ export declare class CancelablePromise<T> {
     rejected: boolean;
     called: boolean;
     value: T;
-    constructor(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void);
+    protected cancelRunner: () => boolean;
+    protected rejectHandler: any;
+    constructor(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void, cancelRunner?: any);
     cancel(): boolean;
     then(callback: (value: any) => void): CancelablePromise<T>;
     catch(callback: (error: any) => void): CancelablePromise<T>;

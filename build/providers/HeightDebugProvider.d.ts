@@ -1,9 +1,11 @@
-import { MapProvider } from './MapProvider';
 import { Color } from 'three';
-export declare class HeightDebugProvider extends MapProvider {
-    provider: MapProvider;
+import { CancelablePromise } from '../utils/CancelablePromise';
+import RasterMapProvider from './RasterMapProvider';
+export declare class HeightDebugProvider extends RasterMapProvider {
+    provider: RasterMapProvider;
     fromColor: Color;
     toColor: Color;
     constructor(provider: any);
-    fetchTile(zoom: number, x: number, y: number): Promise<any>;
+    buildURL(zoom: number, x: number, y: number): string;
+    fetchImage(zoom: number, x: number, y: number): CancelablePromise<any>;
 }

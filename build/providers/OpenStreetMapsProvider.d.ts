@@ -1,7 +1,6 @@
-import { MapProvider } from './MapProvider';
-export declare class OpenStreetMapsProvider extends MapProvider {
-    address: string;
+import RasterMapProvider from './RasterMapProvider';
+export declare class OpenStreetMapsProvider extends RasterMapProvider {
     format: string;
     constructor(address?: string);
-    fetchTile(zoom: number, x: number, y: number): Promise<any>;
+    buildURL(zoom: any, x: any, y: any): string;
 }

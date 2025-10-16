@@ -1,4 +1,4 @@
-import { BufferGeometry, Camera, Group, Material, Mesh, Raycaster, Scene, WebGLRenderer } from 'three';
+import { Mesh, Raycaster } from 'three';
 import { MapNode } from './nodes/MapNode';
 import { MapProvider } from './providers/MapProvider';
 import { LODControl } from './lod/LODControl';
@@ -13,8 +13,12 @@ export declare class MapView extends Mesh {
     provider: MapProvider;
     heightProvider: MapProvider;
     root: MapNode;
-    constructor(root?: (number | MapNode), provider?: MapProvider, heightProvider?: MapProvider);
-    onBeforeRender: (renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, material: Material, group: Group) => void;
+    onNodeReady: Function;
+    nodeAutoLoad: boolean;
+    lowMemoryUsage: boolean;
+    maxZoomForPeaks: number;
+    constructor(root?: (number | MapNode), provider?: MapProvider, heightProvider?: MapProvider, nodeAutoLoad?: boolean, onNodeReady?: Function);
+    nodeShouldAutoLoad(): boolean;
     setRoot(root: (MapNode | number)): void;
     setProvider(provider: MapProvider): void;
     setHeightProvider(heightProvider: MapProvider): void;

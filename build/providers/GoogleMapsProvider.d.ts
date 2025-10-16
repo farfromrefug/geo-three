@@ -1,5 +1,6 @@
-import { MapProvider } from './MapProvider';
-export declare class GoogleMapsProvider extends MapProvider {
+import { CancelablePromise } from '../utils/CancelablePromise';
+import RasterMapProvider from './RasterMapProvider';
+export declare class GoogleMapsProvider extends RasterMapProvider {
     apiToken: string;
     sessionToken: string;
     orientation: number;
@@ -8,5 +9,6 @@ export declare class GoogleMapsProvider extends MapProvider {
     overlay: boolean;
     constructor(apiToken: string);
     createSession(): void;
-    fetchTile(zoom: number, x: number, y: number): Promise<any>;
+    fetchImage(zoom: number, x: number, y: number): CancelablePromise<any>;
+    buildURL(zoom: any, x: any, y: any): string;
 }

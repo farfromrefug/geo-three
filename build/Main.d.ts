@@ -1,5 +1,5 @@
 export { MapView } from './MapView';
-export { LODControl } from './lod/LODControl';
+export type { LODControl } from './lod/LODControl';
 export { LODRadial } from './lod/LODRadial';
 export { LODFrustum } from './lod/LODFrustum';
 export { LODRaycast } from './lod/LODRaycast';
